@@ -1,0 +1,16 @@
+[project]
+name = "translation-harness"
+version = "0.1.0"
+description = "Translation MCP server for government translations"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp",
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-otlp-proto-http",
+    "python-dotenv",
+    "anthropic",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
