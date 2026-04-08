@@ -20,7 +20,8 @@ Once installed, open a new chat and say: *"Help me set up the translation harnes
 
 ## Verify it's working
 
-Once set up, look for a hammer icon near the text input in Claude Desktop. Start a new conversation and ask:
+Once set up, look for plus icon near the text input in Claude Desktop, and click it > then view "Connectors" and make sure the harness shows up. 
+Start a new conversation and ask:
 
 > "Can you call the ping tool from the translation harness?"
 
