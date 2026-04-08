@@ -100,10 +100,10 @@ Quit and reopen Claude Desktop. Claude Desktop launches the server automatically
 
 ## Verify it's working
 
-Ask the volunteer to look for a hammer icon near the text input in Claude Desktop. Then have them start a new conversation and ask:
+Ask the volunteer to look for a **plus icon** near the text input in Claude Desktop, then click it and choose **Connectors**. They should see the translation harness listed there. Then have them start a new conversation and ask:
 
 > "Can you call the ping tool from the translation harness?"
 
 Expected response: `Translation harness MCP server is running!`
 
-If the hammer icon isn't showing up, see `references/troubleshooting.md`.
+If the translation harness isn't showing up under Connectors, see `references/troubleshooting.md`.
