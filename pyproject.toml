@@ -9,6 +9,7 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-http",
     "python-dotenv",
     "anthropic",
+    "requests",
 ]
 
 [build-system]
