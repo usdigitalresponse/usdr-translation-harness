@@ -101,10 +101,32 @@ Quit and reopen Claude Desktop. Claude Desktop launches the server automatically
 
 ## Verify it's working
 
-Look for a **plus icon** near the text input in Claude Desktop, then click it and choose **Connectors**. The translation harness should be listed there. Start a new conversation and ask:
+Look for a **plus icon** near the text input in Claude Desktop, then click it and choose **Connectors**. The translation harness should be listed there. Start a new conversation and try these checks:
 
 > "Can you call the ping tool from the translation harness?"
 
 Expected response: `Translation harness MCP server is running!`
 
+> "Can you call get_glossary and tell me what the approved Spanish term is for 'Allotment'?"
+
+Expected response: the glossary entry for Allotment with its Spanish term and definition.
+
+> "Can you call get_rubric with section='accuracy_and_relevance'?"
+
+Expected response: the accuracy and relevance criteria and scoring guidance.
+
 If the translation harness isn't showing up under Connectors, see `references/troubleshooting.md`.
+
+## Optional: Install the evaluation skill (content partners)
+
+If you're testing Spanish translation quality, also install the evaluation skill:
+
+1. Find `translation-evaluator.skill` in the `skills/` folder of the repository
+2. Open Claude Desktop → **Settings → Customize → Skills**
+3. Upload the file
+
+Once installed, start a new conversation and paste a Spanish translation:
+
+> "Please evaluate this Spanish translation: [paste translation here]"
+
+Claude will use the glossary and rubric automatically to score the translation.

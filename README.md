@@ -56,11 +56,47 @@ Run this after pulling changes or modifying `pyproject.toml`.
 Create a `.env` file in the project root (gitignored):
 
 ```
-HONEYCOMB_API_KEY=your-key-here
-ANTHROPIC_API_KEY=your-key-here
+HONEYCOMB_API_KEY=your-key-here      # routes traces to Honeycomb; omit for local stderr output
+ANTHROPIC_API_KEY=your-key-here      # only needed if enabling the token estimation middleware
+
+# Glossary + rubric data sources (defaults are baked into sources.py — only set to override)
+# PROMPTS_DOC_ID=1Wk5mmXZWE45pFBG8cy_tv48-rWX2Lz1xN7U8nzsQrbw
+# GLOSSARY_SHEET_ID=1AxYldzJ7TH6ihg3TLZRdP19KbGz1QyKzkcZLTwpnh5Q
+# GLOSSARY_SHEET_GID=430246301
+
+GLOSSARY_STRATEGY=naive              # retrieval strategy: naive (default)
 ```
 
 `HONEYCOMB_API_KEY` routes traces to Honeycomb — omit it and traces print to stderr locally. `ANTHROPIC_API_KEY` is only needed if enabling the token estimation middleware in `server.py`.
+
+**Testing the evaluation tools**
+
+Once the server is running in Claude Desktop, test each tool with a new conversation:
+
+```
+"Can you call the ping tool from the translation harness?"
+→ Translation harness MCP server is running!
+
+"Can you call get_glossary and tell me what the approved Spanish term is for 'Allotment'?"
+→ Should return the glossary entry for Allotment
+
+"Can you call get_rubric with section='accuracy_and_relevance'?"
+→ Should return the accuracy & relevance criteria and scoring guidance
+```
+
+**Testing the evaluation skill**
+
+Install `skills/translation-evaluator.skill` in Claude Desktop (same steps as the setup skill). Then start a new conversation with the skill active and paste a Spanish translation:
+
+```
+"Please evaluate this Spanish translation: [paste translation here]"
+```
+
+By default the skill evaluates section by section. To test the full-rubric mode:
+
+```
+"Please do a quick evaluation of this translation: [paste translation here]"
+```
 
 **Dev tooling**
 
