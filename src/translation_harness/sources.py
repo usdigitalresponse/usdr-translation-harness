@@ -1,25 +1,11 @@
 import csv
 import io
 import os
-import re
-
 import requests
 
 PROMPTS_DOC_ID = os.getenv("PROMPTS_DOC_ID", "1Wk5mmXZWE45pFBG8cy_tv48-rWX2Lz1xN7U8nzsQrbw")
 GLOSSARY_SHEET_ID = os.getenv("GLOSSARY_SHEET_ID", "1AxYldzJ7TH6ihg3TLZRdP19KbGz1QyKzkcZLTwpnh5Q")
 GLOSSARY_SHEET_GID = os.getenv("GLOSSARY_SHEET_GID", "430246301")
-
-# Ordered list so we can detect section boundaries by finding the next one
-RUBRIC_SECTIONS = [
-    ("accuracy_and_relevance",    r"Accuracy\s*&\s*Relevance:"),
-    ("clarity_and_accessibility", r"Clarity,?\s+Simplicity\s*&\s*Accessibility:"),
-    ("cultural_sensitivity",      r"Cultural\s+Sensitivity:"),
-    ("active_voice_and_tone",     r"Active\s+Voice\s*&\s*Tone:"),
-    ("consistency_and_style",     r"Consistency\s*&\s*Style:"),
-]
-
-SECTION_KEYS = {key for key, _ in RUBRIC_SECTIONS}
-
 
 def _fetch_text(url: str) -> str:
     response = requests.get(url, timeout=15)
@@ -27,7 +13,7 @@ def _fetch_text(url: str) -> str:
     return response.text
 
 
-def fetch_rubric(section: str | None = None) -> str:
+def fetch_rubric() -> str:
     text = _fetch_text(
         f"https://docs.google.com/document/d/{PROMPTS_DOC_ID}/export?format=txt"
     )
@@ -36,36 +22,8 @@ def fetch_rubric(section: str | None = None) -> str:
     if rubric_start == -1:
         return "Rubric section not found in document."
 
-    # Bounded by the next major section
     rubric_end = text.find("Plain English Prompt", rubric_start)
-    block = text[rubric_start:rubric_end].strip() if rubric_end != -1 else text[rubric_start:].strip()
-
-    if section is None or section == "full":
-        return block
-
-    # Find positions of all section headers within the block
-    positions = []
-    for key, pattern in RUBRIC_SECTIONS:
-        match = re.search(pattern, block)
-        if match:
-            positions.append((match.start(), key))
-    positions.sort()
-
-    target_start = next((pos for pos, key in positions if key == section), None)
-    if target_start is None:
-        return f"Section '{section}' not found in rubric."
-
-    target_idx = next(i for i, (_, key) in enumerate(positions) if key == section)
-    target_end = positions[target_idx + 1][0] if target_idx + 1 < len(positions) else None
-
-    excerpt = block[target_start:target_end].strip() if target_end else block[target_start:].strip()
-
-    # Stop before the Priority Levels appendix if it falls inside
-    priority_pos = excerpt.find("Priority Levels for Issues")
-    if priority_pos != -1:
-        excerpt = excerpt[:priority_pos].strip()
-
-    return excerpt
+    return text[rubric_start:rubric_end].strip() if rubric_end != -1 else text[rubric_start:].strip()
 
 
 def fetch_glossary() -> str:

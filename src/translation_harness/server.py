@@ -94,7 +94,7 @@ def get_rubric() -> str:
     tracer = trace.get_tracer("translation-harness")
     with tracer.start_as_current_span("get_rubric") as span:
         span.set_attribute("rubric.section", "full")
-        return fetch_rubric("full")
+        return fetch_rubric()
 
 
 @mcp.tool()
