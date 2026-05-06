@@ -1,6 +1,5 @@
 import os
 import sys
-from typing import Literal
 import anthropic
 from dotenv import load_dotenv
 from opentelemetry import trace
@@ -10,7 +9,7 @@ from opentelemetry.sdk.resources import Resource, SERVICE_NAME
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from fastmcp import FastMCP
 from fastmcp.server.middleware import Middleware
-from translation_harness.sources import fetch_rubric, fetch_glossary, SECTION_KEYS
+from translation_harness.sources import fetch_rubric, fetch_glossary
 
 load_dotenv()
 
@@ -83,16 +82,6 @@ class TokenEstimationMiddleware(Middleware):
 #     mcp.add_middleware(TokenEstimationMiddleware())
 
 
-RubricSection = Literal[
-    "full",
-    "accuracy_and_relevance",
-    "clarity_and_accessibility",
-    "cultural_sensitivity",
-    "active_voice_and_tone",
-    "consistency_and_style",
-]
-
-
 @mcp.tool()
 def ping() -> str:
     """Check that the translation harness MCP server is running."""
@@ -100,18 +89,12 @@ def ping() -> str:
 
 
 @mcp.tool()
-def get_rubric(section: RubricSection = "full") -> str:
-    """Return the Spanish translation evaluation rubric.
-
-    Use section='full' for the complete rubric, or specify one section:
-      accuracy_and_relevance (30%), clarity_and_accessibility (25%),
-      cultural_sensitivity (20%), active_voice_and_tone (15%),
-      consistency_and_style (10%)
-    """
+def get_rubric() -> str:
+    """Return the complete Spanish translation evaluation rubric."""
     tracer = trace.get_tracer("translation-harness")
     with tracer.start_as_current_span("get_rubric") as span:
-        span.set_attribute("rubric.section", section)
-        return fetch_rubric(section)
+        span.set_attribute("rubric.section", "full")
+        return fetch_rubric()
 
 
 @mcp.tool()
