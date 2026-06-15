@@ -9,3 +9,10 @@ __pycache__/
 
 .DS_Store
 scratch.*
+node_modules/
+
+# clasp credentials (not the project config .clasp.json, which should be committed)
+.clasprc.json
+
+# Internal reference docs (specs, working notes) — not for public repo
+docs/internal/

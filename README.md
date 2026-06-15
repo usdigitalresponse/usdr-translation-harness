@@ -1,122 +1,39 @@
-# Translation Harness MCP Server
+# USDR × Maryland AI Translation Infrastructure
 
 > **Work in progress.** This project is in early development. Functionality is limited and things may change significantly.
 
-This MCP server connects to Claude Desktop and provides curated translation tools for government use cases.
+This repository contains the prototype infrastructure for AI-assisted translation of Maryland government benefits content.
 
-
-## Getting Started: Testing Locally
-
-Install the **Translation Harness** Claude skill (see below), then ask Claude to help you get set up. It will walk you through the process step by step.
-
-### Install the skill
-
-1. Find `translation-harness-assistant.skill` in the `skills/` folder of this repository
-2. Open Claude Desktop → **Settings → Customize → Skills**
-3. Upload the file
-
-Once installed, open a new chat and say: *"Help me set up the translation harness."*
-
-
-## Verify it's working
-
-Once set up, look for plus icon near the text input in Claude Desktop, and click it > then view "Connectors" and make sure the harness shows up. 
-Start a new conversation and ask:
-
-> "Can you call the ping tool from the translation harness?"
-
-Expected response: `Translation harness MCP server is running!`
-
-
-## Updating
-
-When the team ships changes, ask Claude: *"Help me update the translation harness."*
-
-## Troubleshooting
-
-Something not working? Ask Claude: *"The translation harness isn't working, can you help me troubleshoot?"*
-
-If you're stuck, share any error messages with the team.
-
-
-## Developing Locally
-
-Follow the volunteer setup steps above to get the server running in Claude Desktop. Additional notes for contributors:
-
-**Dependencies**
-
-```bash
-uv sync
-```
-
-Run this after pulling changes or modifying `pyproject.toml`.
-
-**Environment**
-
-Create a `.env` file in the project root (gitignored):
+## Repository Structure
 
 ```
-HONEYCOMB_API_KEY=your-key-here      # routes traces to Honeycomb; omit for local stderr output
-ANTHROPIC_API_KEY=your-key-here      # only needed if enabling the token estimation middleware
+apps-script/
+├── orchestrator/       # Watches Drive for new PDFs, triggers extraction
+└── editor-addon/       # "Submit Review" Editor Add-on for translation output docs
 
-# Glossary + rubric data sources (defaults are baked into sources.py — only set to override)
-# PROMPTS_DOC_ID=1Wk5mmXZWE45pFBG8cy_tv48-rWX2Lz1xN7U8nzsQrbw
-# GLOSSARY_SHEET_ID=1AxYldzJ7TH6ihg3TLZRdP19KbGz1QyKzkcZLTwpnh5Q
-# GLOSSARY_SHEET_GID=430246301
+cloud-run/
+├── extract/            # Extracts text blocks from source PDFs (structured JSON)
+├── translate/          # Translates extracted content, creates output Google Docs
+├── capture-feedback/   # Diffs reviewer edits, writes terminology decisions to glossary
+└── eval/
+    ├── drift/          # Automated regression evals against golden translation set
+    └── quality/        # On-demand LLM-as-judge quality eval
 
-GLOSSARY_STRATEGY=naive              # retrieval strategy: naive (default)
+mcp-server/             # Claude Desktop MCP server (evaluation tooling)
+
+docs/
+└── handoff/            # Maryland-facing guides and product documentation
 ```
-
-`HONEYCOMB_API_KEY` routes traces to Honeycomb — omit it and traces print to stderr locally. `ANTHROPIC_API_KEY` is only needed if enabling the token estimation middleware in `server.py`.
-
-**Testing the evaluation tools**
-
-Once the server is running in Claude Desktop, test each tool with a new conversation:
-
-```
-"Can you call the ping tool from the translation harness?"
-→ Translation harness MCP server is running!
-
-"Can you call get_glossary and tell me what the approved Spanish term is for 'Allotment'?"
-→ Should return the glossary entry for Allotment
-
-"Can you call get_rubric with section='accuracy_and_relevance'?"
-→ Should return the accuracy & relevance criteria and scoring guidance
-```
-
-**Testing the evaluation skill**
-
-Install `skills/translation-evaluator.skill` in Claude Desktop (same steps as the setup skill). Then start a new conversation with the skill active and paste a Spanish translation:
-
-```
-"Please evaluate this Spanish translation: [paste translation here]"
-```
-
-By default the skill evaluates section by section. To test the full-rubric mode:
-
-```
-"Please do a quick evaluation of this translation: [paste translation here]"
-```
-
-**Dev tooling**
-
-A Claude Code skill (`update-setup-skill`) is included in `.claude/skills/`. When working in this project with Claude Code, it helps keep the volunteer-facing setup skill in sync when server changes are made. After updating skill content, repackage with:
-
-```bash
-python ~/.claude/plugins/marketplaces/anthropic-agent-skills/skills/skill-creator/scripts/package_skill.py skills/translation-harness-assistant skills/
-```
-
-Commit both the updated reference files and the new `skills/translation-harness-assistant.skill`.
 
 
 ## Code of Conduct
 
-This repository falls under [U.S. Digital Response’s Code of Conduct](./CODE_OF_CONDUCT.md), and we will hold all participants in issues, pull requests, discussions, and other spaces related to this project to that Code of Conduct. Please see [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) for the full code.
+This repository falls under [U.S. Digital Response's Code of Conduct](./CODE_OF_CONDUCT.md). Please see [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) for the full code.
 
 
 ## Contributing
 
-This project wouldn’t exist without the hard work of many people. Thanks to the following for all their contributions! Please see [`CONTRIBUTING.md`](./CONTRIBUTING.md) to find out how you can help.
+Please see [`CONTRIBUTING.md`](./CONTRIBUTING.md) to find out how you can help.
 
 **Lead Maintainer:** [@lkorwin-usdr](https://github.com/lkorwin-usdr)
 
