@@ -26,6 +26,15 @@ docs/
 ```
 
 
+## Setup
+
+```bash
+cp .env.example .env
+```
+
+Fill in the values. Ask [@lkorwin-usdr](https://github.com/lkorwin-usdr) for Google Workspace resource IDs and API keys.
+
+
 ## Code of Conduct
 
 This repository falls under [U.S. Digital Response's Code of Conduct](./CODE_OF_CONDUCT.md). Please see [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) for the full code.
