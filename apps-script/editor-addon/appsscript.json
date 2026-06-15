@@ -1,0 +1,17 @@
+{
+  "timeZone": "America/Los_Angeles",
+  "dependencies": {},
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "oauthScopes": [
+    "https://www.googleapis.com/auth/documents.currentonly",
+    "https://www.googleapis.com/auth/script.container.ui"
+  ],
+  "addOns": {
+    "common": {
+      "name": "Translation Review",
+      "logoUrl": "https://www.gstatic.com/images/branding/product/1x/apps_script_48dp.png"
+    },
+    "docs": {}
+  }
+}
