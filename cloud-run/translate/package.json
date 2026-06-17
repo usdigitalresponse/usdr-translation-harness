@@ -1,0 +1,20 @@
+{
+  "name": "translate",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "functions-framework --target=translate --port=8082",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@google-cloud/functions-framework": "^3.4.0",
+    "@anthropic-ai/sdk": "^0.104.0",
+    "@google/genai": "^2.8.0",
+    "googleapis": "^146.0.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "translation-harness-cloud-run",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "jest --config jest.config.js",
+    "start:extract": "cd extract && npx functions-framework --target=extract --port=8081",
+    "start:translate": "cd translate && npx functions-framework --target=translate --port=8082",
+    "start:capture-feedback": "cd capture-feedback && npx functions-framework --target=captureFeedback --port=8083"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "@google-cloud/functions-framework": "^3.4.0"
+  }
+}
