@@ -1,0 +1,8 @@
+functions-framework==3.*
+anthropic>=0.109.0
+google-genai>=2.8.0
+google-api-python-client>=2.160.0
+google-auth>=2.36.0
+sacrebleu>=2.4.0
+rouge-score>=0.1.2
+python-dotenv>=1.0.0

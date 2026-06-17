@@ -1,0 +1,19 @@
+{
+  "name": "capture-feedback",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "functions-framework --target=captureFeedback --port=8083",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@google-cloud/functions-framework": "^3.4.0",
+    "googleapis": "^146.0.0",
+    "diff": "^7.0.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}

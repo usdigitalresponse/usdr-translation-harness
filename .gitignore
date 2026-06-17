@@ -10,6 +10,8 @@ __pycache__/
 .DS_Store
 scratch.*
 node_modules/
+cloud-run/.venv/
+cloud-run/shared/fixtures/output/
 
 # clasp credentials (not the project config .clasp.json, which should be committed)
 .clasprc.json
