@@ -21,6 +21,12 @@ Skill for working with the two Apps Script projects in this repo: the **orchestr
 - "Push the editor add-on"
 - "Show me the Apps Script logs"
 
+**Testing:**
+- "Run the Apps Script tests"
+- "Run the orchestrator unit tests"
+- "How do I test the orchestrator manually?"
+- "Push and test the orchestrator"
+
 **Configuration:**
 - "Set the Script Properties for the orchestrator"
 - "What properties does the editor add-on need?"
@@ -36,12 +42,17 @@ Skill for working with the two Apps Script projects in this repo: the **orchestr
 apps-script/
   orchestrator/           Standalone script — watches Drive folder, calls Extract
     orchestrator.js       Main code
+    test-helpers.js       Manual test functions (run from Apps Script Editor)
     appsscript.json       Manifest (scopes, runtime)
     .clasp.json           Script ID for clasp
   editor-addon/           Editor add-on — "Submit Review" menu in Docs
     addon.js              Main code
     appsscript.json       Manifest (scopes, add-on config)
     .clasp.json           Script ID for clasp
+  tests/                  Local Jest unit tests for Apps Script logic
+    test_orchestrator.js
+  package.json            Dev dependencies (Jest)
+  jest.config.js
 ```
 
 Each project is a separate Apps Script project in Google, with its own script ID in `.clasp.json`.
@@ -80,6 +91,36 @@ Apps Script code lives in Google's cloud — there's no local runtime. You edit 
 - Script Properties (set in the online editor under Project Settings) are the equivalent of environment variables
 
 **When something isn't working:** open the script in the browser (`clasp open-script`), check the Executions log (left sidebar, clock icon), and look at the error details there. Stackdriver/Cloud Logging also captures exceptions.
+
+## Testing
+
+There are two layers of testing for Apps Script code:
+
+### Local unit tests (Jest)
+
+Tests for pure logic that doesn't need Google APIs. Run from `apps-script/`:
+
+```sh
+cd apps-script
+npm install    # first time only
+npm test
+```
+
+These use Node's `vm` module to load Apps Script files (which use global functions, not `module.exports`) into a sandbox with mocked Google globals (`PropertiesService`, `DriveApp`, `SpreadsheetApp`, `UrlFetchApp`, etc.). Each test gets a fresh sandbox.
+
+Add new test files to `apps-script/tests/`. The test files, `package.json`, and `jest.config.js` live outside the clasp project directories, so `clasp push` never sends them to Google.
+
+### Manual test functions (Apps Script Editor)
+
+Each project includes `test-helpers.js` with functions you can run from the Apps Script Editor's Run button. These test against real Google services (Drive, Sheets, etc.) and are useful for verifying configuration, access, and end-to-end behavior.
+
+The orchestrator includes:
+- `testConfig` — verifies script properties are set
+- `testFolderAccess` — lists PDFs in the input folder
+- `testProcessingLog` — shows processing log contents
+- `testWatchWithStub` — runs the full watcher flow with a stub extract call (no real Cloud Run call)
+
+After pushing with `clasp push`, open the script at [script.google.com](https://script.google.com), select a test function, and click Run. Output appears in the Execution Log.
 
 **Version control and GitHub:**
 
@@ -173,7 +214,7 @@ Script Properties are key-value pairs set in the Apps Script editor (Project Set
 |---|---|
 | `INPUT_FOLDER_ID` | Google Drive folder ID to watch for incoming PDFs |
 | `EXTRACT_FUNCTION_URL` | URL of the Extract Cloud Run function |
-| `PROCESSING_LOG_SHEET_ID` | Google Sheet ID for the processing log (tab named `ProcessingLog` with headers: `fileId`, `fileName`, `processedAt`, `status`) |
+| `PROCESSING_LOG_SHEET_ID` | Google Sheet ID for the processing log (tab named `ProcessingLog` with headers: `fileId`, `fileName`, `processedAt`, `status`, `durationMs`, `errorDetail`) |
 
 **Editor add-on needs:**
 | Property | Description |

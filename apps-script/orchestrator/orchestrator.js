@@ -4,13 +4,33 @@
 
 var HTTP_ACCEPTED = 202;
 var POLL_INTERVAL_MINUTES = 5;
-var TRIGGERED_STATUS = "triggered";
-var COL_FILE_ID = 0;
-var COL_STATUS = 3;
 var HEADER_ROWS = 1;
+
+var STATUS = {
+  TRIGGERED: "triggered",
+  FAILED: "failed",
+};
+
+var COL = {
+  FILE_ID: 0,
+  FILE_NAME: 1,
+  PROCESSED_AT: 2,
+  STATUS: 3,
+  DURATION_MS: 4,
+  ERROR_DETAIL: 5,
+};
+
+var REQUIRED_CONFIG_KEYS = ["INPUT_FOLDER_ID", "EXTRACT_FUNCTION_URL", "PROCESSING_LOG_SHEET_ID"];
 
 function getConfig() {
   var props = PropertiesService.getScriptProperties();
+  var missing = REQUIRED_CONFIG_KEYS.filter(function (key) {
+    return !props.getProperty(key);
+  });
+  if (missing.length > 0) {
+    throw new Error("Missing required script properties: " + missing.join(", "));
+  }
+
   return {
     INPUT_FOLDER_ID: props.getProperty("INPUT_FOLDER_ID"),
     EXTRACT_URL: props.getProperty("EXTRACT_FUNCTION_URL"),
@@ -18,19 +38,30 @@ function getConfig() {
   };
 }
 
-function watchForNewPDFs() {
-  var config = getConfig();
-  var folder = DriveApp.getFolderById(config.INPUT_FOLDER_ID);
-  var files = folder.getFilesByType(MimeType.PDF);
-  var processed = getProcessedFileIds(config.PROCESSING_LOG_SHEET_ID);
+function getProcessingLogSheet(sheetId) {
+  return SpreadsheetApp.openById(sheetId).getSheetByName("ProcessingLog");
+}
 
-  while (files.hasNext()) {
-    var file = files.next();
-    if (processed.has(file.getId())) continue;
+function getProcessedFileIds(sheetId) {
+  var sheet = getProcessingLogSheet(sheetId);
+  var data = sheet.getDataRange().getValues();
+  return new Set(
+    data.slice(HEADER_ROWS)
+      .filter(function (row) { return row[COL.STATUS] === STATUS.TRIGGERED; })
+      .map(function (row) { return row[COL.FILE_ID]; })
+  );
+}
 
-    var success = callExtractFunction(file, config.EXTRACT_URL);
-    logProcessingResult(config.PROCESSING_LOG_SHEET_ID, file, success);
-  }
+function logProcessingResult(sheetId, file, result) {
+  var sheet = getProcessingLogSheet(sheetId);
+  sheet.appendRow([
+    file.getId(),
+    file.getName(),
+    new Date(),
+    result.success ? STATUS.TRIGGERED : STATUS.FAILED,
+    result.durationMs,
+    result.error || "",
+  ]);
 }
 
 function callExtractFunction(file, extractUrl) {
@@ -49,32 +80,67 @@ function callExtractFunction(file, extractUrl) {
 
   var response = UrlFetchApp.fetch(extractUrl, options);
   var code = response.getResponseCode();
-  Logger.log("Extract triggered for %s (HTTP %s): %s", file.getName(), code, response.getContentText());
-  return code === HTTP_ACCEPTED;
-}
+  var body = response.getContentText();
+  var success = code === HTTP_ACCEPTED;
 
-function getProcessingLogSheet(sheetId) {
-  return SpreadsheetApp.openById(sheetId).getSheetByName("ProcessingLog");
-}
-
-function getProcessedFileIds(sheetId) {
-  const sheet = getProcessingLogSheet(sheetId);
-  const data = sheet.getDataRange().getValues();
-  return new Set(
-    data.slice(HEADER_ROWS)
-      .filter(row => row[COL_STATUS] === TRIGGERED_STATUS)
-      .map(row => row[COL_FILE_ID])
-  );
-}
-
-function logProcessingResult(sheetId, file, success) {
-  var sheet = getProcessingLogSheet(sheetId);
-  sheet.appendRow([
-    file.getId(),
+  Logger.log(
+    "Extract %s for %s (HTTP %s): %s",
+    success ? STATUS.TRIGGERED : STATUS.FAILED,
     file.getName(),
-    new Date(),
-    success ? TRIGGERED_STATUS : "failed",
-  ]);
+    code,
+    body
+  );
+
+  return {
+    success: success,
+    error: success ? "" : "HTTP " + code + ": " + body.substring(0, 200),
+  };
+}
+
+function watchForNewPDFs() {
+  var config;
+  try {
+    config = getConfig();
+  } catch (e) {
+    Logger.log("Configuration error: %s", e.message);
+    return;
+  }
+
+  var folder;
+  try {
+    folder = DriveApp.getFolderById(config.INPUT_FOLDER_ID);
+  } catch (e) {
+    Logger.log("Cannot access input folder %s: %s", config.INPUT_FOLDER_ID, e.message);
+    return;
+  }
+
+  var files = folder.getFilesByType(MimeType.PDF);
+  var processed;
+  try {
+    processed = getProcessedFileIds(config.PROCESSING_LOG_SHEET_ID);
+  } catch (e) {
+    Logger.log("Cannot read processing log sheet %s: %s", config.PROCESSING_LOG_SHEET_ID, e.message);
+    return;
+  }
+
+  while (files.hasNext()) {
+    var file = files.next();
+    if (processed.has(file.getId())) continue;
+
+    var startTime = Date.now();
+    try {
+      var result = callExtractFunction(file, config.EXTRACT_URL);
+      result.durationMs = Date.now() - startTime;
+      logProcessingResult(config.PROCESSING_LOG_SHEET_ID, file, result);
+    } catch (e) {
+      Logger.log("Unexpected error processing %s: %s", file.getName(), e.message);
+      logProcessingResult(config.PROCESSING_LOG_SHEET_ID, file, {
+        success: false,
+        durationMs: Date.now() - startTime,
+        error: e.message,
+      });
+    }
+  }
 }
 
 function createTimeTrigger() {
