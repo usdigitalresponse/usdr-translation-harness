@@ -58,7 +58,8 @@ Update these docs when an interface changes:
 - `cloud-run/eval/quality/` — Eval function: LLM-as-judge scoring (Python)
 - `cloud-run/eval/drift/` — Eval function: BLEU/ROUGE + LLM-as-judge (Python)
 - `cloud-run/shared/` — Local-dev-only shared code (LLM wrappers, loaders)
-- `cloud-run/tests/` — Unit tests for all Cloud Run functions
+- `cloud-run/tests/` — Unit tests for Cloud Run functions
+- `apps-script/tests/` — Unit tests for Apps Script projects
 
 ## Code style
 
@@ -69,7 +70,8 @@ Update these docs when an interface changes:
 
 ## Testing
 
-- JS tests: `cd cloud-run && npm test` (Jest)
+- Cloud Run JS tests: `cd cloud-run && npm test` (Jest)
+- Apps Script JS tests: `cd apps-script && npm test` (Jest)
 - Python tests: `cd cloud-run && python -m pytest` (requires `.venv`)
 
 ## Deployment

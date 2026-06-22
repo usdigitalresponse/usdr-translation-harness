@@ -1,0 +1,11 @@
+{
+  "name": "translation-harness-apps-script",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "test": "jest"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}
