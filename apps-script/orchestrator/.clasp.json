@@ -1,4 +1,16 @@
 {
-  "scriptId": "REPLACE_WITH_SCRIPT_ID",
-  "rootDir": "."
+  "scriptId": "1A-leh7Th30N6CU_NbhUrvlMRjUgHSWYYTZvdoTbSn-t0_DgL3sX1hgXn",
+  "rootDir": "",
+  "scriptExtensions": [
+    ".js",
+    ".gs"
+  ],
+  "htmlExtensions": [
+    ".html"
+  ],
+  "jsonExtensions": [
+    ".json"
+  ],
+  "filePushOrder": [],
+  "skipSubdirectories": false
 }

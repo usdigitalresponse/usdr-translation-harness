@@ -10,7 +10,18 @@ Watches a Google Drive input folder for new PDFs and calls the Extract Cloud Run
 
 **OAuth scopes:**
 - `auth/drive` — read PDFs and watch the input folder
+- `auth/spreadsheets` — read/write the processing log Google Sheet
 - `auth/script.external_request` — call the Extract Cloud Run function via `UrlFetchApp`
+
+## Required Script Properties
+
+Set these in the Script Editor under Project Settings → Script Properties:
+
+| Property | Description |
+|---|---|
+| `INPUT_FOLDER_ID` | Google Drive folder ID the orchestrator watches for new PDFs |
+| `EXTRACT_FUNCTION_URL` | Deployed Extract Cloud Run function URL |
+| `PROCESSING_LOG_SHEET_ID` | Google Sheet ID for the processing log (must have a tab named `ProcessingLog` with headers: `fileId`, `fileName`, `processedAt`, `status`) |
 
 ## Setup
 

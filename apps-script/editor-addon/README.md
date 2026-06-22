@@ -12,6 +12,14 @@ Adds a "Submit Review" menu to translation output Google Docs. Checks for the `u
 - `auth/documents.currentonly` — read and check properties on the currently open doc only (more restrictive than `auth/documents`, which would grant access to all docs)
 - `auth/script.container.ui` — add menus to the Docs UI
 
+## Required Script Properties
+
+Set these in the Script Editor under Project Settings → Script Properties:
+
+| Property | Description |
+|---|---|
+| `CAPTURE_FEEDBACK_FUNCTION_URL` | Deployed Capture Feedback Cloud Run function URL |
+
 ## Setup
 
 1. Create an Apps Script project at [script.google.com](https://script.google.com)
