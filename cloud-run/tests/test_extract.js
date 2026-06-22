@@ -1,7 +1,7 @@
 const { extract } = require("../extract/index.js");
 
 describe("extract", () => {
-  test("returns 400 when no PDF provided", async () => {
+  test("returns 400 when no fileId provided", async () => {
     const req = { body: {} };
     const res = {
       status: jest.fn().mockReturnThis(),
@@ -16,14 +16,22 @@ describe("extract", () => {
     );
   });
 
-  test("returns ok with placeholder response", async () => {
-    const req = { body: { pdfBase64: "dGVzdA==" } };
-    const res = { json: jest.fn() };
+  test("returns 202 accepted with fileId", async () => {
+    const req = { body: { fileId: "abc123", fileName: "test.pdf" } };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    };
 
     await extract(req, res);
 
+    expect(res.status).toHaveBeenCalledWith(202);
     expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "ok" })
+      expect.objectContaining({
+        status: "accepted",
+        fileId: "abc123",
+        fileName: "test.pdf",
+      })
     );
   });
 });
