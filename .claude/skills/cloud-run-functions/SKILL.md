@@ -167,6 +167,31 @@ The script auto-detects language (JS vs Python) and copies shared code in. To un
 
 **Do not deploy from this skill.** After packaging, tell the user the function is ready and where it is. The user handles `gcloud` deployment themselves.
 
+## Task: Switch the active model
+
+Model config for local dev lives in `cloud-run/shared/fixtures/config.json`. Each entry has `role`, `provider`, `model`, and `active` fields.
+
+When the user asks to switch models (e.g. "switch translate to Gemini", "use claude-opus-4-8 for eval"):
+
+1. Read `cloud-run/shared/fixtures/config.json`
+2. Find the row(s) matching the requested role
+3. Set `active: true` on the target provider/model and `active: false` on the other(s) for that role
+4. To run multiple models in parallel for a role, set multiple entries to `active: true`
+5. Write the updated JSON back
+
+Available models are listed in the Models tab of the config Google Sheet. For quick reference:
+
+**Anthropic:** claude-opus-4-8, claude-opus-4-7, claude-sonnet-4-6, claude-haiku-4-5-20251001
+**Google:** gemini-3.5-flash, gemini-3.1-pro-preview, gemini-3.1-flash-lite
+
+If the user requests a model not in the list, ask them to confirm before adding it.
+
+Example prompts:
+- "Switch extract to use Gemini"
+- "Use claude-opus-4-8 for translate"
+- "Run both Claude and Gemini for translate"
+- "What model is active for eval?"
+
 ## Task: Test prompt quality
 
 Make sure `.env` has API keys filled in, then from `cloud-run/`:

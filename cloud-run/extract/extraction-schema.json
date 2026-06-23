@@ -1,0 +1,88 @@
+{
+  "type": "object",
+  "properties": {
+    "page_metadata": {
+      "type": "object",
+      "properties": {
+        "page_number": { "type": "integer" },
+        "dimensions_description": { "type": "string", "description": "e.g. '8.5x11in portrait'" },
+        "layout_type": { "type": "string", "enum": ["single-column", "two-column", "three-column", "tri-fold", "mixed"] },
+        "layout_description": { "type": "string", "description": "Brief description of the page layout" }
+      },
+      "required": ["page_number", "dimensions_description", "layout_type", "layout_description"],
+      "additionalProperties": false
+    },
+    "blocks": {
+      "type": "array",
+      "description": "Every visible text element on the page, in reading order",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "Sequential ID: b01, b02, etc. For list items under a parent: b05a, b05b, etc." },
+          "role": {
+            "type": "string",
+            "enum": ["title", "subtitle", "section-heading", "body", "bullet-item", "numbered-item", "callout", "caption", "contact-info", "footer", "legal-reference", "cta", "icon-label", "fine-print"]
+          },
+          "group": { "type": "string", "description": "Optional. Ties related blocks: e.g. a question heading and its answer paragraphs share a group ID like 'qa_1'. Omit for standalone blocks." },
+          "text": { "type": "string", "description": "Exact source text of this block" },
+          "translate": { "type": "boolean", "description": "Whether this block should be translated" },
+          "spatial": {
+            "type": "object",
+            "properties": {
+              "region": {
+                "type": "string",
+                "enum": ["top", "middle", "bottom", "left-column", "center-column", "right-column", "banner", "footer", "sidebar", "callout-box"]
+              },
+              "approximate_position": { "type": "string", "description": "e.g. 'top banner, full width'" },
+              "space_constrained": { "type": "boolean" },
+              "constraint_note": { "type": ["string", "null"], "description": "e.g. 'Must fit in ~2.5in column' or null" }
+            },
+            "required": ["region", "approximate_position", "space_constrained", "constraint_note"],
+            "additionalProperties": false
+          },
+          "typography": {
+            "type": "object",
+            "properties": {
+              "size_tier": { "type": "string", "enum": ["xlarge", "large", "body", "small", "fine-print"] },
+              "weight": { "type": "string", "enum": ["bold", "semibold", "regular"] }
+            },
+            "required": ["size_tier", "weight"],
+            "additionalProperties": false
+          },
+          "visual_emphasis": {
+            "type": "string",
+            "enum": ["banner", "callout-box", "highlighted", "none"],
+            "description": "Whether the block has a colored background, border, or other visual emphasis"
+          },
+          "notes": { "type": ["string", "null"], "description": "Translation-relevant context, or null" }
+        },
+        "required": ["id", "role", "text", "translate", "spatial", "typography", "visual_emphasis", "notes"],
+        "additionalProperties": false
+      }
+    },
+    "non_translatable_elements": {
+      "type": "array",
+      "description": "Text elements that should be preserved as-is in translation",
+      "items": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["phone-number", "url", "email", "form-number", "logo-text", "legal-citation", "address", "social-handle"]
+          },
+          "content": { "type": "string" },
+          "location": { "type": "string", "description": "Brief location on the page" }
+        },
+        "required": ["type", "content", "location"],
+        "additionalProperties": false
+      }
+    },
+    "translation_warnings": {
+      "type": "array",
+      "description": "Warnings about space constraints, ambiguities, or other translation challenges",
+      "items": { "type": "string" }
+    }
+  },
+  "required": ["page_metadata", "blocks", "non_translatable_elements", "translation_warnings"],
+  "additionalProperties": false
+}

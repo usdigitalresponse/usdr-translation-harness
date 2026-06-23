@@ -18,3 +18,5 @@ cloud-run/shared/fixtures/output/
 
 # Internal reference docs (specs, working notes) — not for public repo
 docs/internal/
+
+drafts/

@@ -2,6 +2,7 @@ require("dotenv").config({ path: require("path").resolve(__dirname, "../../.env"
 
 const fs = require("fs");
 const path = require("path");
+const { parse: parseCsv } = require("csv-parse/sync");
 
 const FIXTURES_DIR = path.resolve(__dirname, "fixtures");
 
@@ -22,13 +23,7 @@ async function loadSheet(envVar, { sheet = 0 } = {}) {
   const url = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${sheet}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch ${envVar} (${res.status})`);
-  const text = await res.text();
-  const [headerLine, ...dataLines] = text.trim().split("\n");
-  const headers = headerLine.split(",");
-  return dataLines.map((line) => {
-    const values = line.split(",");
-    return Object.fromEntries(headers.map((h, i) => [h, values[i] || ""]));
-  });
+  return parseCsv(await res.text(), { columns: true, skip_empty_lines: true, trim: true });
 }
 
 // Config is private — loads from local fixture file for local dev.
