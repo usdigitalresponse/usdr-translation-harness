@@ -1,9 +1,10 @@
 {
   "models": [
-    { "provider": "anthropic", "model": "claude-sonnet-4-6", "role": "translate", "active": true },
-    { "provider": "google", "model": "gemini-3.5-flash", "role": "translate", "active": false },
-    { "provider": "google", "model": "gemini-3.1-pro", "role": "translate", "active": false },
-    { "provider": "anthropic", "model": "claude-sonnet-4-6", "role": "extract", "active": true },
-    { "provider": "anthropic", "model": "claude-sonnet-4-6", "role": "eval", "active": true }
+    { "role": "extract", "provider": "anthropic", "model": "claude-sonnet-4-6", "active": true },
+    { "role": "extract", "provider": "google", "model": "gemini-3.5-flash", "active": false },
+    { "role": "translate", "provider": "anthropic", "model": "claude-sonnet-4-6", "active": true },
+    { "role": "translate", "provider": "google", "model": "gemini-3.1-pro-preview", "active": false },
+    { "role": "eval", "provider": "anthropic", "model": "claude-opus-4-8", "active": true },
+    { "role": "eval", "provider": "google", "model": "gemini-3.5-flash", "active": false }
   ]
 }
