@@ -23,7 +23,11 @@ EXTRACT_ROLE = "extract"
 EXTRACTION_PROMPT_ENV_VAR = "EXTRACTION_PROMPT_DOC_ID"
 PROVIDER_ANTHROPIC = "anthropic"
 PROVIDER_GOOGLE = "google"
-SCHEMA_PATH = Path(__file__).resolve().parent / "extraction-schema.json"
+SCHEMA_DIR = Path(__file__).resolve().parent
+SCHEMA_PATHS = {
+    PROVIDER_ANTHROPIC: SCHEMA_DIR / "extraction-schema-claude.json",
+    PROVIDER_GOOGLE: SCHEMA_DIR / "extraction-schema-gemini.json",
+}
 MARKDOWN_JSON_PATTERN = re.compile(r"```(?:json)?\s*\n(.*?)\n\s*```", re.DOTALL)
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -62,8 +66,11 @@ def build_extraction_prompt(base_prompt, extracted_text):
     return base_prompt
 
 
-def load_extraction_schema():
-    return json.loads(SCHEMA_PATH.read_text())
+def load_extraction_schema(provider):
+    path = SCHEMA_PATHS.get(provider)
+    if not path:
+        raise ValueError(f"No extraction schema for provider: {provider}")
+    return json.loads(path.read_text())
 
 
 def call_llm(provider, model, prompt, pdf_base64, output_schema=None):
@@ -104,7 +111,7 @@ def parse_extraction_response(raw_response):
 
 
 def validate_extraction(data):
-    schema = json.loads(SCHEMA_PATH.read_text())
+    schema = json.loads((SCHEMA_DIR / "extraction-schema-claude.json").read_text())
     jsonschema.validate(instance=data, schema=schema)
 
 
@@ -161,11 +168,10 @@ def run_extraction(file_id, file_name):
     prompt = build_extraction_prompt(base_prompt, extracted_text)
     logger.info("Extraction prompt assembled (%d characters)", len(prompt))
 
-    output_schema = load_extraction_schema()
-
     for model_config in active_models:
         provider = model_config["provider"]
         model = model_config["model"]
+        output_schema = load_extraction_schema(provider)
         logger.info("Calling %s/%s for extraction", provider, model)
         try:
             raw_response = call_llm(provider, model, prompt, pdf_base64, output_schema=output_schema)

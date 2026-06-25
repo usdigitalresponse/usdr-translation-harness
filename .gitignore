@@ -2,11 +2,13 @@
 __pycache__/
 *.pyc
 .venv/
-# Ignore .claude internals but commit skills so contributors have dev tooling.
-# Revisit if .claude/skills grows to include anything not suitable for a public repo.
+# Ignore .claude internals, opt in shared skills individually.
 .claude/*
 !.claude/skills/
-.claude/skills/task-to-todo/
+.claude/skills/*
+!.claude/skills/cloud-run-functions/
+!.claude/skills/apps-script/
+!.claude/skills/update-setup-skill/
 
 .DS_Store
 scratch.*

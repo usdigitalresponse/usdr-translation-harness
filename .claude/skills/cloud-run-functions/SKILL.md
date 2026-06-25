@@ -100,16 +100,9 @@ If missing, tell them: `brew install node python@3.11`
 cp .env.example .env
 ```
 
-Then help them fill in the values they need. For running extract locally, the required variables are:
+The `.env.example` file is organized by section and lists every variable. Help the user fill in values for the function(s) they want to run — see the function-specific sections below for which variables each function needs.
 
-| Variable | Where to get it | Required for |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | console.anthropic.com → API Keys | Extract (Claude) |
-| `GEMINI_API_KEY` | aistudio.google.com → API Keys | Extract (Gemini) |
-| `EXTRACTION_PROMPT_DOC_ID` | Ask Laurel for the Google Doc link — the ID is the long string in the URL between `/d/` and `/edit` | Extract |
-| `LOCAL_PDF_PATH` | Absolute path to any PDF on their machine for local testing, e.g. `/Users/you/Downloads/sample.pdf` | Extract (local) |
-
-They only need one API key (Anthropic or Gemini) depending on which model is active in the config. Anthropic is the default.
+For API keys (`ANTHROPIC_API_KEY`, `GEMINI_API_KEY`): ask Laurel. For Google Doc/Sheet IDs: ask Laurel for the links — the ID is the long string in the URL between `/d/` and `/edit`.
 
 ### Step 3: Install dependencies
 
@@ -119,7 +112,17 @@ make install
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
+```
+
+Each Cloud Run function also has its own `requirements.txt` (Python) or `package.json` (JS). Install the ones for the function(s) you want to run:
+
+```sh
+# Python functions
 pip install -r extract/requirements.txt
+
+# JS functions (already handled by make install, but individually:)
+cd translate && npm install && cd ..
+cd capture-feedback && npm install && cd ..
 ```
 
 ### Step 4: Verify everything
@@ -130,31 +133,7 @@ source .venv/bin/activate
 make check
 ```
 
-This checks: node/python versions, venv active, `.env` exists, API keys set, Python/JS deps installed, config fixture present, and extract-specific variables. No LLM calls — free to run. Walk through any failures with the user.
-
-### Step 5: Run extract end-to-end
-
-```sh
-cd cloud-run/extract
-source ../.venv/bin/activate
-functions-framework --target=extract --port=8081 --debug
-```
-
-In another terminal:
-```sh
-curl -s -X POST http://localhost:8081 -H "Content-Type: application/json" \
-  -d '{"fileId":"ignored-locally","fileName":"test.pdf"}'
-```
-
-They should see log output showing: PDF loaded → pdfplumber text extracted → LLM called → response received → extraction validated → JSON saved. The output lands in `cloud-run/extract/fixtures/output/`.
-
-### Step 6: View results
-
-```sh
-python3 .claude/skills/cloud-run-functions/view_latest.py
-```
-
-Opens a side-by-side viewer with the PDF and extraction JSON.
+This checks: node/python versions, venv active, `.env` exists, API keys set, Python/JS deps installed, config fixture present, and function-specific variables. No LLM calls — free to run. Walk through any failures with the user.
 
 ## Task: Run a function locally
 
@@ -173,19 +152,77 @@ Test with curl:
 curl -X POST http://localhost:<port> -H "Content-Type: application/json" -d '<payload>'
 ```
 
-### Function-specific curl tests
+See the function-specific sections below for ports, payloads, and required env vars.
 
-**Extract (port 8081):**
+---
+
+## Function: Extract
+
+**Language:** Python | **Port:** 8081 | **Entry point:** `cloud-run/extract/main.py`
+
+Accepts a PDF (from Drive or local), runs it through an LLM with structured output schema enforcement, and produces extraction JSON with every text block on the page.
+
+There are two extraction schemas — one per provider — because Claude and Gemini have different structured output requirements:
+- `extraction-schema-claude.json` — standard JSON Schema (uses `additionalProperties`, `{"type": ["string", "null"]}` for nullable fields)
+- `extraction-schema-gemini.json` — Gemini-compatible (no `additionalProperties`, uses `{"nullable": true}` instead)
+
+Both define the same fields and structure. When updating the extraction output format, update both files.
+
+### Required env vars
+
+| Variable | What it is |
+|---|---|
+| `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` | LLM API key — only need one, depending on which model is active in config |
+| `EXTRACTION_PROMPT_DOC_ID` | Google Doc ID for the extraction prompt |
+| `LOCAL_PDF_PATH` | Absolute path to a PDF on your machine (local dev only — skips Drive) |
+
+### Run locally
+
 ```sh
-# Should return 400
-curl -s -X POST http://localhost:8081 -H "Content-Type: application/json" -d '{}'
-
-# Should return 202
-curl -s -X POST http://localhost:8081 -H "Content-Type: application/json" \
-  -d '{"fileId":"<drive-file-id>","fileName":"test.pdf"}'
+cd cloud-run/extract
+source ../.venv/bin/activate
+functions-framework --target=extract --port=8081 --debug
 ```
 
-**Translate (port 8082):**
+In another terminal:
+```sh
+curl -s -X POST http://localhost:8081 -H "Content-Type: application/json" \
+  -d '{"fileId":"ignored-locally","fileName":"test.pdf"}'
+```
+
+Log output shows: PDF loaded, pdfplumber text extracted, LLM called, response received, extraction validated, JSON saved. Output lands in `cloud-run/extract/fixtures/output/`.
+
+### View results
+
+```sh
+python3 .claude/skills/cloud-run-functions/scripts/view_latest.py
+```
+
+Opens a side-by-side viewer with the PDF and extraction JSON. The manual file-picker viewer is also available at `.claude/skills/cloud-run-functions/assets/viewer.html`.
+
+---
+
+## Function: Translate
+
+**Language:** JS | **Port:** 8082 | **Entry point:** `cloud-run/translate/index.js`
+
+Takes extraction JSON, loads the translation prompt and glossary, calls the LLM, and creates output Google Doc(s).
+
+### Required env vars
+
+| Variable | What it is |
+|---|---|
+| `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` | LLM API key |
+| `TRANSLATION_PROMPT_DOC_ID` | Google Doc ID for the translation prompt |
+| `GLOSSARY_SHEET_ID` | Google Sheet ID for the glossary |
+
+### Run locally
+
+```sh
+cd cloud-run
+make translate
+```
+
 ```sh
 # Should return 400
 curl -s -X POST http://localhost:8082 -H "Content-Type: application/json" -d '{}'
@@ -195,7 +232,28 @@ curl -s -X POST http://localhost:8082 -H "Content-Type: application/json" \
   -d '{"extractionJsonUrl":"<url-to-extraction-json>"}'
 ```
 
-**Capture Feedback (port 8083):**
+---
+
+## Function: Capture Feedback
+
+**Language:** JS | **Port:** 8083 | **Entry point:** `cloud-run/capture-feedback/index.js`
+
+Takes a Google Doc ID after a reviewer submits, diffs the edits against the LLM output, and writes terminology decisions to the glossary.
+
+### Required env vars
+
+| Variable | What it is |
+|---|---|
+| `GLOSSARY_SHEET_ID` | Google Sheet ID for the glossary |
+| `DERIVED_GLOSSARY_SHEET_ID` | Google Sheet ID for the derived glossary |
+
+### Run locally
+
+```sh
+cd cloud-run
+make capture-feedback
+```
+
 ```sh
 # Should return 400
 curl -s -X POST http://localhost:8083 -H "Content-Type: application/json" -d '{}'
@@ -203,6 +261,30 @@ curl -s -X POST http://localhost:8083 -H "Content-Type: application/json" -d '{}
 # Should return 200
 curl -s -X POST http://localhost:8083 -H "Content-Type: application/json" \
   -d '{"documentId":"<google-doc-id>"}'
+```
+
+---
+
+## Function: Eval (Quality + Drift)
+
+**Language:** Python | **Ports:** 8084 (quality), 8085 (drift)
+
+Quality runs LLM-as-judge scoring. Drift runs BLEU/ROUGE + LLM-as-judge regression detection.
+
+### Required env vars
+
+| Variable | What it is |
+|---|---|
+| `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` | LLM API key |
+| `EVALUATION_RUBRIC_DOC_ID` | Google Doc ID for the eval rubric |
+| `GOLDEN_SET_SHEET_ID` | Google Sheet ID for golden translation set (drift) |
+
+### Run locally
+
+```sh
+cd cloud-run
+source .venv/bin/activate
+make eval-quality    # or eval-drift
 ```
 
 ## Task: Run tests
@@ -239,24 +321,11 @@ Example prompts:
 - "Run both Claude and Gemini for translate"
 - "What model is active for eval?"
 
-## Task: View extraction results
-
-Use the viewer to inspect extraction JSON side-by-side with the source PDF. The viewer is at `.claude/skills/cloud-run-functions/viewer.html`. Extraction output lives in `cloud-run/extract/fixtures/output/`.
-
-When the user asks to view results (e.g. "show me the latest extraction", "open the viewer"):
-
-```sh
-python3 .claude/skills/cloud-run-functions/view_latest.py
-```
-
-This finds the latest extraction JSON in `cloud-run/extract/fixtures/output/`, reads the PDF from `LOCAL_PDF_PATH` in `.env`, and opens a self-contained viewer with both pre-loaded. The manual file-picker viewer is also available at `.claude/skills/cloud-run-functions/viewer.html`.
-
 ## Task: Test prompt quality
 
 Make sure `.env` has API keys filled in, then from `cloud-run/`:
 
 ```sh
-# Python (using extract's LLM client as an example)
 source .venv/bin/activate
 python3 -c "
 from extract.llm import call_claude

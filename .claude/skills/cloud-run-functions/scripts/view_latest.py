@@ -10,8 +10,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-VIEWER_TEMPLATE = Path(__file__).resolve().parent / "viewer.html"
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
+VIEWER_TEMPLATE = Path(__file__).resolve().parent.parent / "assets" / "viewer.html"
 OUTPUT_DIR = REPO_ROOT / "cloud-run" / "extract" / "fixtures" / "output"
 
 load_dotenv(REPO_ROOT / ".env")
