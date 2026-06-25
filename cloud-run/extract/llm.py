@@ -10,8 +10,7 @@ import anthropic
 from google import genai
 
 
-# Default max_tokens may need per-function tuning once we see real output sizes.
-def call_claude(prompt, *, model="claude-sonnet-4-6", max_tokens=16384, system=None, pdf_base64=None):
+def call_claude(prompt, *, model="claude-sonnet-4-6", max_tokens=16384, system=None, pdf_base64=None, output_schema=None):
     client = anthropic.Anthropic()
     content = []
 
@@ -26,12 +25,19 @@ def call_claude(prompt, *, model="claude-sonnet-4-6", max_tokens=16384, system=N
     kwargs = {"model": model, "max_tokens": max_tokens, "messages": [{"role": "user", "content": content}]}
     if system:
         kwargs["system"] = system
+    if output_schema:
+        kwargs["output_config"] = {
+            "format": {
+                "type": "json_schema",
+                "schema": output_schema,
+            }
+        }
 
     response = client.messages.create(**kwargs)
     return response.content[0].text
 
 
-def call_gemini(prompt, *, model="gemini-3.5-flash", pdf_base64=None):
+def call_gemini(prompt, *, model="gemini-3.5-flash", pdf_base64=None, output_schema=None):
     client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
     parts = []
 
@@ -41,5 +47,12 @@ def call_gemini(prompt, *, model="gemini-3.5-flash", pdf_base64=None):
 
     parts.append(genai.types.Part.from_text(text=prompt))
 
-    response = client.models.generate_content(model=model, contents=[genai.types.Content(role="user", parts=parts)])
+    kwargs = {"model": model, "contents": [genai.types.Content(role="user", parts=parts)]}
+    if output_schema:
+        kwargs["config"] = genai.types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema=output_schema,
+        )
+
+    response = client.models.generate_content(**kwargs)
     return response.text

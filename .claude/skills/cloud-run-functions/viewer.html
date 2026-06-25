@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Extract Viewer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; height: 100vh; display: flex; flex-direction: column; background: #f5f5f5; }
+
+  .toolbar {
+    display: flex; gap: 16px; align-items: center; padding: 12px 20px;
+    background: #fff; border-bottom: 1px solid #ddd; flex-shrink: 0;
+  }
+  .toolbar label {
+    font-size: 13px; font-weight: 600; color: #555;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .toolbar input[type="file"] { font-size: 13px; }
+
+  .panels { display: flex; flex: 1; overflow: hidden; }
+
+  .panel {
+    flex: 1; overflow: auto; padding: 0;
+    border-right: 1px solid #ddd;
+  }
+  .panel:last-child { border-right: none; }
+  .panel embed { width: 100%; height: 100%; }
+
+  .panel-placeholder {
+    display: flex; align-items: center; justify-content: center;
+    height: 100%; color: #999; font-size: 15px;
+  }
+
+  .json-panel { padding: 16px 20px; }
+
+  .page-meta {
+    background: #e8f0fe; border-radius: 6px; padding: 12px 16px; margin-bottom: 16px;
+    font-size: 13px; color: #333;
+  }
+  .page-meta strong { display: block; margin-bottom: 4px; font-size: 14px; }
+
+  .block {
+    background: #fff; border: 1px solid #e0e0e0; border-radius: 6px;
+    padding: 12px 16px; margin-bottom: 10px;
+    transition: box-shadow 0.15s;
+  }
+  .block:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+
+  .block-header {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+  .block-id { font-weight: 700; font-size: 13px; color: #1a73e8; }
+  .badge {
+    font-size: 11px; padding: 2px 8px; border-radius: 10px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;
+  }
+  .badge-role { background: #e8f0fe; color: #1a73e8; }
+  .badge-translate-true { background: #e6f4ea; color: #137333; }
+  .badge-translate-false { background: #fce8e6; color: #c5221f; }
+  .badge-emphasis-banner { background: #fef7e0; color: #b06000; }
+  .badge-emphasis-callout-box { background: #fef7e0; color: #b06000; }
+  .badge-emphasis-highlighted { background: #fef7e0; color: #b06000; }
+  .badge-group { background: #f3e8fd; color: #7627bb; }
+
+  .block-text {
+    font-size: 14px; line-height: 1.5; color: #222; margin-bottom: 8px;
+    white-space: pre-wrap;
+  }
+
+  .block-details {
+    font-size: 12px; color: #666; display: flex; flex-wrap: wrap; gap: 12px;
+  }
+  .block-details span { display: inline-flex; align-items: center; gap: 3px; }
+  .detail-label { font-weight: 600; color: #888; }
+
+  .block-notes {
+    margin-top: 6px; font-size: 12px; color: #8b6914;
+    background: #fffbea; padding: 6px 10px; border-radius: 4px;
+  }
+
+  .non-translatable {
+    background: #fff; border: 1px solid #e0e0e0; border-radius: 6px;
+    padding: 12px 16px; margin-bottom: 10px;
+  }
+  .nt-type { font-weight: 600; color: #c5221f; font-size: 12px; text-transform: uppercase; }
+  .nt-content { font-size: 14px; color: #222; margin: 4px 0; }
+  .nt-location { font-size: 12px; color: #666; }
+
+  .warnings {
+    background: #fce8e6; border-radius: 6px; padding: 12px 16px; margin-bottom: 16px;
+  }
+  .warnings strong { color: #c5221f; font-size: 14px; display: block; margin-bottom: 6px; }
+  .warnings li { font-size: 13px; color: #333; margin-left: 16px; margin-bottom: 4px; }
+
+  .section-heading {
+    font-size: 15px; font-weight: 700; color: #333; margin: 20px 0 10px;
+    border-bottom: 1px solid #e0e0e0; padding-bottom: 6px;
+  }
+
+  .divider { width: 4px; background: #ddd; cursor: col-resize; flex-shrink: 0; }
+  .divider:hover { background: #aaa; }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <label>PDF: <input type="file" id="pdf-input" accept=".pdf"></label>
+  <label>JSON: <input type="file" id="json-input" accept=".json,.txt"></label>
+</div>
+
+<div class="panels">
+  <div class="panel" id="pdf-panel">
+    <div class="panel-placeholder">Load a PDF</div>
+  </div>
+  <div class="divider" id="divider"></div>
+  <div class="panel" id="json-panel">
+    <div class="panel-placeholder">Load extraction JSON</div>
+  </div>
+</div>
+
+<script>
+  const pdfInput = document.getElementById("pdf-input");
+  const jsonInput = document.getElementById("json-input");
+  const pdfPanel = document.getElementById("pdf-panel");
+  const jsonPanel = document.getElementById("json-panel");
+
+  pdfInput.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    pdfPanel.innerHTML = `<embed src="${url}#navpanes=0" type="application/pdf">`;
+  });
+
+  jsonInput.addEventListener("change", (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        renderExtraction(data);
+      } catch (err) {
+        jsonPanel.innerHTML = `<div class="panel-placeholder">Invalid JSON: ${err.message}</div>`;
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  function renderExtraction(data) {
+    let html = '<div class="json-panel">';
+
+    if (data.page_metadata) {
+      const pm = data.page_metadata;
+      html += `<div class="page-meta">
+        <strong>Page ${pm.page_number || "?"}</strong>
+        ${pm.dimensions_description || ""} &middot; ${pm.layout_type || ""}
+        ${pm.layout_description ? `<br>${pm.layout_description}` : ""}
+      </div>`;
+    }
+
+    if (data.translation_warnings && data.translation_warnings.length) {
+      html += `<div class="warnings"><strong>Translation Warnings</strong><ul>`;
+      for (const w of data.translation_warnings) {
+        html += `<li>${esc(w)}</li>`;
+      }
+      html += `</ul></div>`;
+    }
+
+    if (data.blocks && data.blocks.length) {
+      html += `<div class="section-heading">Blocks (${data.blocks.length})</div>`;
+      for (const b of data.blocks) {
+        html += renderBlock(b);
+      }
+    }
+
+    if (data.non_translatable_elements && data.non_translatable_elements.length) {
+      html += `<div class="section-heading">Non-Translatable Elements</div>`;
+      for (const nt of data.non_translatable_elements) {
+        html += `<div class="non-translatable">
+          <span class="nt-type">${esc(nt.type)}</span>
+          <div class="nt-content">${esc(nt.content)}</div>
+          <div class="nt-location">${esc(nt.location)}</div>
+        </div>`;
+      }
+    }
+
+    html += "</div>";
+    jsonPanel.innerHTML = html;
+  }
+
+  function renderBlock(b) {
+    let html = `<div class="block">`;
+    html += `<div class="block-header">`;
+    html += `<span class="block-id">${esc(b.id)}</span>`;
+    html += `<span class="badge badge-role">${esc(b.role)}</span>`;
+    html += `<span class="badge badge-translate-${b.translate}">${b.translate ? "translate" : "keep"}</span>`;
+    if (b.visual_emphasis && b.visual_emphasis !== "none") {
+      html += `<span class="badge badge-emphasis-${b.visual_emphasis}">${esc(b.visual_emphasis)}</span>`;
+    }
+    if (b.group) {
+      html += `<span class="badge badge-group">${esc(b.group)}</span>`;
+    }
+    html += `</div>`;
+
+    html += `<div class="block-text">${esc(b.text)}</div>`;
+
+    html += `<div class="block-details">`;
+    if (b.spatial) {
+      html += `<span><span class="detail-label">Region:</span> ${esc(b.spatial.region)}</span>`;
+      if (b.spatial.space_constrained) {
+        html += `<span><span class="detail-label">Constrained:</span> ${esc(b.spatial.constraint_note || "yes")}</span>`;
+      }
+    }
+    if (b.typography) {
+      html += `<span><span class="detail-label">Type:</span> ${esc(b.typography.size_tier)} ${esc(b.typography.weight)}</span>`;
+    }
+    html += `</div>`;
+
+    if (b.notes) {
+      html += `<div class="block-notes">${esc(b.notes)}</div>`;
+    }
+
+    html += `</div>`;
+    return html;
+  }
+
+  function esc(s) {
+    if (s == null) return "";
+    const d = document.createElement("div");
+    d.textContent = String(s);
+    return d.innerHTML;
+  }
+
+  // Draggable divider
+  const divider = document.getElementById("divider");
+  let dragging = false;
+  divider.addEventListener("mousedown", () => { dragging = true; document.body.style.cursor = "col-resize"; });
+  document.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    const container = document.querySelector(".panels");
+    const rect = container.getBoundingClientRect();
+    const pct = ((e.clientX - rect.left) / rect.width) * 100;
+    const clamped = Math.max(20, Math.min(80, pct));
+    pdfPanel.style.flex = `0 0 ${clamped}%`;
+    jsonPanel.style.flex = `0 0 ${100 - clamped}%`;
+  });
+  document.addEventListener("mouseup", () => { dragging = false; document.body.style.cursor = ""; });
+</script>
+
+</body>
+</html>

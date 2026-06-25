@@ -1,11 +1,11 @@
 ---
 name: cloud-run-functions
-description: Set up, run, test, and package Cloud Run functions for local development. Handles dependency installation, Functions Framework serving, and bundling shared code for deploy. Use when asked to run, test, set up, or package Cloud Run functions. This skill does NOT deploy — it only packages.
+description: Set up, run, test, and deploy Cloud Run functions for local development. Handles dependency installation and Functions Framework serving. Use when asked to run, test, or set up Cloud Run functions.
 ---
 
 # Cloud Run Functions
 
-Skill for working with the Cloud Run functions in this repo. Covers local setup, running functions, testing, and packaging for deploy. **This skill must never run `gcloud` commands or deploy anything to Cloud Run — only the user does that.**
+Skill for working with the Cloud Run functions in this repo. Covers local setup, running functions, and testing. **This skill must never run `gcloud` commands or deploy anything to Cloud Run — only the user does that.**
 
 ## What you can ask
 
@@ -31,11 +31,6 @@ Here are things you can say to use this skill. You don't need exact phrasing —
 - "Run a prompt against Gemini"
 - "Compare Claude and Gemini on this translation"
 
-**Packaging for deploy:**
-- "Package the extract function for deploy"
-- "Bundle shared code into translate so I can deploy it"
-- "Package all functions"
-
 **Understanding the project:**
 - "What functions do we have and what do they do?"
 - "What port does translate run on?"
@@ -45,20 +40,19 @@ Here are things you can say to use this skill. You don't need exact phrasing —
 
 ```
 cloud-run/
-  extract/              JS — extracts text blocks from PDFs via LLM
+  extract/              Python — extracts text blocks from PDFs via LLM (pdfplumber + vision)
   translate/            JS — translates extracted content via LLM
   capture-feedback/     JS — diffs reviewer edits, writes glossary updates
   eval/
     quality/            Python — LLM-as-judge quality scoring
     drift/              Python — BLEU/ROUGE + LLM-as-judge regression detection
-  shared/               Shared LLM client helpers (JS + Python) — local dev only
   tests/                Unit tests
 ```
 
 JS functions run on Node with @google-cloud/functions-framework.
 Python functions run with functions-framework (pip).
 
-Each function is independently deployable to Cloud Run. The `shared/` directory is for local dev convenience — the package script handles copying shared code into each function's directory so it's ready for deploy.
+Each function is self-contained and independently deployable to Cloud Run. LLM client code and loaders live inside each function's directory. When building a new function, refer to existing functions (e.g. `extract/llm.py`) for patterns to keep consistent.
 
 ## Pipeline flow
 
@@ -89,35 +83,78 @@ There is a single `.env` file at the repo root (copied from `.env.example`). It 
 
 ## Task: First-time setup
 
-When the user needs to set up their local environment:
+When the user needs to set up their local environment, walk them through these steps one at a time. Check each step before moving to the next — don't dump everything at once.
 
-1. Check prerequisites:
-   - `node --version` (need 18+)
-   - `python3 --version` (need 3.10+)
-   - If missing, tell them to `brew install node python@3.11`
+### Step 1: Prerequisites
 
-2. Check for `.env` file at the repo root:
-   - If missing, tell them to `cp .env.example .env` and fill in API keys
-   - They need `ANTHROPIC_API_KEY` and `GEMINI_API_KEY` at minimum
+Check what's already installed:
+```sh
+node --version    # need 18+
+python3 --version # need 3.10+
+```
+If missing, tell them: `brew install node python@3.11`
 
-3. Install dependencies:
-   ```sh
-   cd cloud-run
-   cd extract && npm install && cd ..
-   cd translate && npm install && cd ..
-   cd capture-feedback && npm install && cd ..
-   npm install
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements-dev.txt
-   ```
+### Step 2: Environment file
 
-4. Run the smoke test to verify everything:
-   ```sh
-   cd cloud-run
-   make check
-   ```
-   This checks: node/python versions, venv active, `.env` exists, API keys set, JS/Python deps installed, config fixture present, and doc IDs configured. No LLM calls — free to run.
+```sh
+cp .env.example .env
+```
+
+Then help them fill in the values they need. For running extract locally, the required variables are:
+
+| Variable | Where to get it | Required for |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | console.anthropic.com → API Keys | Extract (Claude) |
+| `GEMINI_API_KEY` | aistudio.google.com → API Keys | Extract (Gemini) |
+| `EXTRACTION_PROMPT_DOC_ID` | Ask Laurel for the Google Doc link — the ID is the long string in the URL between `/d/` and `/edit` | Extract |
+| `LOCAL_PDF_PATH` | Absolute path to any PDF on their machine for local testing, e.g. `/Users/you/Downloads/sample.pdf` | Extract (local) |
+
+They only need one API key (Anthropic or Gemini) depending on which model is active in the config. Anthropic is the default.
+
+### Step 3: Install dependencies
+
+```sh
+cd cloud-run
+make install
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+pip install -r extract/requirements.txt
+```
+
+### Step 4: Verify everything
+
+```sh
+cd cloud-run
+source .venv/bin/activate
+make check
+```
+
+This checks: node/python versions, venv active, `.env` exists, API keys set, Python/JS deps installed, config fixture present, and extract-specific variables. No LLM calls — free to run. Walk through any failures with the user.
+
+### Step 5: Run extract end-to-end
+
+```sh
+cd cloud-run/extract
+source ../.venv/bin/activate
+functions-framework --target=extract --port=8081 --debug
+```
+
+In another terminal:
+```sh
+curl -s -X POST http://localhost:8081 -H "Content-Type: application/json" \
+  -d '{"fileId":"ignored-locally","fileName":"test.pdf"}'
+```
+
+They should see log output showing: PDF loaded → pdfplumber text extracted → LLM called → response received → extraction validated → JSON saved. The output lands in `cloud-run/extract/fixtures/output/`.
+
+### Step 6: View results
+
+```sh
+python3 .claude/skills/cloud-run-functions/view_latest.py
+```
+
+Opens a side-by-side viewer with the PDF and extraction JSON.
 
 ## Task: Run a function locally
 
@@ -125,15 +162,47 @@ Run from the `cloud-run/` directory:
 
 ```sh
 # JS functions
-make extract           # or translate, capture-feedback
+make translate         # or capture-feedback
 # Python functions (activate venv first)
 source .venv/bin/activate
-make eval-quality      # or eval-drift
+make extract           # or eval-quality, eval-drift
 ```
 
 Test with curl:
 ```sh
 curl -X POST http://localhost:<port> -H "Content-Type: application/json" -d '<payload>'
+```
+
+### Function-specific curl tests
+
+**Extract (port 8081):**
+```sh
+# Should return 400
+curl -s -X POST http://localhost:8081 -H "Content-Type: application/json" -d '{}'
+
+# Should return 202
+curl -s -X POST http://localhost:8081 -H "Content-Type: application/json" \
+  -d '{"fileId":"<drive-file-id>","fileName":"test.pdf"}'
+```
+
+**Translate (port 8082):**
+```sh
+# Should return 400
+curl -s -X POST http://localhost:8082 -H "Content-Type: application/json" -d '{}'
+
+# Should return 200
+curl -s -X POST http://localhost:8082 -H "Content-Type: application/json" \
+  -d '{"extractionJsonUrl":"<url-to-extraction-json>"}'
+```
+
+**Capture Feedback (port 8083):**
+```sh
+# Should return 400
+curl -s -X POST http://localhost:8083 -H "Content-Type: application/json" -d '{}'
+
+# Should return 200
+curl -s -X POST http://localhost:8083 -H "Content-Type: application/json" \
+  -d '{"documentId":"<google-doc-id>"}'
 ```
 
 ## Task: Run tests
@@ -145,35 +214,13 @@ make test-js     # JS only
 make test-py     # Python only (activate venv first)
 ```
 
-## Task: Package a function for deploy
-
-Use the package script at `.claude/skills/cloud-run-functions/scripts/package.sh`. It copies shared code into the function's directory so it's self-contained and ready for the user to deploy manually.
-
-```sh
-.claude/skills/cloud-run-functions/scripts/package.sh <function-name>
-```
-
-Examples:
-```sh
-.claude/skills/cloud-run-functions/scripts/package.sh extract
-.claude/skills/cloud-run-functions/scripts/package.sh capture-feedback
-.claude/skills/cloud-run-functions/scripts/package.sh eval/quality
-```
-
-The script auto-detects language (JS vs Python) and copies shared code in. To undo packaging (remove the bundled shared code), run:
-```sh
-.claude/skills/cloud-run-functions/scripts/package.sh <function-name> --clean
-```
-
-**Do not deploy from this skill.** After packaging, tell the user the function is ready and where it is. The user handles `gcloud` deployment themselves.
-
 ## Task: Switch the active model
 
-Model config for local dev lives in `cloud-run/shared/fixtures/config.json`. Each entry has `role`, `provider`, `model`, and `active` fields.
+Model config for local dev lives in each function's `fixtures/config.json` (e.g. `cloud-run/extract/fixtures/config.json`). Each entry has `role`, `provider`, `model`, and `active` fields.
 
 When the user asks to switch models (e.g. "switch translate to Gemini", "use claude-opus-4-8 for eval"):
 
-1. Read `cloud-run/shared/fixtures/config.json`
+1. Read the function's `fixtures/config.json` (e.g. `cloud-run/extract/fixtures/config.json`)
 2. Find the row(s) matching the requested role
 3. Set `active: true` on the target provider/model and `active: false` on the other(s) for that role
 4. To run multiple models in parallel for a role, set multiple entries to `active: true`
@@ -192,21 +239,27 @@ Example prompts:
 - "Run both Claude and Gemini for translate"
 - "What model is active for eval?"
 
+## Task: View extraction results
+
+Use the viewer to inspect extraction JSON side-by-side with the source PDF. The viewer is at `.claude/skills/cloud-run-functions/viewer.html`. Extraction output lives in `cloud-run/extract/fixtures/output/`.
+
+When the user asks to view results (e.g. "show me the latest extraction", "open the viewer"):
+
+```sh
+python3 .claude/skills/cloud-run-functions/view_latest.py
+```
+
+This finds the latest extraction JSON in `cloud-run/extract/fixtures/output/`, reads the PDF from `LOCAL_PDF_PATH` in `.env`, and opens a self-contained viewer with both pre-loaded. The manual file-picker viewer is also available at `.claude/skills/cloud-run-functions/viewer.html`.
+
 ## Task: Test prompt quality
 
 Make sure `.env` has API keys filled in, then from `cloud-run/`:
 
 ```sh
-# Python
+# Python (using extract's LLM client as an example)
 source .venv/bin/activate
 python3 -c "
-from shared.llm import call_claude
+from extract.llm import call_claude
 print(call_claude('Translate to Spanish: Hello, how can I help you today?'))
-"
-
-# JavaScript
-node -e "
-const { callClaude } = require('./shared/llm.js');
-callClaude('Translate to Spanish: Hello, how can I help you today?').then(console.log);
 "
 ```

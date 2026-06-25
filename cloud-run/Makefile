@@ -30,20 +30,32 @@ check:
 	fi
 	@echo ""
 	@echo "JS dependencies:"
-	@if [ -d extract/node_modules ] && [ -d translate/node_modules ] && [ -d capture-feedback/node_modules ]; then echo "  OK"; else echo "  MISSING — run: make install-js"; fi
+	@if [ -d translate/node_modules ] && [ -d capture-feedback/node_modules ]; then echo "  OK"; else echo "  MISSING — run: make install-js"; fi
 	@echo ""
 	@echo "Python dependencies:"
-	@python3 -c "import anthropic, google.genai, sacrebleu, rouge_score, functions_framework" 2>/dev/null \
+	@python3 -c "import anthropic, google.genai, sacrebleu, rouge_score, functions_framework, pdfplumber" 2>/dev/null \
 		&& echo "  OK" || echo "  MISSING — run: make install-py (with venv active)"
 	@echo ""
 	@echo "Config fixture:"
-	@if [ -f shared/fixtures/config.json ]; then echo "  OK"; else echo "  MISSING — shared/fixtures/config.json not found"; fi
+	@if [ -f extract/fixtures/config.json ]; then echo "  OK"; else echo "  MISSING — extract/fixtures/config.json not found"; fi
 	@echo ""
-	@echo "Doc IDs (optional — needed for loader tests):"
+	@echo "Extract function (required to run extract locally):"
+	@if [ -f ../".env" ]; then \
+		. ../".env" 2>/dev/null; \
+		if [ -n "$$ANTHROPIC_API_KEY" ] || [ -n "$$GEMINI_API_KEY" ]; then echo "  API key: set"; else echo "  API key: NOT SET — need ANTHROPIC_API_KEY or GEMINI_API_KEY"; fi; \
+		if [ -n "$$EXTRACTION_PROMPT_DOC_ID" ]; then echo "  EXTRACTION_PROMPT_DOC_ID: set"; else echo "  EXTRACTION_PROMPT_DOC_ID: NOT SET"; fi; \
+		if [ -n "$$LOCAL_PDF_PATH" ]; then \
+			if [ -f "$$LOCAL_PDF_PATH" ]; then echo "  LOCAL_PDF_PATH: set (file exists)"; \
+			else echo "  LOCAL_PDF_PATH: set but FILE NOT FOUND — check the path"; fi; \
+		else echo "  LOCAL_PDF_PATH: NOT SET — needed to run extract locally"; fi; \
+	else \
+		echo "  (skipped — no .env file)"; \
+	fi
+	@echo ""
+	@echo "Doc IDs (other functions):"
 	@if [ -f ../".env" ]; then \
 		. ../".env" 2>/dev/null; \
 		if [ -n "$$TRANSLATION_PROMPT_DOC_ID" ]; then echo "  TRANSLATION_PROMPT_DOC_ID: set"; else echo "  TRANSLATION_PROMPT_DOC_ID: not set"; fi; \
-		if [ -n "$$EXTRACTION_PROMPT_DOC_ID" ]; then echo "  EXTRACTION_PROMPT_DOC_ID: set"; else echo "  EXTRACTION_PROMPT_DOC_ID: not set"; fi; \
 		if [ -n "$$EVALUATION_RUBRIC_DOC_ID" ]; then echo "  EVALUATION_RUBRIC_DOC_ID: set"; else echo "  EVALUATION_RUBRIC_DOC_ID: not set"; fi; \
 		if [ -n "$$GLOSSARY_SHEET_ID" ]; then echo "  GLOSSARY_SHEET_ID: set"; else echo "  GLOSSARY_SHEET_ID: not set"; fi; \
 		if [ -n "$$GOLDEN_SET_SHEET_ID" ]; then echo "  GOLDEN_SET_SHEET_ID: set"; else echo "  GOLDEN_SET_SHEET_ID: not set"; fi; \
@@ -57,17 +69,17 @@ check:
 install: install-js install-py
 
 install-js:
-	cd extract && npm install
 	cd translate && npm install
 	cd capture-feedback && npm install
 	npm install
 
 install-py:
 	pip install -r requirements-dev.txt
+	pip install -r extract/requirements.txt
 
 # ── Run locally ──────────────────────────────────────────────────────
 extract:
-	cd extract && npx functions-framework --target=extract --port=8081
+	cd extract && functions-framework --target=extract --port=8081
 
 translate:
 	cd translate && npx functions-framework --target=translate --port=8082

@@ -6,12 +6,13 @@ __pycache__/
 # Revisit if .claude/skills grows to include anything not suitable for a public repo.
 .claude/*
 !.claude/skills/
+.claude/skills/task-to-todo/
 
 .DS_Store
 scratch.*
 node_modules/
 cloud-run/.venv/
-cloud-run/shared/fixtures/output/
+cloud-run/*/fixtures/output/
 
 # clasp credentials (not the project config .clasp.json, which should be committed)
 .clasprc.json
