@@ -9,9 +9,10 @@ import pytest
 
 from extract.main import (
     extract, extract_text_with_pdfplumber, get_active_models,
-    load_pdf_bytes, fetch_pdf_from_drive, build_extraction_prompt,
-    call_llm, load_extraction_schema, EXTRACT_ROLE, PROVIDER_ANTHROPIC, PROVIDER_GOOGLE,
+    load_pdf_bytes, build_extraction_prompt,
+    EXTRACT_ROLE,
 )
+from extract.llm import call_llm, PROVIDER_ANTHROPIC, PROVIDER_GOOGLE
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
@@ -122,28 +123,25 @@ class TestBuildExtractionPrompt:
 
 
 class TestCallLlm:
-    @patch("extract.main.call_claude", return_value='{"blocks": []}')
-    def test_dispatches_to_claude(self, mock_claude):
-        schema = {"type": "object"}
-        result = call_llm(PROVIDER_ANTHROPIC, "claude-sonnet-4-6", "prompt", "base64pdf", output_schema=schema)
-        mock_claude.assert_called_once_with("prompt", model="claude-sonnet-4-6", pdf_base64="base64pdf", output_schema=schema)
+    @patch("extract.llm.load_extraction_schema", return_value={"type": "object"})
+    @patch("extract.llm.call_claude", return_value='{"blocks": []}')
+    def test_dispatches_to_claude(self, mock_claude, mock_schema):
+        result = call_llm(PROVIDER_ANTHROPIC, "claude-sonnet-4-6", "prompt", "base64pdf")
+        mock_schema.assert_called_once_with(PROVIDER_ANTHROPIC)
+        mock_claude.assert_called_once_with("prompt", model="claude-sonnet-4-6", pdf_base64="base64pdf", output_schema={"type": "object"})
         assert result == '{"blocks": []}'
 
-    @patch("extract.main.call_gemini", return_value='{"blocks": []}')
-    def test_dispatches_to_gemini(self, mock_gemini):
-        schema = {"type": "object"}
-        result = call_llm(PROVIDER_GOOGLE, "gemini-3.5-flash", "prompt", "base64pdf", output_schema=schema)
-        mock_gemini.assert_called_once_with("prompt", model="gemini-3.5-flash", pdf_base64="base64pdf", output_schema=schema)
+    @patch("extract.llm.load_extraction_schema", return_value={"type": "object"})
+    @patch("extract.llm.call_gemini", return_value='{"blocks": []}')
+    def test_dispatches_to_gemini(self, mock_gemini, mock_schema):
+        result = call_llm(PROVIDER_GOOGLE, "gemini-3.5-flash", "prompt", "base64pdf")
+        mock_schema.assert_called_once_with(PROVIDER_GOOGLE)
+        mock_gemini.assert_called_once_with("prompt", model="gemini-3.5-flash", pdf_base64="base64pdf", output_schema={"type": "object"})
         assert result == '{"blocks": []}'
 
     def test_raises_on_unknown_provider(self):
-        with pytest.raises(ValueError, match="Unknown provider"):
+        with pytest.raises(ValueError, match="No extraction schema"):
             call_llm("openai", "gpt-4", "prompt", "base64pdf")
-
-    @patch("extract.main.call_claude", return_value='{"blocks": []}')
-    def test_passes_none_schema_by_default(self, mock_claude):
-        call_llm(PROVIDER_ANTHROPIC, "claude-sonnet-4-6", "prompt", "base64pdf")
-        mock_claude.assert_called_once_with("prompt", model="claude-sonnet-4-6", pdf_base64="base64pdf", output_schema=None)
 
 
 class TestExtractTextWithPdfplumber:

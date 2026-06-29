@@ -174,7 +174,7 @@ Both define the same fields and structure. When updating the extraction output f
 |---|---|
 | `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` | LLM API key — only need one, depending on which model is active in config |
 | `EXTRACTION_PROMPT_DOC_ID` | Google Doc ID for the extraction prompt |
-| `LOCAL_PDF_PATH` | Absolute path to a PDF on your machine (local dev only — skips Drive) |
+| `LOCAL_PDF_PATH` | Absolute path to a PDF on your machine (skips Drive fetch) |
 
 ### Run locally
 
@@ -191,6 +191,24 @@ curl -s -X POST http://localhost:8081 -H "Content-Type: application/json" \
 ```
 
 Log output shows: PDF loaded, pdfplumber text extracted, LLM called, response received, extraction validated, JSON saved. Output lands in `cloud-run/extract/fixtures/output/`.
+
+### Cloud I/O mode (optional)
+
+By default, extract reads config from `fixtures/config.json`, loads the PDF from `LOCAL_PDF_PATH`, and writes output to `fixtures/output/`. To test with the same cloud services used in production:
+
+1. Get a service account key from GCP Console > IAM & Admin > Service Accounts > (the pipeline service account) > Keys > Add Key > JSON
+2. Store it outside the repo at `~/.gcp/translation-pipeline-key.json`
+3. Add these to `.env`:
+
+| Variable | What it is |
+|---|---|
+| `GOOGLE_APPLICATION_CREDENTIALS` | Path to service account key (e.g. `/Users/you/.gcp/translation-pipeline-key.json`) |
+| `MODEL_CONFIG_SHEET_ID` | Google Sheet ID — reads config from Sheet instead of `fixtures/config.json` |
+| `DRIVE_EXTRACTION_JSON_FOLDER_ID` | Drive folder ID — writes output to Drive instead of local disk |
+
+The service account must have Viewer access on the config sheet and extraction prompt doc, and Content Manager access on the output Shared Drive.
+
+With these set, running locally behaves identically to the deployed Cloud Run function. You can still use `LOCAL_PDF_PATH` to skip the Drive fetch for the input PDF.
 
 ### View results
 
@@ -298,7 +316,7 @@ make test-py     # Python only (activate venv first)
 
 ## Task: Switch the active model
 
-Model config for local dev lives in each function's `fixtures/config.json` (e.g. `cloud-run/extract/fixtures/config.json`). Each entry has `role`, `provider`, `model`, and `active` fields.
+Model config for local dev lives in each function's `fixtures/config.json` (e.g. `cloud-run/extract/fixtures/config.json`). Each entry has `role`, `provider`, `model`, and `active` fields. When `MODEL_CONFIG_SHEET_ID` is set in `.env`, config is read from the Google Sheet instead — edit the Sheet to switch models in that mode.
 
 When the user asks to switch models (e.g. "switch translate to Gemini", "use claude-opus-4-8 for eval"):
 

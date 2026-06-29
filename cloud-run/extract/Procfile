@@ -1,0 +1,3 @@
+# Deploy with --cpu-always-allocated so the background extraction thread
+# survives after the 202 response.
+web: functions-framework --target=extract --port=$PORT

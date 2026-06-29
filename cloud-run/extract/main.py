@@ -16,18 +16,11 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import pdfplumber
 
-from llm import call_claude, call_gemini
-from loaders import load_config, load_doc, write_local_json
+from llm import call_llm
+from loaders import load_config, load_doc, write_output, DRIVE_API_VERSION
 
 EXTRACT_ROLE = "extract"
-EXTRACTION_PROMPT_ENV_VAR = "EXTRACTION_PROMPT_DOC_ID"
-PROVIDER_ANTHROPIC = "anthropic"
-PROVIDER_GOOGLE = "google"
 SCHEMA_DIR = Path(__file__).resolve().parent
-SCHEMA_PATHS = {
-    PROVIDER_ANTHROPIC: SCHEMA_DIR / "extraction-schema-claude.json",
-    PROVIDER_GOOGLE: SCHEMA_DIR / "extraction-schema-gemini.json",
-}
 MARKDOWN_JSON_PATTERN = re.compile(r"```(?:json)?\s*\n(.*?)\n\s*```", re.DOTALL)
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -36,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 def fetch_pdf_from_drive(file_id):
     credentials, _ = google.auth.default()
-    service = build("drive", "v3", credentials=credentials)
+    service = build("drive", DRIVE_API_VERSION, credentials=credentials)
     request = service.files().get_media(fileId=file_id)
     buffer = io.BytesIO()
     downloader = MediaIoBaseDownload(buffer, request)
@@ -64,21 +57,6 @@ def build_extraction_prompt(base_prompt, extracted_text):
     if extracted_text:
         return f"{base_prompt}\n\n<extracted_text>\n{extracted_text}\n</extracted_text>"
     return base_prompt
-
-
-def load_extraction_schema(provider):
-    path = SCHEMA_PATHS.get(provider)
-    if not path:
-        raise ValueError(f"No extraction schema for provider: {provider}")
-    return json.loads(path.read_text())
-
-
-def call_llm(provider, model, prompt, pdf_base64, output_schema=None):
-    if provider == PROVIDER_ANTHROPIC:
-        return call_claude(prompt, model=model, pdf_base64=pdf_base64, output_schema=output_schema)
-    if provider == PROVIDER_GOOGLE:
-        return call_gemini(prompt, model=model, pdf_base64=pdf_base64, output_schema=output_schema)
-    raise ValueError(f"Unknown provider: {provider}")
 
 
 def get_active_models(config, role):
@@ -124,7 +102,7 @@ def build_output_filename(file_name, model, suffix):
 
 def save_extraction_results(file_name, model, raw_response):
     raw_filename = build_output_filename(file_name, model, "raw.txt")
-    write_local_json(raw_filename, raw_response)
+    write_output(raw_filename, raw_response)
     logger.info("Saved raw response: %s", raw_filename)
 
     try:
@@ -140,7 +118,7 @@ def save_extraction_results(file_name, model, raw_response):
         logger.warning("Schema validation failed: %s", e.message)
 
     parsed_filename = build_output_filename(file_name, model, "extraction.json")
-    write_local_json(parsed_filename, parsed)
+    write_output(parsed_filename, parsed)
     logger.info("Saved parsed extraction: %s", parsed_filename)
     return parsed
 
@@ -164,17 +142,16 @@ def run_extraction(file_id, file_name):
     else:
         logger.info("No embedded text layer found (image-based/scanned PDF)")
 
-    base_prompt = load_doc(EXTRACTION_PROMPT_ENV_VAR)
+    base_prompt = load_doc("EXTRACTION_PROMPT_DOC_ID")
     prompt = build_extraction_prompt(base_prompt, extracted_text)
     logger.info("Extraction prompt assembled (%d characters)", len(prompt))
 
     for model_config in active_models:
         provider = model_config["provider"]
         model = model_config["model"]
-        output_schema = load_extraction_schema(provider)
         logger.info("Calling %s/%s for extraction", provider, model)
         try:
-            raw_response = call_llm(provider, model, prompt, pdf_base64, output_schema=output_schema)
+            raw_response = call_llm(provider, model, prompt, pdf_base64)
             logger.info("Received response from %s/%s (%d characters)", provider, model, len(raw_response))
         except Exception:
             logger.exception("LLM call failed for %s/%s", provider, model)

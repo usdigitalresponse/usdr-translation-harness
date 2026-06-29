@@ -12,6 +12,7 @@ Watches a Google Drive input folder for new PDFs and calls the Extract Cloud Run
 - `auth/drive` — read PDFs and watch the input folder
 - `auth/spreadsheets` — read/write the processing log Google Sheet
 - `auth/script.external_request` — call the Extract Cloud Run function via `UrlFetchApp`
+- `auth/script.scriptapp` — create and manage time-based triggers
 - `openid` + `auth/userinfo.email` — generate an identity token for authenticated Cloud Run invocation
 
 ## Required Script Properties

@@ -66,6 +66,7 @@ Update these docs when an interface changes:
 - Extract is Python because it needs pdfplumber for text pre-extraction. Scanned/image-based PDFs won't have an embedded text layer, so the LLM falls back to vision-only for those.
 - Eval functions are Python (need sacrebleu/rouge-score)
 - Extract magic numbers and string literals into named constants; prefer stdlib over hand-rolled (e.g. `http.HTTPStatus` in Python, `http.STATUS_CODES` in Node)
+- When using external SDK methods (Google APIs, Anthropic SDK, etc.), verify against current documentation that the methods aren't deprecated. Standard library and stable frameworks don't need this check.
 - Apps Script runs on V8 — ES6 features (Set, Map, const/let, arrow functions) are available
 
 ## Testing
