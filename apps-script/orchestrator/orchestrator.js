@@ -8,6 +8,8 @@ var HEADER_ROWS = 1;
 
 var STATUS = {
   TRIGGERED: "triggered",
+  COMPLETE: "complete", // extract function sets rows to this when successful, so it is a valid status
+  EXTRACTED: "extracted", // extract function adds rows for extractions, so it is a valid status
   FAILED: "failed",
 };
 
@@ -18,6 +20,9 @@ var COL = {
   STATUS: 3,
   DURATION_MS: 4,
   ERROR_DETAIL: 5,
+  EXTRACTION_FILE_ID: 6,
+  PROVIDER: 7,
+  MODEL: 8,
 };
 
 var REQUIRED_CONFIG_KEYS = ["INPUT_FOLDER_ID", "EXTRACT_FUNCTION_URL", "PROCESSING_LOG_SHEET_ID"];
@@ -47,7 +52,7 @@ function getProcessedFileIds(sheetId) {
   var data = sheet.getDataRange().getValues();
   return new Set(
     data.slice(HEADER_ROWS)
-      .filter(function (row) { return row[COL.STATUS] === STATUS.TRIGGERED; })
+      .filter(function (row) { return row[COL.STATUS] !== STATUS.FAILED; })
       .map(function (row) { return row[COL.FILE_ID]; })
   );
 }

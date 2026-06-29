@@ -83,6 +83,7 @@ var VALID_PROPS = {
 
 var HEADER_ROW = [
   "fileId", "fileName", "processedAt", "status", "durationMs", "errorDetail",
+  "extractionFileId", "provider", "model",
 ];
 
 describe("getConfig", () => {
@@ -117,7 +118,7 @@ describe("getConfig", () => {
 });
 
 describe("getProcessedFileIds", () => {
-  test("returns set of file IDs with triggered status", () => {
+  test("returns set of file IDs with non-failed status", () => {
     var sheetMock = mockSheet([
       HEADER_ROW,
       ["file-1", "a.pdf", new Date(), "triggered", 100, ""],
@@ -131,6 +132,22 @@ describe("getProcessedFileIds", () => {
     expect(ids.has("file-1")).toBe(true);
     expect(ids.has("file-3")).toBe(true);
     expect(ids.has("file-2")).toBe(false);
+  });
+
+  test("includes extracted and complete statuses as processed", () => {
+    var sheetMock = mockSheet([
+      HEADER_ROW,
+      ["file-1", "a.pdf", new Date(), "complete", 100, ""],
+      ["file-2", "a.pdf", new Date(), "extracted", "", "", "drive-id-1", "anthropic", "claude-sonnet-4-6"],
+      ["file-3", "b.pdf", new Date(), "failed", 50, "HTTP 500"],
+    ]);
+
+    var ctx = loadOrchestrator({ SpreadsheetApp: sheetMock });
+    var ids = ctx.getProcessedFileIds("sheet-456");
+
+    expect(ids.has("file-1")).toBe(true);
+    expect(ids.has("file-2")).toBe(true);
+    expect(ids.has("file-3")).toBe(false);
   });
 
   test("returns empty set when sheet has only headers", () => {

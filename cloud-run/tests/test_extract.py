@@ -1,5 +1,6 @@
 import io
 import json
+import os
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -9,8 +10,10 @@ import pytest
 
 from extract.main import (
     extract, extract_text_with_pdfplumber, get_active_models,
-    load_pdf_bytes, build_extraction_prompt,
-    EXTRACT_ROLE,
+    load_pdf_bytes, build_extraction_prompt, publish_extraction_complete,
+    log_extraction_result, mark_triggered_complete,
+    EXTRACT_ROLE, PUBSUB_TOPIC_ENV_VAR, STATUS_EXTRACTED, STATUS_COMPLETE,
+    STATUS_TRIGGERED,
 )
 from extract.llm import call_llm, PROVIDER_ANTHROPIC, PROVIDER_GOOGLE
 
@@ -164,3 +167,148 @@ class TestExtractTextWithPdfplumber:
             text = extract_text_with_pdfplumber(io.BytesIO(b"fake"))
 
         assert text is None
+
+
+class TestPublishExtractionComplete:
+    SAMPLE_RESULTS = [
+        {
+            "driveFileId": "drive-id-1",
+            "fileName": "test_claude_extraction.json",
+            "model": "claude-sonnet-4-6",
+            "provider": "anthropic",
+            "parsed": {"blocks": []},
+        },
+    ]
+
+    @patch("extract.main.pubsub_v1.PublisherClient")
+    def test_publishes_message_per_result(self, mock_client_cls):
+        mock_publisher = MagicMock()
+        mock_future = MagicMock()
+        mock_future.result.return_value = "msg-123"
+        mock_publisher.publish.return_value = mock_future
+        mock_client_cls.return_value = mock_publisher
+
+        topic = "projects/my-project/topics/extraction-complete"
+        with patch.dict("os.environ", {PUBSUB_TOPIC_ENV_VAR: topic}):
+            publish_extraction_complete("source-file-id", "test.pdf", self.SAMPLE_RESULTS)
+
+        mock_publisher.publish.assert_called_once()
+        call_args = mock_publisher.publish.call_args
+        assert call_args[0][0] == topic
+        message = json.loads(call_args[0][1])
+        assert message["sourceFileId"] == "source-file-id"
+        assert message["sourceFileName"] == "test.pdf"
+        assert message["extractionFileId"] == "drive-id-1"
+        assert message["model"] == "claude-sonnet-4-6"
+        assert message["provider"] == "anthropic"
+
+    @patch("extract.main.pubsub_v1.PublisherClient")
+    def test_skips_publish_when_no_topic(self, mock_client_cls):
+        with patch.dict("os.environ", {}, clear=False):
+            os.environ.pop(PUBSUB_TOPIC_ENV_VAR, None)
+            publish_extraction_complete("source-file-id", "test.pdf", self.SAMPLE_RESULTS)
+
+        mock_client_cls.assert_not_called()
+
+    @patch("extract.main.pubsub_v1.PublisherClient")
+    def test_publishes_multiple_results(self, mock_client_cls):
+        mock_publisher = MagicMock()
+        mock_future = MagicMock()
+        mock_future.result.return_value = "msg-456"
+        mock_publisher.publish.return_value = mock_future
+        mock_client_cls.return_value = mock_publisher
+
+        two_results = self.SAMPLE_RESULTS + [{
+            "driveFileId": "drive-id-2",
+            "fileName": "test_gemini_extraction.json",
+            "model": "gemini-3.5-flash",
+            "provider": "google",
+            "parsed": {"blocks": []},
+        }]
+
+        topic = "projects/my-project/topics/extraction-complete"
+        with patch.dict("os.environ", {PUBSUB_TOPIC_ENV_VAR: topic}):
+            publish_extraction_complete("source-file-id", "test.pdf", two_results)
+
+        assert mock_publisher.publish.call_count == 2
+
+
+class TestLogExtractionResult:
+    SAMPLE_RESULT = {
+        "driveFileId": "extraction-drive-id",
+        "fileName": "test_extraction.json",
+        "parsed": {"blocks": []},
+        "model": "claude-sonnet-4-6",
+        "provider": "anthropic",
+    }
+
+    @patch("extract.main.build")
+    @patch("extract.main.google.auth.default", return_value=(MagicMock(), "project-id"))
+    def test_appends_row_with_extraction_details(self, mock_auth, mock_build):
+        mock_service = MagicMock()
+        mock_build.return_value = mock_service
+        mock_values = mock_service.spreadsheets.return_value.values.return_value
+
+        with patch.dict("os.environ", {"PROCESSING_LOG_SHEET_ID": "sheet-123"}):
+            log_extraction_result("abc123", "test.pdf", self.SAMPLE_RESULT)
+
+        mock_values.append.assert_called_once()
+        call_kwargs = mock_values.append.call_args[1]
+        assert call_kwargs["range"] == "ProcessingLog!A:I"
+        row = call_kwargs["body"]["values"][0]
+        assert row[0] == "abc123"
+        assert row[1] == "test.pdf"
+        assert row[3] == STATUS_EXTRACTED
+        assert row[6] == "extraction-drive-id"
+        assert row[7] == "anthropic"
+        assert row[8] == "claude-sonnet-4-6"
+
+    def test_skips_when_no_sheet_id(self):
+        with patch.dict("os.environ", {}, clear=False):
+            os.environ.pop("PROCESSING_LOG_SHEET_ID", None)
+            log_extraction_result("abc123", "test.pdf", self.SAMPLE_RESULT)
+
+
+class TestMarkTriggeredComplete:
+    @patch("extract.main._get_sheets_service")
+    def test_updates_triggered_row_to_complete(self, mock_get_service):
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_values = mock_service.spreadsheets.return_value.values.return_value
+        mock_values.get.return_value.execute.return_value = {
+            "values": [
+                ["fileId", "fileName", "processedAt", "status"],
+                ["abc123", "test.pdf", "6/29/2026 11:00", STATUS_TRIGGERED],
+                ["other-id", "other.pdf", "6/29/2026 11:05", STATUS_TRIGGERED],
+            ]
+        }
+
+        with patch.dict("os.environ", {"PROCESSING_LOG_SHEET_ID": "sheet-123"}):
+            mark_triggered_complete("abc123")
+
+        mock_values.update.assert_called_once()
+        call_kwargs = mock_values.update.call_args[1]
+        assert call_kwargs["range"] == "ProcessingLog!D2"
+        assert call_kwargs["body"]["values"] == [[STATUS_COMPLETE]]
+
+    @patch("extract.main._get_sheets_service")
+    def test_skips_non_triggered_rows(self, mock_get_service):
+        mock_service = MagicMock()
+        mock_get_service.return_value = mock_service
+        mock_values = mock_service.spreadsheets.return_value.values.return_value
+        mock_values.get.return_value.execute.return_value = {
+            "values": [
+                ["fileId", "fileName", "processedAt", "status"],
+                ["abc123", "test.pdf", "6/29/2026 11:00", STATUS_EXTRACTED],
+            ]
+        }
+
+        with patch.dict("os.environ", {"PROCESSING_LOG_SHEET_ID": "sheet-123"}):
+            mark_triggered_complete("abc123")
+
+        mock_values.update.assert_not_called()
+
+    def test_skips_when_no_sheet_id(self):
+        with patch.dict("os.environ", {}, clear=False):
+            os.environ.pop("PROCESSING_LOG_SHEET_ID", None)
+            mark_triggered_complete("abc123")

@@ -12,14 +12,22 @@ from pathlib import Path
 
 import functions_framework
 import google.auth
+from google.cloud import pubsub_v1
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import pdfplumber
 
 from llm import call_llm
-from loaders import load_config, load_doc, write_output, DRIVE_API_VERSION
+from loaders import load_config, load_doc, write_output, DRIVE_API_VERSION, SHEETS_API_VERSION
 
 EXTRACT_ROLE = "extract"
+PUBSUB_TOPIC_ENV_VAR = "PUBSUB_TOPIC_EXTRACTION_COMPLETE"
+PROCESSING_LOG_SHEET_NAME = "ProcessingLog"
+STATUS_EXTRACTED = "extracted"
+STATUS_COMPLETE = "complete"
+STATUS_TRIGGERED = "triggered"
+COL_STATUS = 3
+HEADER_ROWS = 1
 SCHEMA_DIR = Path(__file__).resolve().parent
 MARKDOWN_JSON_PATTERN = re.compile(r"```(?:json)?\s*\n(.*?)\n\s*```", re.DOTALL)
 
@@ -118,9 +126,102 @@ def save_extraction_results(file_name, model, raw_response):
         logger.warning("Schema validation failed: %s", e.message)
 
     parsed_filename = build_output_filename(file_name, model, "extraction.json")
-    write_output(parsed_filename, parsed)
+    drive_file_id = write_output(parsed_filename, parsed)
     logger.info("Saved parsed extraction: %s", parsed_filename)
-    return parsed
+    return {"parsed": parsed, "driveFileId": drive_file_id, "fileName": parsed_filename}
+
+
+def _get_sheets_service():
+    credentials, _ = google.auth.default()
+    return build("sheets", SHEETS_API_VERSION, credentials=credentials)
+
+
+def mark_triggered_complete(file_id):
+    sheet_id = os.environ.get("PROCESSING_LOG_SHEET_ID")
+    if not sheet_id:
+        return
+
+    service = _get_sheets_service()
+    result = (
+        service.spreadsheets()
+        .values()
+        .get(spreadsheetId=sheet_id, range=f"{PROCESSING_LOG_SHEET_NAME}!A:D")
+        .execute()
+    )
+    rows = result.get("values", [])
+
+    for i, row in enumerate(rows[HEADER_ROWS:], start=HEADER_ROWS + 1):
+        if len(row) > COL_STATUS and row[0] == file_id and row[COL_STATUS] == STATUS_TRIGGERED:
+            service.spreadsheets().values().update(
+                spreadsheetId=sheet_id,
+                range=f"{PROCESSING_LOG_SHEET_NAME}!D{i}",
+                valueInputOption="RAW",
+                body={"values": [[STATUS_COMPLETE]]},
+            ).execute()
+            logger.info("Marked triggered row %d as complete for %s", i, file_id)
+            return
+
+    logger.warning("No triggered row found for %s — cannot mark complete", file_id)
+
+
+def log_extraction_result(file_id, file_name, extraction_result):
+    sheet_id = os.environ.get("PROCESSING_LOG_SHEET_ID")
+    if not sheet_id:
+        logger.info("No PROCESSING_LOG_SHEET_ID set — skipping log update")
+        return
+
+    service = _get_sheets_service()
+
+    completed_at = datetime.now().strftime("%m/%d/%Y %H:%M")
+    # Column order must match orchestrator.js COL layout (A–I in ProcessingLog sheet)
+    row = [
+        file_id,
+        file_name,
+        completed_at,
+        STATUS_EXTRACTED,
+        "",
+        "",
+        extraction_result["driveFileId"],
+        extraction_result["provider"],
+        extraction_result["model"],
+    ]
+
+    service.spreadsheets().values().append(
+        spreadsheetId=sheet_id,
+        range=f"{PROCESSING_LOG_SHEET_NAME}!A:I",
+        valueInputOption="RAW",
+        body={"values": [row]},
+    ).execute()
+    logger.info(
+        "Logged extraction result for %s/%s to processing log",
+        extraction_result["provider"], extraction_result["model"],
+    )
+
+
+def publish_extraction_complete(file_id, file_name, extraction_results):
+    topic_name = os.environ.get(PUBSUB_TOPIC_ENV_VAR)
+    if not topic_name:
+        logger.info("No %s set — skipping Pub/Sub publish", PUBSUB_TOPIC_ENV_VAR)
+        return
+
+    publisher = pubsub_v1.PublisherClient()
+    for result in extraction_results:
+        message = {
+            "sourceFileId": file_id,
+            "sourceFileName": file_name,
+            "extractionFileId": result["driveFileId"],
+            "extractionFileName": result["fileName"],
+            "model": result["model"],
+            "provider": result["provider"],
+        }
+        data = json.dumps(message).encode("utf-8")
+        future = publisher.publish(topic_name, data)
+        PUBLISH_TIMEOUT_SECONDS = 60
+        message_id = future.result(timeout=PUBLISH_TIMEOUT_SECONDS)
+        logger.info(
+            "Published extraction-complete for %s/%s (message %s)",
+            result["provider"], result["model"], message_id,
+        )
 
 
 def run_extraction(file_id, file_name):
@@ -146,6 +247,7 @@ def run_extraction(file_id, file_name):
     prompt = build_extraction_prompt(base_prompt, extracted_text)
     logger.info("Extraction prompt assembled (%d characters)", len(prompt))
 
+    extraction_results = []
     for model_config in active_models:
         provider = model_config["provider"]
         model = model_config["model"]
@@ -157,9 +259,19 @@ def run_extraction(file_id, file_name):
             logger.exception("LLM call failed for %s/%s", provider, model)
             continue
 
-        save_extraction_results(file_name, model, raw_response)
+        result = save_extraction_results(file_name, model, raw_response)
+        if result:
+            enriched = {**result, "model": model, "provider": provider}
+            extraction_results.append(enriched)
+            try:
+                log_extraction_result(file_id, file_name, enriched)
+            except Exception:
+                logger.exception("Failed to log extraction result to processing sheet")
 
-    # TODO: Publish completion message to PUBSUB_TOPIC_EXTRACTION_COMPLETE
+    if extraction_results:
+        mark_triggered_complete(file_id)
+
+    publish_extraction_complete(file_id, file_name, extraction_results)
 
 
 @functions_framework.http
