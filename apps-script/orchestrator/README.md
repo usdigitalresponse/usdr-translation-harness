@@ -23,13 +23,24 @@ Set these in the Script Editor under Project Settings → Script Properties:
 |---|---|
 | `INPUT_FOLDER_ID` | Google Drive folder ID the orchestrator watches for new PDFs |
 | `EXTRACT_FUNCTION_URL` | Deployed Extract Cloud Run function URL |
-| `PROCESSING_LOG_SHEET_ID` | Google Sheet ID for the processing log (must have a tab named `ProcessingLog` with headers: `fileId`, `fileName`, `processedAt`, `status`, `durationMs`, `errorDetail`) |
+| `PROCESSING_LOG_SHEET_ID` | Google Sheet ID for the processing log (must have a tab named `ProcessingLog` with headers: `fileId`, `fileName`, `processedAt`, `status`, `durationMs`, `errorDetail`, `extractionFileId`, `provider`, `model`). Share with the Cloud Run service account as Editor so Extract can write back to it. |
+
+## Processing log statuses
+
+| Status | Written by | Meaning |
+|---|---|---|
+| `triggered` | Orchestrator | Extract function was called; processing in background |
+| `complete` | Extract | Orchestrator's row updated after all extractions finish |
+| `extracted` | Extract | One row per model extraction with the output file ID |
+| `failed` | Orchestrator | Extract function call returned an error |
+
+When multiple extract models are active, a single PDF produces multiple `extracted` rows (one per model). A saved filter view sorted by `fileId` then `processedAt` groups related rows together.
 
 ## Retry behavior
 
-Files that failed extraction are automatically retried on subsequent trigger runs. The orchestrator skips any file that has at least one log entry with status `triggered` — files that only have `failed` entries (or no log entry at all) will be re-processed.
+Files that failed extraction are automatically retried on subsequent trigger runs. The orchestrator skips any file that has at least one non-`failed` log entry — files that only have `failed` entries (or no log entry at all) will be re-processed.
 
-To stop retrying a specific file, manually edit its status in the ProcessingLog sheet to `triggered`. To stop retrying all failed files, filter the sheet for `failed` rows and bulk-update them to `triggered`.
+To stop retrying a specific file, manually edit its status in the ProcessingLog sheet to `complete`. To stop retrying all failed files, filter the sheet for `failed` rows and bulk-update them to `complete`.
 
 > **TODO (confirm with Maryland):** Verify this automatic retry behavior is acceptable, or whether they'd prefer a manual retry workflow.
 
