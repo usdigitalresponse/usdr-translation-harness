@@ -46,26 +46,27 @@ Update these docs when an interface changes:
 - `scratch.cloud-run-architecture.md` — internal architecture working doc
 - `apps-script/orchestrator/README.md`
 - `apps-script/editor-addon/README.md`
-- Cloud Run function stubs (`cloud-run/*/index.js`)
+- Cloud Run function entrypoints (`cloud-run/*/main.py` or `cloud-run/*/index.js`)
 
 ## Directory structure
 
 - `apps-script/orchestrator/` — Apps Script project: Drive folder watcher, processing log
 - `apps-script/editor-addon/` — Apps Script project: editor add-on for reviewer feedback
-- `cloud-run/extract/` — Cloud Run function: PDF extraction via LLM
+- `cloud-run/extract/` — Cloud Run function: PDF extraction via LLM (Python; uses pdfplumber for text pre-extraction)
 - `cloud-run/translate/` — Cloud Run function: translation via LLM
 - `cloud-run/capture-feedback/` — Cloud Run function: reviewer feedback capture
 - `cloud-run/eval/quality/` — Eval function: LLM-as-judge scoring (Python)
 - `cloud-run/eval/drift/` — Eval function: BLEU/ROUGE + LLM-as-judge (Python)
-- `cloud-run/shared/` — Local-dev-only shared code (LLM wrappers, loaders)
 - `cloud-run/tests/` — Unit tests for Cloud Run functions
 - `apps-script/tests/` — Unit tests for Apps Script projects
 
 ## Code style
 
-- Apps Script and Cloud Run core pipeline are JavaScript
+- Default to JavaScript for Cloud Run functions — Maryland stakeholders are more familiar with JS
+- Extract is Python because it needs pdfplumber for text pre-extraction. Scanned/image-based PDFs won't have an embedded text layer, so the LLM falls back to vision-only for those.
 - Eval functions are Python (need sacrebleu/rouge-score)
-- Extract magic numbers and string literals into named constants
+- Extract magic numbers and string literals into named constants; prefer stdlib over hand-rolled (e.g. `http.HTTPStatus` in Python, `http.STATUS_CODES` in Node)
+- When using external SDK methods (Google APIs, Anthropic SDK, etc.), verify against current documentation that the methods aren't deprecated. Standard library and stable frameworks don't need this check.
 - Apps Script runs on V8 — ES6 features (Set, Map, const/let, arrow functions) are available
 
 ## Testing
@@ -77,5 +78,4 @@ Update these docs when an interface changes:
 ## Deployment
 
 - Apps Script: `clasp push` from each `apps-script/` subdirectory
-- Cloud Run: see `.claude/skills/cloud-run-functions/` for deploy recipes
-- Shared code is bundled into function directories at deploy time, not deployed separately
+- Cloud Run: each function is self-contained and deployable directly from its directory

@@ -10,6 +10,7 @@ The Cloud Run functions run as a dedicated GCP service account. This document de
 |---|---|
 | Pub/Sub Publisher | Extract publishes completion messages to Pub/Sub |
 | Eventarc Event Receiver | Translate receives Pub/Sub events via Eventarc |
+| Secret Manager Secret Accessor | All functions read API keys from Secret Manager |
 
 ### Service-account-level
 
@@ -40,7 +41,9 @@ The service account is shared on these Google Workspace resources via the standa
 | Evaluation rubric doc | Eval Quality, Eval Drift — LLM-as-judge scoring rubric |
 | Golden set sheet | Eval Drift — reference translations for regression detection |
 
-### Editor access
+### Editor access (Shared Drive)
+
+Service accounts cannot own files in regular Google Drive (no storage quota). Output folders must be in a Shared Drive, with the service account added as a Content Manager.
 
 | Resource | Used by |
 |---|---|

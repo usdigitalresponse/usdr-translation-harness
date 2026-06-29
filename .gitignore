@@ -1,17 +1,21 @@
 .env
+env.yaml
 __pycache__/
 *.pyc
 .venv/
-# Ignore .claude internals but commit skills so contributors have dev tooling.
-# Revisit if .claude/skills grows to include anything not suitable for a public repo.
+# Ignore .claude internals, opt in shared skills individually.
 .claude/*
 !.claude/skills/
+.claude/skills/*
+!.claude/skills/cloud-run-functions/
+!.claude/skills/apps-script/
+!.claude/skills/update-setup-skill/
 
 .DS_Store
 scratch.*
 node_modules/
 cloud-run/.venv/
-cloud-run/shared/fixtures/output/
+cloud-run/*/fixtures/output/
 
 # clasp credentials (not the project config .clasp.json, which should be committed)
 .clasprc.json
