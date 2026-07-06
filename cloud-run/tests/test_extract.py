@@ -11,9 +11,8 @@ import pytest
 from extract.main import (
     extract, extract_text_with_pdfplumber, get_active_models,
     load_pdf_bytes, build_extraction_prompt, publish_extraction_complete,
-    log_extraction_result, mark_triggered_complete,
-    EXTRACT_ROLE, PUBSUB_TOPIC_ENV_VAR, STATUS_EXTRACTED, STATUS_COMPLETE,
-    STATUS_TRIGGERED,
+    log_extraction_result,
+    EXTRACT_ROLE, PUBSUB_TOPIC_ENV_VAR, STATUS_EXTRACTED,
 )
 from extract.llm import call_llm, PROVIDER_ANTHROPIC, PROVIDER_GOOGLE
 
@@ -269,46 +268,3 @@ class TestLogExtractionResult:
             log_extraction_result("abc123", "test.pdf", self.SAMPLE_RESULT)
 
 
-class TestMarkTriggeredComplete:
-    @patch("extract.main._get_sheets_service")
-    def test_updates_triggered_row_to_complete(self, mock_get_service):
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        mock_values = mock_service.spreadsheets.return_value.values.return_value
-        mock_values.get.return_value.execute.return_value = {
-            "values": [
-                ["fileId", "fileName", "processedAt", "status"],
-                ["abc123", "test.pdf", "6/29/2026 11:00", STATUS_TRIGGERED],
-                ["other-id", "other.pdf", "6/29/2026 11:05", STATUS_TRIGGERED],
-            ]
-        }
-
-        with patch.dict("os.environ", {"PROCESSING_LOG_SHEET_ID": "sheet-123"}):
-            mark_triggered_complete("abc123")
-
-        mock_values.update.assert_called_once()
-        call_kwargs = mock_values.update.call_args[1]
-        assert call_kwargs["range"] == "ProcessingLog!D2"
-        assert call_kwargs["body"]["values"] == [[STATUS_COMPLETE]]
-
-    @patch("extract.main._get_sheets_service")
-    def test_skips_non_triggered_rows(self, mock_get_service):
-        mock_service = MagicMock()
-        mock_get_service.return_value = mock_service
-        mock_values = mock_service.spreadsheets.return_value.values.return_value
-        mock_values.get.return_value.execute.return_value = {
-            "values": [
-                ["fileId", "fileName", "processedAt", "status"],
-                ["abc123", "test.pdf", "6/29/2026 11:00", STATUS_EXTRACTED],
-            ]
-        }
-
-        with patch.dict("os.environ", {"PROCESSING_LOG_SHEET_ID": "sheet-123"}):
-            mark_triggered_complete("abc123")
-
-        mock_values.update.assert_not_called()
-
-    def test_skips_when_no_sheet_id(self):
-        with patch.dict("os.environ", {}, clear=False):
-            os.environ.pop("PROCESSING_LOG_SHEET_ID", None)
-            mark_triggered_complete("abc123")
