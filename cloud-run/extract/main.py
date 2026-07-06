@@ -24,10 +24,6 @@ EXTRACT_ROLE = "extract"
 PUBSUB_TOPIC_ENV_VAR = "PUBSUB_TOPIC_EXTRACTION_COMPLETE"
 PROCESSING_LOG_SHEET_NAME = "ProcessingLog"
 STATUS_EXTRACTED = "extracted"
-STATUS_COMPLETE = "complete"
-STATUS_TRIGGERED = "triggered"
-COL_STATUS = 3
-HEADER_ROWS = 1
 SCHEMA_DIR = Path(__file__).resolve().parent
 MARKDOWN_JSON_PATTERN = re.compile(r"```(?:json)?\s*\n(.*?)\n\s*```", re.DOTALL)
 
@@ -136,34 +132,6 @@ def _get_sheets_service():
     return build("sheets", SHEETS_API_VERSION, credentials=credentials)
 
 
-def mark_triggered_complete(file_id):
-    sheet_id = os.environ.get("PROCESSING_LOG_SHEET_ID")
-    if not sheet_id:
-        return
-
-    service = _get_sheets_service()
-    result = (
-        service.spreadsheets()
-        .values()
-        .get(spreadsheetId=sheet_id, range=f"{PROCESSING_LOG_SHEET_NAME}!A:D")
-        .execute()
-    )
-    rows = result.get("values", [])
-
-    for i, row in enumerate(rows[HEADER_ROWS:], start=HEADER_ROWS + 1):
-        if len(row) > COL_STATUS and row[0] == file_id and row[COL_STATUS] == STATUS_TRIGGERED:
-            service.spreadsheets().values().update(
-                spreadsheetId=sheet_id,
-                range=f"{PROCESSING_LOG_SHEET_NAME}!D{i}",
-                valueInputOption="RAW",
-                body={"values": [[STATUS_COMPLETE]]},
-            ).execute()
-            logger.info("Marked triggered row %d as complete for %s", i, file_id)
-            return
-
-    logger.warning("No triggered row found for %s — cannot mark complete", file_id)
-
-
 def log_extraction_result(file_id, file_name, extraction_result):
     sheet_id = os.environ.get("PROCESSING_LOG_SHEET_ID")
     if not sheet_id:
@@ -267,9 +235,6 @@ def run_extraction(file_id, file_name):
                 log_extraction_result(file_id, file_name, enriched)
             except Exception:
                 logger.exception("Failed to log extraction result to processing sheet")
-
-    if extraction_results:
-        mark_triggered_complete(file_id)
 
     publish_extraction_complete(file_id, file_name, extraction_results)
 

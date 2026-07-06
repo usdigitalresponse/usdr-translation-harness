@@ -1,0 +1,74 @@
+{
+  "type": "object",
+  "properties": {
+    "original_text": {
+      "type": "string",
+      "description": "The source English text that was translated"
+    },
+    "translated_text": {
+      "type": "string",
+      "description": "The full Spanish translation"
+    },
+    "alt_translations": {
+      "type": "array",
+      "description": "Alternative translations considered for specific phrases",
+      "items": {
+        "type": "object",
+        "properties": {
+          "original_text": { "type": "string" },
+          "translation": { "type": "string" },
+          "alt_translation": { "type": "string" },
+          "alt_translation_rationale": { "type": "string" }
+        },
+        "required": ["original_text", "translation", "alt_translation", "alt_translation_rationale"]
+      }
+    },
+    "terms_flagged_for_clarification": {
+      "type": "array",
+      "description": "Terms or phrases flagged for clarification due to ambiguity or insufficient context",
+      "items": {
+        "type": "object",
+        "properties": {
+          "original_text": { "type": "string" },
+          "translation": { "type": "string" },
+          "needed_clarification": { "type": "string" }
+        },
+        "required": ["original_text", "translation", "needed_clarification"]
+      }
+    },
+    "back_translation_of_key_phrases": {
+      "type": "array",
+      "description": "Back-translations of key complex or high-stakes phrases to aid semantic review",
+      "items": {
+        "type": "object",
+        "properties": {
+          "original_text": { "type": "string" },
+          "translation": { "type": "string" },
+          "back_translation": { "type": "string" }
+        },
+        "required": ["original_text", "translation", "back_translation"]
+      }
+    },
+    "glossary_cross_check": {
+      "type": "array",
+      "description": "Notes on glossary adherence or deviation for key terms",
+      "items": {
+        "type": "object",
+        "properties": {
+          "original_text": { "type": "string" },
+          "translation": { "type": "string" },
+          "glossary_usage_or_deviation": { "type": "string" }
+        },
+        "required": ["original_text", "translation", "glossary_usage_or_deviation"]
+      }
+    }
+  },
+  "required": [
+    "original_text",
+    "translated_text",
+    "alt_translations",
+    "terms_flagged_for_clarification",
+    "back_translation_of_key_phrases",
+    "glossary_cross_check"
+  ]
+}

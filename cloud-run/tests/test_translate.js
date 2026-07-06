@@ -7,6 +7,11 @@ const {
   buildTranslationPrompt,
   GLOSSARY_COLUMNS,
 } = require("../translate/prompt-assembly.js");
+const {
+  loadTranslationSchema,
+  PROVIDER_ANTHROPIC,
+  PROVIDER_GOOGLE,
+} = require("../translate/llm.js");
 
 // --- Mock loaders so tests don't hit Google APIs ---
 
@@ -14,13 +19,29 @@ jest.mock("../translate/loaders.js", () => ({
   loadDoc: jest.fn(),
   loadSheet: jest.fn(),
   loadExtractionJson: jest.fn(),
+  loadConfig: jest.fn(),
+  writeOutput: jest.fn(),
 }));
 
 const {
   loadDoc,
   loadSheet,
   loadExtractionJson,
+  loadConfig,
+  writeOutput,
 } = require("../translate/loaders.js");
+
+// --- Mock llm so tests don't call real LLMs ---
+
+jest.mock("../translate/llm.js", () => {
+  const actual = jest.requireActual("../translate/llm.js");
+  return {
+    ...actual,
+    callLlm: jest.fn(),
+  };
+});
+
+const { callLlm } = require("../translate/llm.js");
 
 // --- parseInput ---
 
@@ -54,6 +75,10 @@ describe("parseInput", () => {
 // --- translate (HTTP handler) ---
 
 describe("translate", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   function mockRes() {
     return {
       status: jest.fn().mockReturnThis(),
@@ -107,13 +132,56 @@ describe("translate", () => {
     );
   });
 
-  test("assembles prompt and returns ok for valid direct call", async () => {
+  test("returns 500 when config loading fails", async () => {
+    loadExtractionJson.mockResolvedValue({ blocks: [] });
+    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadSheet.mockResolvedValue([]);
+    loadConfig.mockRejectedValue(new Error("Config sheet not found"));
+
+    const res = mockRes();
+    await translate(
+      { body: { extractionFileId: "file123", sourceFileName: "test.pdf" } },
+      res
+    );
+
+    expect(res.status).toHaveBeenCalledWith(StatusCodes.INTERNAL_SERVER_ERROR);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ error: expect.stringContaining("Failed to load model config") })
+    );
+  });
+
+  test("returns 500 when no active translate models in config", async () => {
+    loadExtractionJson.mockResolvedValue({ blocks: [] });
+    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadSheet.mockResolvedValue([]);
+    loadConfig.mockResolvedValue({
+      models: [{ role: "extract", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
+    });
+
+    const res = mockRes();
+    await translate(
+      { body: { extractionFileId: "file123", sourceFileName: "test.pdf" } },
+      res
+    );
+
+    expect(res.status).toHaveBeenCalledWith(StatusCodes.INTERNAL_SERVER_ERROR);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ error: expect.stringContaining("No active translate models") })
+    );
+  });
+
+  test("calls LLM and returns translations for valid direct call", async () => {
     const extractionJson = { blocks: [{ id: "b01", text: "Hello", translate: true }] };
     const basePrompt = "Translate the following. [Paste content to be translated in the area below]";
 
     loadExtractionJson.mockResolvedValue(extractionJson);
     loadDoc.mockResolvedValue(basePrompt);
     loadSheet.mockResolvedValue([]);
+    loadConfig.mockResolvedValue({
+      models: [{ role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
+    });
+    callLlm.mockResolvedValue('{"translated_text": "Hola"}');
+    writeOutput.mockResolvedValue("output-file-id");
 
     const res = mockRes();
     await translate(
@@ -121,28 +189,90 @@ describe("translate", () => {
       res
     );
 
+    expect(callLlm).toHaveBeenCalledWith("anthropic", "claude-sonnet-4-6", expect.any(String));
+    expect(writeOutput).toHaveBeenCalledWith("test_anthropic_claude-sonnet-4-6.json", '{"translated_text": "Hola"}');
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         status: "ok",
         extractionFileId: "file123",
         sourceFileName: "test.pdf",
-        promptLength: expect.any(Number),
+        translations: [
+          expect.objectContaining({
+            provider: "anthropic",
+            model: "claude-sonnet-4-6",
+            outputFileId: "output-file-id",
+          }),
+        ],
       })
     );
   });
 
-  test("assembles prompt from Pub/Sub envelope", async () => {
-    const extractionJson = { blocks: [] };
-    loadExtractionJson.mockResolvedValue(extractionJson);
+  test("runs multiple active models in parallel", async () => {
+    loadExtractionJson.mockResolvedValue({ blocks: [] });
     loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
     loadSheet.mockResolvedValue([]);
+    loadConfig.mockResolvedValue({
+      models: [
+        { role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true },
+        { role: "translate", provider: "google", model: "gemini-3.1-pro-preview", active: true },
+        { role: "translate", provider: "google", model: "gemini-3.5-flash", active: false },
+      ],
+    });
+    callLlm.mockResolvedValue('{"translated_text": "Hola"}');
+    writeOutput.mockResolvedValue("out-id");
+
+    const res = mockRes();
+    await translate(
+      { body: { extractionFileId: "file123", sourceFileName: "doc.pdf" } },
+      res
+    );
+
+    expect(callLlm).toHaveBeenCalledTimes(2);
+    const result = res.json.mock.calls[0][0];
+    expect(result.translations).toHaveLength(2);
+  });
+
+  test("reports per-model errors without failing the whole request", async () => {
+    loadExtractionJson.mockResolvedValue({ blocks: [] });
+    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadSheet.mockResolvedValue([]);
+    loadConfig.mockResolvedValue({
+      models: [
+        { role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true },
+        { role: "translate", provider: "google", model: "gemini-3.1-pro-preview", active: true },
+      ],
+    });
+    callLlm
+      .mockResolvedValueOnce('{"translated_text": "Hola"}')
+      .mockRejectedValueOnce(new Error("Gemini API key missing"));
+    writeOutput.mockResolvedValue("out-id");
+
+    const res = mockRes();
+    await translate(
+      { body: { extractionFileId: "file123", sourceFileName: "test.pdf" } },
+      res
+    );
+
+    const result = res.json.mock.calls[0][0];
+    expect(result.status).toBe("ok");
+    expect(result.translations[0].outputFileId).toBe("out-id");
+    expect(result.translations[1].error).toContain("Gemini API key missing");
+  });
+
+  test("handles Pub/Sub envelope end-to-end", async () => {
+    loadExtractionJson.mockResolvedValue({ blocks: [] });
+    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadSheet.mockResolvedValue([]);
+    loadConfig.mockResolvedValue({
+      models: [{ role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
+    });
+    callLlm.mockResolvedValue('{"translated_text": "Hola"}');
+    writeOutput.mockResolvedValue("out-id");
 
     const payload = {
       extractionFileId: "file123",
       sourceFileName: "test.pdf",
       sourceFileId: "src456",
-      model: "claude-sonnet-4-6",
-      provider: "anthropic",
     };
     const encoded = Buffer.from(JSON.stringify(payload)).toString("base64");
 
@@ -153,8 +283,6 @@ describe("translate", () => {
       expect.objectContaining({
         status: "ok",
         extractionFileId: "file123",
-        model: "claude-sonnet-4-6",
-        provider: "anthropic",
       })
     );
   });
@@ -369,5 +497,31 @@ describe("buildTranslationPrompt", () => {
 
     expect(contextIdx).toBeLessThan(extractionIdx);
     expect(extractionIdx).toBeLessThan(glossaryIdx);
+  });
+});
+
+// --- loadTranslationSchema ---
+
+describe("loadTranslationSchema", () => {
+  test("loads Claude schema with additionalProperties", () => {
+    const schema = loadTranslationSchema(PROVIDER_ANTHROPIC);
+    expect(schema.additionalProperties).toBe(false);
+    expect(schema.properties.translated_text).toBeDefined();
+  });
+
+  test("loads Gemini schema without additionalProperties", () => {
+    const schema = loadTranslationSchema(PROVIDER_GOOGLE);
+    expect(schema.additionalProperties).toBeUndefined();
+    expect(schema.properties.translated_text).toBeDefined();
+  });
+
+  test("throws for unknown provider", () => {
+    expect(() => loadTranslationSchema("openai")).toThrow("No translation schema for provider");
+  });
+
+  test("both schemas have the same required fields", () => {
+    const claude = loadTranslationSchema(PROVIDER_ANTHROPIC);
+    const gemini = loadTranslationSchema(PROVIDER_GOOGLE);
+    expect(claude.required).toEqual(gemini.required);
   });
 });

@@ -2,8 +2,11 @@ const functions = require("@google-cloud/functions-framework");
 const { StatusCodes } = require("http-status-codes");
 
 const { buildTranslationPrompt } = require("./prompt-assembly");
+const { callLlm } = require("./llm");
+const { loadConfig, writeOutput } = require("./loaders");
 
 const REQUIRED_FIELDS = ["extractionFileId", "sourceFileName"];
+const TRANSLATE_ROLE = "translate";
 
 /**
  * Normalize input from either a direct HTTP call or a Pub/Sub push envelope.
@@ -64,21 +67,63 @@ async function translate(req, res) {
     return;
   }
 
-  // TODO: Call LLM with prompt
-  // TODO: Store translation JSON to Drive
+  let config;
+  try {
+    config = await loadConfig();
+  } catch (err) {
+    res
+      .status(StatusCodes.INTERNAL_SERVER_ERROR)
+      .json({ error: "Failed to load model config: " + err.message });
+    return;
+  }
+
+  const activeModels = config.models.filter(
+    (m) => m.role === TRANSLATE_ROLE && m.active
+  );
+
+  if (!activeModels.length) {
+    res
+      .status(StatusCodes.INTERNAL_SERVER_ERROR)
+      .json({ error: "No active translate models in config" });
+    return;
+  }
+
+  const results = await Promise.allSettled(
+    activeModels.map(async (m) => {
+      const translationJson = await callLlm(m.provider, m.model, prompt);
+      const baseName = sourceFileName.replace(/\.pdf$/i, "");
+      const outputFileName = `${baseName}_${m.provider}_${m.model}.json`;
+      const fileId = await writeOutput(outputFileName, translationJson);
+      return {
+        provider: m.provider,
+        model: m.model,
+        outputFileId: fileId,
+        outputFileName,
+      };
+    })
+  );
+
+  const translations = results.map((r, i) => {
+    if (r.status === "fulfilled") {
+      return r.value;
+    }
+    return {
+      provider: activeModels[i].provider,
+      model: activeModels[i].model,
+      error: r.reason?.message || String(r.reason),
+    };
+  });
+
   // TODO: Create output Google Doc(s)
   // TODO: Set usdr_translation_review document property
 
   res.json({
     status: "ok",
-    message: "Translate function — prompt assembled",
     extractionFileId,
     sourceFileId,
     sourceFileName,
-    model,
-    provider,
     promptLength: prompt.length,
-    outputDocs: [],
+    translations,
   });
 }
 
