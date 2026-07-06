@@ -90,7 +90,9 @@ async function translate(req, res) {
 
   const results = await Promise.allSettled(
     activeModels.map(async (m) => {
+      console.log(`Calling ${m.provider} (${m.model})...`);
       const translationJson = await callLlm(m.provider, m.model, prompt);
+      console.log(`${m.provider} (${m.model}) complete, writing output...`);
       const baseName = sourceFileName.replace(/\.pdf$/i, "");
       const outputFileName = `${baseName}_${m.provider}_${m.model}.json`;
       const fileId = await writeOutput(outputFileName, translationJson);
@@ -114,11 +116,25 @@ async function translate(req, res) {
     };
   });
 
+  const succeeded = translations.filter((t) => !t.error);
+  const failed = translations.filter((t) => t.error);
+
+  if (!succeeded.length) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({
+      error: "All translation models failed",
+      extractionFileId,
+      sourceFileName,
+      translations,
+    });
+    return;
+  }
+
   // TODO: Create output Google Doc(s)
   // TODO: Set usdr_translation_review document property
 
+  const status = failed.length ? "partial" : "ok";
   res.json({
-    status: "ok",
+    status,
     extractionFileId,
     sourceFileId,
     sourceFileName,

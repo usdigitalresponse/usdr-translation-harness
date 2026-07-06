@@ -162,12 +162,13 @@ async function loadExtractionJson(fileId) {
  * when DRIVE_TRANSLATION_JSON_FOLDER_ID is not set.
  */
 async function writeOutput(filename, data) {
+  const content =
+    typeof data === "string" ? data : JSON.stringify(data, null, 2);
   const folderId = process.env.DRIVE_TRANSLATION_JSON_FOLDER_ID;
+
   if (!folderId) {
     const outDir = path.join(FIXTURES_DIR, "output");
     fs.mkdirSync(outDir, { recursive: true });
-    const content =
-      typeof data === "string" ? data : JSON.stringify(data, null, 2);
     fs.writeFileSync(path.join(outDir, filename), content);
     return null;
   }
@@ -176,8 +177,6 @@ async function writeOutput(filename, data) {
     scopes: ["https://www.googleapis.com/auth/drive.file"],
   });
   const drive = google.drive({ version: DRIVE_API_VERSION, auth });
-  const content =
-    typeof data === "string" ? data : JSON.stringify(data, null, 2);
 
   const { data: created } = await drive.files.create({
     requestBody: { name: filename, parents: [folderId] },

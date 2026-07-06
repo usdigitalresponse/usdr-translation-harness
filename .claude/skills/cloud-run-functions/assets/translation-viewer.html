@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Translation Viewer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; min-height: 100vh; background: #f5f5f5; }
+
+  .container { max-width: 960px; margin: 0 auto; padding: 24px 20px; }
+
+  /* Summary bar */
+  .summary {
+    background: #fff; border: 1px solid #e0e0e0; border-radius: 8px;
+    padding: 16px 20px; margin-bottom: 20px;
+    display: flex; gap: 24px; flex-wrap: wrap; font-size: 13px; color: #555;
+  }
+  .summary-stat { display: flex; align-items: center; gap: 6px; }
+  .summary-num { font-weight: 700; font-size: 18px; color: #333; }
+
+  /* Metadata */
+  .metadata {
+    background: #fff; border: 1px solid #e0e0e0; border-radius: 8px;
+    padding: 14px 20px; margin-bottom: 20px;
+    font-size: 13px; color: #555; line-height: 1.6;
+  }
+  .metadata strong { color: #333; }
+
+  /* Block pair */
+  .block-pair {
+    background: #fff; border: 1px solid #e0e0e0; border-radius: 8px;
+    margin-bottom: 12px; overflow: hidden;
+    transition: box-shadow 0.15s;
+  }
+  .block-pair:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+
+  .block-header {
+    display: flex; align-items: center; gap: 8px; padding: 10px 20px;
+    background: #fafafa; border-bottom: 1px solid #f0f0f0;
+    flex-wrap: wrap;
+  }
+  .block-id { font-weight: 700; font-size: 12px; color: #1a73e8; }
+  .badge {
+    font-size: 11px; padding: 2px 8px; border-radius: 10px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;
+  }
+  .badge-role { background: #e8f0fe; color: #1a73e8; }
+  .badge-emphasis { background: #fef7e0; color: #b06000; }
+  .badge-constraint { background: #fce8e6; color: #c5221f; font-size: 10px; }
+
+  .text-columns {
+    display: grid; grid-template-columns: 1fr 1fr; min-height: 0;
+  }
+  .text-col {
+    padding: 14px 20px; font-size: 14px; line-height: 1.6;
+    white-space: pre-wrap;
+  }
+  .text-col-en {
+    color: #444; border-right: 1px solid #f0f0f0;
+  }
+  .text-col-es {
+    color: #222;
+  }
+  .col-label {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.4px; margin-bottom: 6px;
+  }
+  .col-label-en { color: #8899aa; }
+  .col-label-es { color: #1a73e8; }
+
+  /* Annotations */
+  .block-annotations {
+    border-top: 1px solid #f0f0f0;
+  }
+  .annotation {
+    padding: 10px 20px; border-bottom: 1px solid #f8f8f8;
+    font-size: 13px; line-height: 1.5;
+  }
+  .annotation:last-child { border-bottom: none; }
+
+  .ann-type {
+    display: inline-block; font-size: 10px; padding: 2px 8px;
+    border-radius: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.3px; margin-right: 8px; vertical-align: middle;
+  }
+  .ann-alt { background: #e8f0fe; color: #1a73e8; }
+  .ann-flag { background: #fef7e0; color: #b06000; }
+  .ann-back { background: #f3e8fd; color: #7627bb; }
+  .ann-glossary-followed { background: #e6f4ea; color: #137333; }
+  .ann-glossary-deviated { background: #fce8e6; color: #c5221f; }
+
+  .ann-content { color: #333; }
+  .ann-detail { color: #666; font-size: 12px; margin-top: 4px; }
+
+  .ann-compare {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px;
+  }
+  .ann-compare-col {
+    font-size: 12px; padding: 8px 12px; border-radius: 4px; line-height: 1.5;
+  }
+  .ann-compare-original { background: #f0f4f8; color: #333; }
+  .ann-compare-back { background: #f8f0f8; color: #333; }
+  .ann-compare-label {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.3px; color: #999; margin-bottom: 3px;
+  }
+
+  .file-label {
+    font-size: 12px; color: #888; margin-bottom: 16px;
+  }
+</style>
+</head>
+<body>
+
+<div class="container" id="content"></div>
+
+<script>
+  function render(translation, extraction) {
+    const blocks = translation.blocks || [];
+    const meta = translation.metadata || {};
+    const extBlocks = {};
+    if (extraction && extraction.blocks) {
+      for (const b of extraction.blocks) {
+        extBlocks[b.id] = b;
+      }
+    }
+
+    let totalAlts = 0, totalFlags = 0, totalGloss = 0, totalBack = 0;
+    for (const b of blocks) {
+      totalAlts += (b.alt_translations || []).length;
+      totalFlags += (b.terms_flagged_for_clarification || []).length;
+      totalGloss += (b.glossary_cross_check || []).length;
+      totalBack += (b.back_translation_of_key_phrases || []).length;
+    }
+
+    let html = "";
+
+    // File label (set by launcher script)
+    html += `<div class="file-label" id="file-label"></div>`;
+
+    // Summary
+    html += `<div class="summary">
+      <div class="summary-stat"><span class="summary-num">${blocks.length}</span> blocks</div>
+      <div class="summary-stat"><span class="summary-num">${totalAlts}</span> alt translations</div>
+      <div class="summary-stat"><span class="summary-num">${totalFlags}</span> flagged terms</div>
+      <div class="summary-stat"><span class="summary-num">${totalBack}</span> back translations</div>
+      <div class="summary-stat"><span class="summary-num">${totalGloss}</span> glossary checks</div>
+    </div>`;
+
+    // Metadata
+    if (meta.overall_notes) {
+      html += `<div class="metadata">
+        <strong>${esc(meta.source_language || "")} &rarr; ${esc(meta.target_language || "")}</strong><br>
+        ${esc(meta.overall_notes)}
+      </div>`;
+    }
+
+    // Block pairs
+    for (const block of blocks) {
+      const ext = extBlocks[block.id] || {};
+
+      html += `<div class="block-pair">`;
+
+      // Header
+      html += `<div class="block-header">`;
+      html += `<span class="block-id">${esc(block.id)}</span>`;
+      if (ext.role) {
+        html += `<span class="badge badge-role">${esc(ext.role)}</span>`;
+      }
+      if (ext.visual_emphasis && ext.visual_emphasis !== "none") {
+        html += `<span class="badge badge-emphasis">${esc(ext.visual_emphasis)}</span>`;
+      }
+      if (ext.spatial && ext.spatial.space_constrained) {
+        html += `<span class="badge badge-constraint">space constrained</span>`;
+      }
+      html += `</div>`;
+
+      // Text columns
+      html += `<div class="text-columns">`;
+      html += `<div class="text-col text-col-en">
+        <div class="col-label col-label-en">English</div>
+        ${esc(block.original_text)}
+      </div>`;
+      html += `<div class="text-col text-col-es">
+        <div class="col-label col-label-es">Spanish</div>
+        ${esc(block.translated_text)}
+      </div>`;
+      html += `</div>`;
+
+      // Inline annotations
+      const annotations = [];
+
+      for (const item of (block.alt_translations || [])) {
+        annotations.push(`<div class="annotation">
+          <span class="ann-type ann-alt">Alt Translation</span>
+          <span class="ann-content"><strong>${esc(item.original_phrase)}</strong></span>
+          <div class="ann-detail">Primary: ${esc(item.primary_translation)}</div>
+          <div class="ann-detail">Alternative: ${esc(item.alt_translation)}</div>
+          ${item.rationale ? `<div class="ann-detail" style="font-style:italic;">${esc(item.rationale)}</div>` : ""}
+        </div>`);
+      }
+
+      for (const item of (block.terms_flagged_for_clarification || [])) {
+        annotations.push(`<div class="annotation">
+          <span class="ann-type ann-flag">Needs Clarification</span>
+          <span class="ann-content"><strong>${esc(item.original_phrase)}</strong> &rarr; ${esc(item.translation)}</span>
+          <div class="ann-detail">${esc(item.needed_clarification)}</div>
+        </div>`);
+      }
+
+      for (const item of (block.back_translation_of_key_phrases || [])) {
+        annotations.push(`<div class="annotation">
+          <span class="ann-type ann-back">Back Translation</span>
+          <div class="ann-compare">
+            <div class="ann-compare-col ann-compare-original">
+              <div class="ann-compare-label">Original</div>
+              ${esc(item.original_phrase)}
+            </div>
+            <div class="ann-compare-col ann-compare-back">
+              <div class="ann-compare-label">Back Translation</div>
+              ${esc(item.back_translation)}
+            </div>
+          </div>
+        </div>`);
+      }
+
+      for (const item of (block.glossary_cross_check || [])) {
+        const isFollowed = (item.status || "").toLowerCase() === "followed";
+        const typeClass = isFollowed ? "ann-glossary-followed" : "ann-glossary-deviated";
+        const label = isFollowed ? "Glossary Followed" : "Glossary Deviated";
+        annotations.push(`<div class="annotation">
+          <span class="ann-type ${typeClass}">${label}</span>
+          <span class="ann-content"><strong>${esc(item.term)}</strong> &rarr; ${esc(item.translation)}</span>
+          <div class="ann-detail">${esc(item.note)}</div>
+        </div>`);
+      }
+
+      if (annotations.length) {
+        html += `<div class="block-annotations">${annotations.join("")}</div>`;
+      }
+
+      html += `</div>`;
+    }
+
+    document.getElementById("content").innerHTML = html;
+  }
+
+  function esc(s) {
+    if (s == null) return "";
+    const d = document.createElement("div");
+    d.textContent = String(s);
+    return d.innerHTML;
+  }
+</script>
+
+</body>
+</html>

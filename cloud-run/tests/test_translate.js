@@ -232,6 +232,34 @@ describe("translate", () => {
     expect(result.translations).toHaveLength(2);
   });
 
+  test("returns 500 when all translation models fail", async () => {
+    loadExtractionJson.mockResolvedValue({ blocks: [] });
+    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadSheet.mockResolvedValue([]);
+    loadConfig.mockResolvedValue({
+      models: [
+        { role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true },
+        { role: "translate", provider: "google", model: "gemini-3.1-pro-preview", active: true },
+      ],
+    });
+    callLlm
+      .mockRejectedValueOnce(new Error("Anthropic rate limit"))
+      .mockRejectedValueOnce(new Error("Gemini API key missing"));
+
+    const res = mockRes();
+    await translate(
+      { body: { extractionFileId: "file123", sourceFileName: "test.pdf" } },
+      res
+    );
+
+    expect(res.status).toHaveBeenCalledWith(StatusCodes.INTERNAL_SERVER_ERROR);
+    const result = res.json.mock.calls[0][0];
+    expect(result.error).toBe("All translation models failed");
+    expect(result.translations).toHaveLength(2);
+    expect(result.translations[0].error).toContain("Anthropic rate limit");
+    expect(result.translations[1].error).toContain("Gemini API key missing");
+  });
+
   test("reports per-model errors without failing the whole request", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
     loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
@@ -254,7 +282,7 @@ describe("translate", () => {
     );
 
     const result = res.json.mock.calls[0][0];
-    expect(result.status).toBe("ok");
+    expect(result.status).toBe("partial");
     expect(result.translations[0].outputFileId).toBe("out-id");
     expect(result.translations[1].error).toContain("Gemini API key missing");
   });
@@ -506,13 +534,15 @@ describe("loadTranslationSchema", () => {
   test("loads Claude schema with additionalProperties", () => {
     const schema = loadTranslationSchema(PROVIDER_ANTHROPIC);
     expect(schema.additionalProperties).toBe(false);
-    expect(schema.properties.translated_text).toBeDefined();
+    expect(schema.properties.blocks).toBeDefined();
+    expect(schema.properties.metadata).toBeDefined();
   });
 
   test("loads Gemini schema without additionalProperties", () => {
     const schema = loadTranslationSchema(PROVIDER_GOOGLE);
     expect(schema.additionalProperties).toBeUndefined();
-    expect(schema.properties.translated_text).toBeDefined();
+    expect(schema.properties.blocks).toBeDefined();
+    expect(schema.properties.metadata).toBeDefined();
   });
 
   test("throws for unknown provider", () => {

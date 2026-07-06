@@ -8,7 +8,8 @@ const EXTRACTION_CONTEXT = fs.readFileSync(
   path.join(__dirname, "extraction-context.md"),
   "utf-8"
 );
-const GLOSSARY_SHEET_RANGE = "Glossary!A:I";
+const DEFAULT_GLOSSARY_SHEET_TAB = "Glossary";
+const GLOSSARY_SHEET_COLUMNS = "A:I";
 
 /**
  * Column headers in the FAMLI Glossary sheet, mapped to the keys returned
@@ -96,13 +97,19 @@ function formatGlossary(glossaryRows) {
  *   4. Glossary (terminology reference with approved translations and constraints)
  */
 async function buildTranslationPrompt(extractionFileId) {
+  console.log("Loading extraction JSON...");
   const extractionJson = await loadExtractionJson(extractionFileId);
+
+  console.log("Loading base prompt from Google Doc...");
   const basePrompt = await loadDoc("TRANSLATION_PROMPT_DOC_ID");
 
   let glossaryText = "";
   try {
-    const glossaryRows = await loadSheet("GLOSSARY_SHEET_ID", GLOSSARY_SHEET_RANGE);
+    console.log("Loading glossary...");
+    const tab = process.env.GLOSSARY_SHEET_TAB || DEFAULT_GLOSSARY_SHEET_TAB;
+    const glossaryRows = await loadSheet("GLOSSARY_SHEET_ID", `${tab}!${GLOSSARY_SHEET_COLUMNS}`);
     glossaryText = formatGlossary(glossaryRows);
+    console.log(`Glossary loaded (${glossaryRows.length} entries)`);
   } catch (err) {
     console.warn("Could not load glossary, proceeding without:", err.message);
   }
@@ -118,12 +125,14 @@ async function buildTranslationPrompt(extractionFileId) {
     prompt += `\n\n<glossary>\n${glossaryText}\n</glossary>`;
   }
 
+  console.log(`Prompt assembled (${prompt.length} chars)`);
   return prompt;
 }
 
 module.exports = {
   GLOSSARY_COLUMNS,
-  GLOSSARY_SHEET_RANGE,
+  DEFAULT_GLOSSARY_SHEET_TAB,
+  GLOSSARY_SHEET_COLUMNS,
   formatGlossaryEntry,
   formatGlossary,
   buildTranslationPrompt,

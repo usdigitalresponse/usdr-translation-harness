@@ -1,74 +1,98 @@
 {
   "type": "object",
   "properties": {
-    "original_text": {
-      "type": "string",
-      "description": "The source English text that was translated"
-    },
-    "translated_text": {
-      "type": "string",
-      "description": "The full Spanish translation"
-    },
-    "alt_translations": {
+    "blocks": {
       "type": "array",
-      "description": "Alternative translations considered for specific phrases",
+      "description": "One entry per translatable block from the extraction JSON, in the same order, keyed by block ID",
       "items": {
         "type": "object",
         "properties": {
-          "original_text": { "type": "string" },
-          "translation": { "type": "string" },
-          "alt_translation": { "type": "string" },
-          "alt_translation_rationale": { "type": "string" }
+          "id": {
+            "type": "string",
+            "description": "Block ID from the extraction JSON (e.g. b01, b02)"
+          },
+          "original_text": {
+            "type": "string",
+            "description": "The source English text of this block"
+          },
+          "translated_text": {
+            "type": "string",
+            "description": "The Spanish translation of this block"
+          },
+          "alt_translations": {
+            "type": "array",
+            "description": "Alternative translations considered for specific phrases in this block",
+            "items": {
+              "type": "object",
+              "properties": {
+                "original_phrase": { "type": "string" },
+                "primary_translation": { "type": "string" },
+                "alt_translation": { "type": "string" },
+                "rationale": { "type": "string" }
+              },
+              "required": ["original_phrase", "primary_translation", "alt_translation", "rationale"]
+            }
+          },
+          "terms_flagged_for_clarification": {
+            "type": "array",
+            "description": "Terms or phrases in this block flagged due to ambiguity or insufficient context",
+            "items": {
+              "type": "object",
+              "properties": {
+                "original_phrase": { "type": "string" },
+                "translation": { "type": "string" },
+                "needed_clarification": { "type": "string" }
+              },
+              "required": ["original_phrase", "translation", "needed_clarification"]
+            }
+          },
+          "back_translation_of_key_phrases": {
+            "type": "array",
+            "description": "Back-translations of complex or high-stakes phrases in this block to aid semantic review",
+            "items": {
+              "type": "object",
+              "properties": {
+                "original_phrase": { "type": "string" },
+                "translation": { "type": "string" },
+                "back_translation": { "type": "string" }
+              },
+              "required": ["original_phrase", "translation", "back_translation"]
+            }
+          },
+          "glossary_cross_check": {
+            "type": "array",
+            "description": "Notes on glossary adherence or deviation for terms in this block",
+            "items": {
+              "type": "object",
+              "properties": {
+                "term": { "type": "string" },
+                "translation": { "type": "string" },
+                "status": {
+                  "type": "string",
+                  "description": "Whether the glossary was followed or deviated from, e.g. 'followed' or 'deviated'"
+                },
+                "note": { "type": "string" }
+              },
+              "required": ["term", "translation", "status", "note"]
+            }
+          }
         },
-        "required": ["original_text", "translation", "alt_translation", "alt_translation_rationale"]
+        "required": ["id", "original_text", "translated_text", "alt_translations", "terms_flagged_for_clarification", "back_translation_of_key_phrases", "glossary_cross_check"]
       }
     },
-    "terms_flagged_for_clarification": {
-      "type": "array",
-      "description": "Terms or phrases flagged for clarification due to ambiguity or insufficient context",
-      "items": {
-        "type": "object",
-        "properties": {
-          "original_text": { "type": "string" },
-          "translation": { "type": "string" },
-          "needed_clarification": { "type": "string" }
-        },
-        "required": ["original_text", "translation", "needed_clarification"]
-      }
-    },
-    "back_translation_of_key_phrases": {
-      "type": "array",
-      "description": "Back-translations of key complex or high-stakes phrases to aid semantic review",
-      "items": {
-        "type": "object",
-        "properties": {
-          "original_text": { "type": "string" },
-          "translation": { "type": "string" },
-          "back_translation": { "type": "string" }
-        },
-        "required": ["original_text", "translation", "back_translation"]
-      }
-    },
-    "glossary_cross_check": {
-      "type": "array",
-      "description": "Notes on glossary adherence or deviation for key terms",
-      "items": {
-        "type": "object",
-        "properties": {
-          "original_text": { "type": "string" },
-          "translation": { "type": "string" },
-          "glossary_usage_or_deviation": { "type": "string" }
-        },
-        "required": ["original_text", "translation", "glossary_usage_or_deviation"]
-      }
+    "metadata": {
+      "type": "object",
+      "description": "Document-level translation metadata",
+      "properties": {
+        "source_language": { "type": "string" },
+        "target_language": { "type": "string" },
+        "overall_notes": {
+          "type": "string",
+          "description": "Any document-wide observations about the translation (e.g. register consistency, recurring challenges)"
+        }
+      },
+      "required": ["source_language", "target_language", "overall_notes"]
     }
   },
-  "required": [
-    "original_text",
-    "translated_text",
-    "alt_translations",
-    "terms_flagged_for_clarification",
-    "back_translation_of_key_phrases",
-    "glossary_cross_check"
-  ]
+  "required": ["blocks", "metadata"]
 }
