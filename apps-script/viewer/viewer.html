@@ -1,0 +1,991 @@
+<title>Translation Harness Viewer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; min-height: 100vh; background: #f5f5f5; }
+
+  /* Shared */
+  .hidden { display: none !important; }
+
+  /* Loading / landing / error views */
+  .center-view {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 80vh; color: #555; font-size: 15px; text-align: center; padding: 40px 20px;
+  }
+  .center-view h1 { font-size: 22px; color: #333; margin-bottom: 12px; }
+  .center-view p { margin-bottom: 16px; max-width: 480px; line-height: 1.6; }
+  .center-view input[type="text"] {
+    width: 400px; max-width: 90vw; padding: 10px 14px; font-size: 14px;
+    border: 1px solid #ccc; border-radius: 6px; margin-bottom: 12px;
+  }
+  .center-view button {
+    padding: 10px 24px; font-size: 14px; font-weight: 600;
+    background: #1a73e8; color: #fff; border: none; border-radius: 6px;
+    cursor: pointer;
+  }
+  .center-view button:hover { background: #1557b0; }
+  .spinner {
+    width: 32px; height: 32px; border: 3px solid #ddd; border-top-color: #1a73e8;
+    border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error-text { color: #c5221f; font-weight: 600; }
+
+  .input-group { margin-bottom: 12px; text-align: left; width: 480px; max-width: 90vw; }
+  .input-label {
+    display: block; font-size: 12px; font-weight: 600; color: #555;
+    margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.3px;
+  }
+  .input-label .required { color: #c5221f; }
+  .input-label .optional { color: #888; font-weight: 400; }
+  .input-group input[type="text"],
+  .input-group select {
+    width: 100%; padding: 10px 14px; font-size: 14px;
+    border: 1px solid #ccc; border-radius: 6px; margin-bottom: 0;
+    background: #fff;
+  }
+  .input-group select { cursor: pointer; }
+  .input-group select option { padding: 4px 0; }
+  #enrichment-inputs { width: 480px; max-width: 90vw; }
+  .type-detected {
+    font-size: 12px; color: #137333; font-weight: 600;
+    margin-bottom: 8px; text-align: left;
+  }
+  .picker-loading { font-size: 12px; color: #888; margin-top: 4px; }
+  .or-divider {
+    font-size: 12px; color: #999; margin: 4px 0; text-align: center;
+  }
+  .fallback-toggle {
+    font-size: 12px; color: #1a73e8; cursor: pointer; text-align: center;
+    margin-top: 4px;
+  }
+  .fallback-toggle:hover { text-decoration: underline; }
+
+  /* ========== Extraction view ========== */
+  #extraction-view {
+    height: 100vh; display: flex; flex-direction: column;
+  }
+  #extraction-view .toolbar {
+    display: flex; gap: 16px; align-items: center; padding: 12px 20px;
+    background: #fff; border-bottom: 1px solid #ddd; flex-shrink: 0;
+    font-size: 13px; color: #555;
+  }
+  #extraction-view .toolbar a {
+    color: #1a73e8; text-decoration: none; font-weight: 600;
+  }
+  #extraction-view .toolbar a:hover { text-decoration: underline; }
+
+  #extraction-view .panels { display: flex; flex: 1; overflow: hidden; }
+  #extraction-view .panel {
+    flex: 1; overflow: auto; padding: 0;
+    border-right: 1px solid #ddd;
+  }
+  #extraction-view .panel:last-child { border-right: none; }
+  #extraction-view .panel-placeholder {
+    display: flex; align-items: center; justify-content: center;
+    height: 100%; color: #999; font-size: 15px;
+  }
+
+  #extraction-view .json-panel { padding: 16px 20px; }
+
+  #extraction-view .page-meta {
+    background: #e8f0fe; border-radius: 6px; padding: 12px 16px; margin-bottom: 16px;
+    font-size: 13px; color: #333;
+  }
+  #extraction-view .page-meta strong { display: block; margin-bottom: 4px; font-size: 14px; }
+
+  #extraction-view .block {
+    background: #fff; border: 1px solid #e0e0e0; border-radius: 6px;
+    padding: 12px 16px; margin-bottom: 10px;
+    transition: box-shadow 0.15s;
+  }
+  #extraction-view .block:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+
+  #extraction-view .block-header {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+  #extraction-view .block-id { font-weight: 700; font-size: 13px; color: #1a73e8; }
+  #extraction-view .badge {
+    font-size: 11px; padding: 2px 8px; border-radius: 10px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;
+  }
+  #extraction-view .badge-role { background: #e8f0fe; color: #1a73e8; }
+  #extraction-view .badge-translate-true { background: #e6f4ea; color: #137333; }
+  #extraction-view .badge-translate-false { background: #fce8e6; color: #c5221f; }
+  #extraction-view .badge-emphasis-banner { background: #fef7e0; color: #b06000; }
+  #extraction-view .badge-emphasis-callout-box { background: #fef7e0; color: #b06000; }
+  #extraction-view .badge-emphasis-highlighted { background: #fef7e0; color: #b06000; }
+  #extraction-view .badge-group { background: #f3e8fd; color: #7627bb; }
+
+  #extraction-view .block-text {
+    font-size: 14px; line-height: 1.5; color: #222; margin-bottom: 8px;
+    white-space: pre-wrap;
+  }
+  #extraction-view .block-details {
+    font-size: 12px; color: #666; display: flex; flex-wrap: wrap; gap: 12px;
+  }
+  #extraction-view .block-details span { display: inline-flex; align-items: center; gap: 3px; }
+  #extraction-view .detail-label { font-weight: 600; color: #888; }
+  #extraction-view .block-notes {
+    margin-top: 6px; font-size: 12px; color: #8b6914;
+    background: #fffbea; padding: 6px 10px; border-radius: 4px;
+  }
+
+  #extraction-view .non-translatable {
+    background: #fff; border: 1px solid #e0e0e0; border-radius: 6px;
+    padding: 12px 16px; margin-bottom: 10px;
+  }
+  #extraction-view .nt-type { font-weight: 600; color: #c5221f; font-size: 12px; text-transform: uppercase; }
+  #extraction-view .nt-content { font-size: 14px; color: #222; margin: 4px 0; }
+  #extraction-view .nt-location { font-size: 12px; color: #666; }
+
+  #extraction-view .warnings {
+    background: #fce8e6; border-radius: 6px; padding: 12px 16px; margin-bottom: 16px;
+  }
+  #extraction-view .warnings strong { color: #c5221f; font-size: 14px; display: block; margin-bottom: 6px; }
+  #extraction-view .warnings li { font-size: 13px; color: #333; margin-left: 16px; margin-bottom: 4px; }
+
+  #extraction-view .section-heading {
+    font-size: 15px; font-weight: 700; color: #333; margin: 20px 0 10px;
+    border-bottom: 1px solid #e0e0e0; padding-bottom: 6px;
+  }
+  #extraction-view .divider { width: 4px; background: #ddd; cursor: col-resize; flex-shrink: 0; }
+  #extraction-view .divider:hover { background: #aaa; }
+
+  /* ========== Translation view ========== */
+  #translation-view {
+    height: 100vh; display: flex; flex-direction: column;
+  }
+  #translation-view .translation-toolbar {
+    display: flex; gap: 16px; align-items: center; padding: 12px 20px;
+    background: #fff; border-bottom: 1px solid #ddd; flex-shrink: 0;
+    font-size: 13px; color: #555;
+  }
+  #translation-view .translation-toolbar a {
+    color: #1a73e8; text-decoration: none; font-weight: 600;
+  }
+  #translation-view .translation-toolbar a:hover { text-decoration: underline; }
+
+  #translation-view .translation-panels { display: flex; flex: 1; overflow: hidden; }
+  #translation-view .translation-pdf-panel {
+    flex: 1; overflow: auto; padding: 0;
+    border-right: 1px solid #ddd;
+  }
+  #translation-view .translation-pdf-panel .panel-placeholder {
+    display: flex; align-items: center; justify-content: center;
+    height: 100%; color: #999; font-size: 15px;
+  }
+  #translation-view .translation-divider {
+    width: 4px; background: #ddd; cursor: col-resize; flex-shrink: 0;
+  }
+  #translation-view .translation-divider:hover { background: #aaa; }
+  #translation-view .translation-content-panel {
+    flex: 1; overflow: auto;
+  }
+
+  #translation-view .container { max-width: 960px; margin: 0 auto; padding: 24px 20px; }
+
+  #translation-view .summary {
+    background: #fff; border: 1px solid #e0e0e0; border-radius: 8px;
+    padding: 16px 20px; margin-bottom: 20px;
+    display: flex; gap: 24px; flex-wrap: wrap; font-size: 13px; color: #555;
+  }
+  #translation-view .summary-stat { display: flex; align-items: center; gap: 6px; }
+  #translation-view .summary-num { font-weight: 700; font-size: 18px; color: #333; }
+
+  #translation-view .metadata {
+    background: #fff; border: 1px solid #e0e0e0; border-radius: 8px;
+    padding: 14px 20px; margin-bottom: 20px;
+    font-size: 13px; color: #555; line-height: 1.6;
+  }
+  #translation-view .metadata strong { color: #333; }
+
+  #translation-view .block-pair {
+    background: #fff; border: 1px solid #e0e0e0; border-radius: 8px;
+    margin-bottom: 12px; overflow: hidden;
+    transition: box-shadow 0.15s;
+  }
+  #translation-view .block-pair:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+
+  #translation-view .block-header {
+    display: flex; align-items: center; gap: 8px; padding: 10px 20px;
+    background: #fafafa; border-bottom: 1px solid #f0f0f0;
+    flex-wrap: wrap;
+  }
+  #translation-view .block-id { font-weight: 700; font-size: 12px; color: #1a73e8; }
+  #translation-view .badge {
+    font-size: 11px; padding: 2px 8px; border-radius: 10px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;
+  }
+  #translation-view .badge-role { background: #e8f0fe; color: #1a73e8; }
+  #translation-view .badge-emphasis { background: #fef7e0; color: #b06000; }
+  #translation-view .badge-constraint { background: #fce8e6; color: #c5221f; font-size: 10px; }
+
+  #translation-view .text-columns {
+    display: grid; grid-template-columns: 1fr 1fr; min-height: 0;
+  }
+  #translation-view .text-col {
+    padding: 14px 20px; font-size: 14px; line-height: 1.6;
+    white-space: pre-wrap;
+  }
+  #translation-view .text-col-en { color: #444; border-right: 1px solid #f0f0f0; }
+  #translation-view .text-col-es { color: #222; }
+  #translation-view .col-label {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.4px; margin-bottom: 6px;
+  }
+  #translation-view .col-label-en { color: #8899aa; }
+  #translation-view .col-label-es { color: #1a73e8; }
+
+  #translation-view .block-annotations { border-top: 1px solid #f0f0f0; }
+  #translation-view .annotation {
+    padding: 10px 20px; border-bottom: 1px solid #f8f8f8;
+    font-size: 13px; line-height: 1.5;
+  }
+  #translation-view .annotation:last-child { border-bottom: none; }
+
+  #translation-view .ann-type {
+    display: inline-block; font-size: 10px; padding: 2px 8px;
+    border-radius: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.3px; margin-right: 8px; vertical-align: middle;
+  }
+  #translation-view .ann-alt { background: #e8f0fe; color: #1a73e8; }
+  #translation-view .ann-flag { background: #fef7e0; color: #b06000; }
+  #translation-view .ann-back { background: #f3e8fd; color: #7627bb; }
+  #translation-view .ann-glossary-followed { background: #e6f4ea; color: #137333; }
+  #translation-view .ann-glossary-deviated { background: #fce8e6; color: #c5221f; }
+
+  #translation-view .ann-content { color: #333; }
+  #translation-view .ann-detail { color: #666; font-size: 12px; margin-top: 4px; }
+
+  #translation-view .ann-compare {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px;
+  }
+  #translation-view .ann-compare-col {
+    font-size: 12px; padding: 8px 12px; border-radius: 4px; line-height: 1.5;
+  }
+  #translation-view .ann-compare-original { background: #f0f4f8; color: #333; }
+  #translation-view .ann-compare-back { background: #f8f0f8; color: #333; }
+  #translation-view .ann-compare-label {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.3px; color: #999; margin-bottom: 3px;
+  }
+
+  #translation-view .file-label {
+    font-size: 12px; color: #888; margin-bottom: 16px;
+  }
+</style>
+
+<!-- Loading view -->
+<div id="loading-view" class="center-view hidden">
+  <div class="spinner"></div>
+  <p>Loading file from Drive...</p>
+</div>
+
+<!-- Landing view (no fileId) -->
+<div id="landing-view" class="center-view hidden">
+  <h1>Translation Harness Viewer</h1>
+  <p>Select an extraction or translation JSON file to view.</p>
+  <div class="input-group">
+    <label class="input-label">JSON file <span class="required">*</span></label>
+    <select id="picker-json">
+      <option value="">Select a file...</option>
+      <optgroup id="picker-extraction-group" label="Extraction JSON"></optgroup>
+      <optgroup id="picker-translation-group" label="Translation JSON"></optgroup>
+    </select>
+    <div class="picker-loading" id="picker-json-loading">Loading files...</div>
+    <div class="fallback-toggle" onclick="toggleFallback()">Or paste a file ID</div>
+    <input type="text" id="manual-file-id" class="hidden" placeholder="File ID or Drive URL">
+  </div>
+  <div id="type-indicator" class="type-detected hidden"></div>
+  <div id="enrichment-inputs" class="hidden">
+    <div id="extraction-enrichment" class="hidden">
+      <div class="input-group">
+        <label class="input-label">Source PDF <span class="optional">(optional)</span></label>
+        <select id="picker-pdf">
+          <option value="">None</option>
+        </select>
+        <div class="picker-loading" id="picker-pdf-loading">Loading PDFs...</div>
+      </div>
+    </div>
+    <div id="translation-enrichment" class="hidden">
+      <div class="input-group">
+        <label class="input-label">Extraction JSON <span class="optional">(optional)</span></label>
+        <select id="picker-extraction-enrich">
+          <option value="">None</option>
+        </select>
+      </div>
+      <div class="input-group">
+        <label class="input-label">Source PDF <span class="optional">(optional)</span></label>
+        <select id="picker-translation-pdf">
+          <option value="">None</option>
+        </select>
+        <div class="picker-loading" id="picker-translation-pdf-loading">Loading PDFs...</div>
+      </div>
+    </div>
+  </div>
+  <button id="main-button" onclick="handleMainButton()">Next</button>
+</div>
+
+<!-- Error view -->
+<div id="error-view" class="center-view hidden">
+  <p class="error-text" id="error-message"></p>
+  <button onclick="showView('landing-view')">Try another file</button>
+</div>
+
+<!-- Extraction view -->
+<div id="extraction-view" class="hidden">
+  <div class="toolbar">
+    <span id="ext-file-info"></span>
+    <a id="pdf-link" href="#" target="_blank" class="hidden">Open source PDF</a>
+  </div>
+  <div class="panels">
+    <div class="panel" id="pdf-panel">
+      <div class="panel-placeholder" id="pdf-placeholder">No PDF linked</div>
+    </div>
+    <div class="divider" id="divider"></div>
+    <div class="panel" id="json-panel">
+      <div class="panel-placeholder">Loading...</div>
+    </div>
+  </div>
+</div>
+
+<!-- Translation view -->
+<div id="translation-view" class="hidden">
+  <div class="translation-toolbar">
+    <span id="trans-file-info"></span>
+    <a id="trans-pdf-link" href="#" target="_blank" class="hidden">Open PDF in new tab</a>
+  </div>
+  <div class="translation-panels">
+    <div class="translation-pdf-panel" id="trans-pdf-panel">
+      <div class="panel-placeholder">No PDF linked</div>
+    </div>
+    <div class="translation-divider" id="trans-divider"></div>
+    <div class="translation-content-panel">
+      <div class="container" id="translation-content"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  var FILE_ID = <?!= JSON.stringify(fileId) ?>;
+  var EXTRACTION_FILE_ID = <?!= JSON.stringify(extractionFileId) ?>;
+  var PDF_FILE_ID = <?!= JSON.stringify(pdfFileId) ?>;
+
+  var ALL_VIEWS = ['loading-view', 'landing-view', 'error-view', 'extraction-view', 'translation-view'];
+
+  function showView(id) {
+    for (var i = 0; i < ALL_VIEWS.length; i++) {
+      var el = document.getElementById(ALL_VIEWS[i]);
+      if (el) {
+        if (ALL_VIEWS[i] === id) {
+          el.classList.remove('hidden');
+        } else {
+          el.classList.add('hidden');
+        }
+      }
+    }
+  }
+
+  function showError(msg) {
+    document.getElementById('error-message').textContent = msg;
+    showView('error-view');
+  }
+
+  // ---- Auto-detection ----
+
+  function detectJsonType(data) {
+    if (!data || typeof data !== 'object') return 'unknown';
+    if (data.blocks && data.blocks.length > 0 && 'translated_text' in data.blocks[0]) {
+      return 'translation';
+    }
+    if (data.page_metadata || (data.blocks && data.blocks.length > 0 && 'text' in data.blocks[0])) {
+      return 'extraction';
+    }
+    return 'unknown';
+  }
+
+  // ---- Data loading ----
+
+  function loadFile(fileId) {
+    if (!fileId) {
+      showView('landing-view');
+      return;
+    }
+    showView('loading-view');
+    google.script.run
+      .withSuccessHandler(onDataLoaded)
+      .withFailureHandler(function(err) { showError('Failed to load file: ' + err.message); })
+      .fetchJsonFromDrive(fileId);
+  }
+
+  function onDataLoaded(data) {
+    var type = detectJsonType(data);
+    if (type === 'extraction') {
+      showView('extraction-view');
+      setupPdfPanel();
+      renderExtraction(data);
+      loadFileName('ext-file-info', FILE_ID);
+    } else if (type === 'translation') {
+      if (EXTRACTION_FILE_ID) {
+        google.script.run
+          .withSuccessHandler(function(extData) {
+            showView('translation-view');
+            setupTranslationPdfPanel();
+            renderTranslation(data, extData);
+            loadFileName('trans-file-info', FILE_ID);
+          })
+          .withFailureHandler(function() {
+            showView('translation-view');
+            setupTranslationPdfPanel();
+            renderTranslation(data, null);
+            loadFileName('trans-file-info', FILE_ID);
+          })
+          .fetchJsonFromDrive(EXTRACTION_FILE_ID);
+      } else {
+        showView('translation-view');
+        setupTranslationPdfPanel();
+        renderTranslation(data, null);
+        loadFileName('trans-file-info', FILE_ID);
+      }
+    } else {
+      showError('Unrecognized JSON format. Expected extraction or translation output.');
+    }
+  }
+
+  function loadFileName(elementId, fileId) {
+    if (!fileId) return;
+    google.script.run
+      .withSuccessHandler(function(name) {
+        document.getElementById(elementId).textContent = name;
+      })
+      .withFailureHandler(function() {})
+      .getFileName(fileId);
+  }
+
+  var detectedType = null;
+
+  function getSelectedFileId() {
+    var manualInput = document.getElementById('manual-file-id');
+    if (!manualInput.classList.contains('hidden') && manualInput.value.trim()) {
+      return parseFileId(manualInput.value.trim());
+    }
+    return document.getElementById('picker-json').value || null;
+  }
+
+  function handleMainButton() {
+    var fileId = getSelectedFileId();
+    if (!fileId) return;
+
+    if (!detectedType) {
+      probeAndShowEnrichment(fileId);
+    } else {
+      loadWithEnrichment(fileId);
+    }
+  }
+
+  function probeAndShowEnrichment(fileId) {
+    var btn = document.getElementById('main-button');
+    btn.textContent = 'Checking...';
+    btn.disabled = true;
+
+    google.script.run
+      .withSuccessHandler(function(data) {
+        var type = detectJsonType(data);
+        detectedType = type;
+
+        var indicator = document.getElementById('type-indicator');
+        var enrichment = document.getElementById('enrichment-inputs');
+        var extEnrich = document.getElementById('extraction-enrichment');
+        var transEnrich = document.getElementById('translation-enrichment');
+
+        if (type === 'extraction') {
+          indicator.textContent = 'Detected: Extraction JSON';
+          indicator.classList.remove('hidden');
+          enrichment.classList.remove('hidden');
+          extEnrich.classList.remove('hidden');
+          transEnrich.classList.add('hidden');
+        } else if (type === 'translation') {
+          indicator.textContent = 'Detected: Translation JSON';
+          indicator.classList.remove('hidden');
+          enrichment.classList.remove('hidden');
+          transEnrich.classList.remove('hidden');
+          extEnrich.classList.add('hidden');
+        } else {
+          loadWithEnrichment(fileId);
+          return;
+        }
+
+        btn.textContent = 'View';
+        btn.disabled = false;
+      })
+      .withFailureHandler(function(err) {
+        btn.textContent = 'Next';
+        btn.disabled = false;
+        showError('Failed to load file: ' + err.message);
+      })
+      .fetchJsonFromDrive(fileId);
+  }
+
+  function loadWithEnrichment(fileId) {
+    var params = 'fileId=' + encodeURIComponent(fileId);
+
+    var pdfPicker = document.getElementById('picker-pdf');
+    var translationPdfPicker = document.getElementById('picker-translation-pdf');
+    var extractionPicker = document.getElementById('picker-extraction-enrich');
+
+    var pdfVal = pdfPicker ? pdfPicker.value : '';
+    var translationPdfVal = translationPdfPicker ? translationPdfPicker.value : '';
+    var extractionVal = extractionPicker ? extractionPicker.value : '';
+
+    var pdfId = pdfVal || translationPdfVal;
+    if (pdfId) params += '&pdfFileId=' + encodeURIComponent(pdfId);
+    if (extractionVal) params += '&extractionFileId=' + encodeURIComponent(extractionVal);
+
+    showView('loading-view');
+    google.script.run
+      .withSuccessHandler(function(baseUrl) {
+        window.top.location.href = baseUrl + '?' + params;
+      })
+      .withFailureHandler(function() {
+        FILE_ID = fileId;
+        PDF_FILE_ID = pdfId || '';
+        EXTRACTION_FILE_ID = extractionVal || '';
+        loadFile(fileId);
+      })
+      .getWebAppUrl();
+  }
+
+  function parseFileId(input) {
+    var driveMatch = input.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (driveMatch) return driveMatch[1];
+    var openMatch = input.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (openMatch) return openMatch[1];
+    if (/^[a-zA-Z0-9_-]{10,}$/.test(input)) return input;
+    return null;
+  }
+
+  // ---- PDF panel ----
+
+  function setupPdfPanel() {
+    if (!PDF_FILE_ID) {
+      var panel = document.getElementById('pdf-panel');
+      panel.style.flex = '0 0 0';
+      document.getElementById('divider').style.display = 'none';
+      document.getElementById('json-panel').style.flex = '1';
+      return;
+    }
+
+    var previewUrl = 'https://drive.google.com/file/d/' + PDF_FILE_ID + '/preview';
+    var panel = document.getElementById('pdf-panel');
+    panel.innerHTML = '<iframe src="' + previewUrl + '" style="width:100%;height:100%;border:none"></iframe>';
+
+    var link = document.getElementById('pdf-link');
+    link.href = 'https://drive.google.com/file/d/' + PDF_FILE_ID + '/view';
+    link.classList.remove('hidden');
+  }
+
+  function setupTranslationPdfPanel() {
+    var panel = document.getElementById('trans-pdf-panel');
+    var divider = document.getElementById('trans-divider');
+    var contentPanel = document.querySelector('.translation-content-panel');
+
+    if (!PDF_FILE_ID) {
+      panel.style.flex = '0 0 0';
+      panel.style.overflow = 'hidden';
+      divider.style.display = 'none';
+      contentPanel.style.flex = '1';
+      return;
+    }
+
+    var previewUrl = 'https://drive.google.com/file/d/' + PDF_FILE_ID + '/preview';
+    panel.innerHTML = '<iframe src="' + previewUrl + '" style="width:100%;height:100%;border:none"></iframe>';
+
+    var link = document.getElementById('trans-pdf-link');
+    link.href = 'https://drive.google.com/file/d/' + PDF_FILE_ID + '/view';
+    link.classList.remove('hidden');
+  }
+
+  // ---- Extraction rendering ----
+
+  function renderExtraction(data) {
+    var jsonPanel = document.getElementById('json-panel');
+    var html = '<div class="json-panel">';
+
+    if (data.page_metadata) {
+      var pm = data.page_metadata;
+      html += '<div class="page-meta">';
+      html += '<strong>Page ' + esc(pm.page_number || '?') + '</strong>';
+      html += esc(pm.dimensions_description || '') + ' &middot; ' + esc(pm.layout_type || '');
+      if (pm.layout_description) html += '<br>' + esc(pm.layout_description);
+      html += '</div>';
+    }
+
+    if (data.translation_warnings && data.translation_warnings.length) {
+      html += '<div class="warnings"><strong>Translation Warnings</strong><ul>';
+      for (var i = 0; i < data.translation_warnings.length; i++) {
+        html += '<li>' + esc(data.translation_warnings[i]) + '</li>';
+      }
+      html += '</ul></div>';
+    }
+
+    if (data.blocks && data.blocks.length) {
+      html += '<div class="section-heading">Blocks (' + data.blocks.length + ')</div>';
+      for (var i = 0; i < data.blocks.length; i++) {
+        html += renderExtractionBlock(data.blocks[i]);
+      }
+    }
+
+    if (data.non_translatable_elements && data.non_translatable_elements.length) {
+      html += '<div class="section-heading">Non-Translatable Elements</div>';
+      for (var i = 0; i < data.non_translatable_elements.length; i++) {
+        var nt = data.non_translatable_elements[i];
+        html += '<div class="non-translatable">';
+        html += '<span class="nt-type">' + esc(nt.type) + '</span>';
+        html += '<div class="nt-content">' + esc(nt.content) + '</div>';
+        html += '<div class="nt-location">' + esc(nt.location) + '</div>';
+        html += '</div>';
+      }
+    }
+
+    html += '</div>';
+    jsonPanel.innerHTML = html;
+  }
+
+  function renderExtractionBlock(b) {
+    var html = '<div class="block">';
+
+    html += '<div class="block-header">';
+    html += '<span class="block-id">' + esc(b.id) + '</span>';
+    html += '<span class="badge badge-role">' + esc(b.role) + '</span>';
+    html += '<span class="badge badge-translate-' + b.translate + '">' + (b.translate ? 'translate' : 'keep') + '</span>';
+    if (b.visual_emphasis && b.visual_emphasis !== 'none') {
+      html += '<span class="badge badge-emphasis-' + b.visual_emphasis + '">' + esc(b.visual_emphasis) + '</span>';
+    }
+    if (b.group) {
+      html += '<span class="badge badge-group">' + esc(b.group) + '</span>';
+    }
+    html += '</div>';
+
+    html += '<div class="block-text">' + esc(b.text) + '</div>';
+
+    html += '<div class="block-details">';
+    if (b.spatial) {
+      html += '<span><span class="detail-label">Region:</span> ' + esc(b.spatial.region) + '</span>';
+      if (b.spatial.space_constrained) {
+        html += '<span><span class="detail-label">Constrained:</span> ' + esc(b.spatial.constraint_note || 'yes') + '</span>';
+      }
+    }
+    if (b.typography) {
+      html += '<span><span class="detail-label">Type:</span> ' + esc(b.typography.size_tier) + ' ' + esc(b.typography.weight) + '</span>';
+    }
+    html += '</div>';
+
+    if (b.notes) {
+      html += '<div class="block-notes">' + esc(b.notes) + '</div>';
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  // ---- Translation rendering ----
+
+  function renderTranslation(translation, extraction) {
+    var blocks = translation.blocks || [];
+    var meta = translation.metadata || {};
+    var extBlocks = {};
+    if (extraction && extraction.blocks) {
+      for (var i = 0; i < extraction.blocks.length; i++) {
+        extBlocks[extraction.blocks[i].id] = extraction.blocks[i];
+      }
+    }
+
+    var totalAlts = 0, totalFlags = 0, totalGloss = 0, totalBack = 0;
+    for (var i = 0; i < blocks.length; i++) {
+      totalAlts += (blocks[i].alt_translations || []).length;
+      totalFlags += (blocks[i].terms_flagged_for_clarification || []).length;
+      totalGloss += (blocks[i].glossary_cross_check || []).length;
+      totalBack += (blocks[i].back_translation_of_key_phrases || []).length;
+    }
+
+    var html = '';
+
+    html += '<div class="file-label" id="file-label"></div>';
+
+    html += '<div class="summary">';
+    html += '<div class="summary-stat"><span class="summary-num">' + blocks.length + '</span> blocks</div>';
+    html += '<div class="summary-stat"><span class="summary-num">' + totalAlts + '</span> alt translations</div>';
+    html += '<div class="summary-stat"><span class="summary-num">' + totalFlags + '</span> flagged terms</div>';
+    html += '<div class="summary-stat"><span class="summary-num">' + totalBack + '</span> back translations</div>';
+    html += '<div class="summary-stat"><span class="summary-num">' + totalGloss + '</span> glossary checks</div>';
+    html += '</div>';
+
+    if (meta.overall_notes) {
+      html += '<div class="metadata">';
+      html += '<strong>' + esc(meta.source_language || '') + ' &rarr; ' + esc(meta.target_language || '') + '</strong><br>';
+      html += esc(meta.overall_notes);
+      html += '</div>';
+    }
+
+    for (var i = 0; i < blocks.length; i++) {
+      var block = blocks[i];
+      var ext = extBlocks[block.id] || {};
+
+      html += '<div class="block-pair">';
+
+      html += '<div class="block-header">';
+      html += '<span class="block-id">' + esc(block.id) + '</span>';
+      if (ext.role) {
+        html += '<span class="badge badge-role">' + esc(ext.role) + '</span>';
+      }
+      if (ext.visual_emphasis && ext.visual_emphasis !== 'none') {
+        html += '<span class="badge badge-emphasis">' + esc(ext.visual_emphasis) + '</span>';
+      }
+      if (ext.spatial && ext.spatial.space_constrained) {
+        html += '<span class="badge badge-constraint">space constrained</span>';
+      }
+      html += '</div>';
+
+      html += '<div class="text-columns">';
+      html += '<div class="text-col text-col-en">';
+      html += '<div class="col-label col-label-en">English</div>';
+      html += esc(block.original_text);
+      html += '</div>';
+      html += '<div class="text-col text-col-es">';
+      html += '<div class="col-label col-label-es">Spanish</div>';
+      html += esc(block.translated_text);
+      html += '</div>';
+      html += '</div>';
+
+      var annotations = [];
+
+      var alts = block.alt_translations || [];
+      for (var j = 0; j < alts.length; j++) {
+        var item = alts[j];
+        var ann = '<div class="annotation">';
+        ann += '<span class="ann-type ann-alt">Alt Translation</span>';
+        ann += '<span class="ann-content"><strong>' + esc(item.original_phrase) + '</strong></span>';
+        ann += '<div class="ann-detail">Primary: ' + esc(item.primary_translation) + '</div>';
+        ann += '<div class="ann-detail">Alternative: ' + esc(item.alt_translation) + '</div>';
+        if (item.rationale) {
+          ann += '<div class="ann-detail" style="font-style:italic;">' + esc(item.rationale) + '</div>';
+        }
+        ann += '</div>';
+        annotations.push(ann);
+      }
+
+      var flags = block.terms_flagged_for_clarification || [];
+      for (var j = 0; j < flags.length; j++) {
+        var item = flags[j];
+        var ann = '<div class="annotation">';
+        ann += '<span class="ann-type ann-flag">Needs Clarification</span>';
+        ann += '<span class="ann-content"><strong>' + esc(item.original_phrase) + '</strong> &rarr; ' + esc(item.translation) + '</span>';
+        ann += '<div class="ann-detail">' + esc(item.needed_clarification) + '</div>';
+        ann += '</div>';
+        annotations.push(ann);
+      }
+
+      var backs = block.back_translation_of_key_phrases || [];
+      for (var j = 0; j < backs.length; j++) {
+        var item = backs[j];
+        var ann = '<div class="annotation">';
+        ann += '<span class="ann-type ann-back">Back Translation</span>';
+        ann += '<div class="ann-compare">';
+        ann += '<div class="ann-compare-col ann-compare-original">';
+        ann += '<div class="ann-compare-label">Original</div>';
+        ann += esc(item.original_phrase);
+        ann += '</div>';
+        ann += '<div class="ann-compare-col ann-compare-back">';
+        ann += '<div class="ann-compare-label">Back Translation</div>';
+        ann += esc(item.back_translation);
+        ann += '</div>';
+        ann += '</div>';
+        ann += '</div>';
+        annotations.push(ann);
+      }
+
+      var glossary = block.glossary_cross_check || [];
+      for (var j = 0; j < glossary.length; j++) {
+        var item = glossary[j];
+        var isFollowed = (item.status || '').toLowerCase() === 'followed';
+        var typeClass = isFollowed ? 'ann-glossary-followed' : 'ann-glossary-deviated';
+        var label = isFollowed ? 'Glossary Followed' : 'Glossary Deviated';
+        var ann = '<div class="annotation">';
+        ann += '<span class="ann-type ' + typeClass + '">' + label + '</span>';
+        ann += '<span class="ann-content"><strong>' + esc(item.term) + '</strong> &rarr; ' + esc(item.translation) + '</span>';
+        ann += '<div class="ann-detail">' + esc(item.note) + '</div>';
+        ann += '</div>';
+        annotations.push(ann);
+      }
+
+      if (annotations.length) {
+        html += '<div class="block-annotations">' + annotations.join('') + '</div>';
+      }
+
+      html += '</div>';
+    }
+
+    document.getElementById('translation-content').innerHTML = html;
+    loadFileName('file-label', FILE_ID);
+  }
+
+  // ---- Utilities ----
+
+  function esc(s) {
+    if (s == null) return '';
+    var d = document.createElement('div');
+    d.textContent = String(s);
+    return d.innerHTML;
+  }
+
+  // ---- Draggable dividers ----
+
+  function setupDivider(dividerEl, containerSelector, leftId, rightSelector) {
+    var dragging = false;
+
+    dividerEl.addEventListener('mousedown', function() {
+      dragging = true;
+      document.body.style.cursor = 'col-resize';
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!dragging) return;
+      var container = document.querySelector(containerSelector);
+      if (!container) return;
+      var rect = container.getBoundingClientRect();
+      var pct = ((e.clientX - rect.left) / rect.width) * 100;
+      var clamped = Math.max(20, Math.min(80, pct));
+      document.getElementById(leftId).style.flex = '0 0 ' + clamped + '%';
+      document.querySelector(rightSelector).style.flex = '0 0 ' + (100 - clamped) + '%';
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (dragging) {
+        dragging = false;
+        document.body.style.cursor = '';
+      }
+    });
+  }
+
+  setupDivider(
+    document.getElementById('divider'),
+    '#extraction-view .panels',
+    'pdf-panel',
+    '#json-panel'
+  );
+
+  setupDivider(
+    document.getElementById('trans-divider'),
+    '.translation-panels',
+    'trans-pdf-panel',
+    '.translation-content-panel'
+  );
+
+  // ---- File pickers ----
+
+  function populateSelect(selectId, files, loadingId) {
+    var select = document.getElementById(selectId);
+    for (var i = 0; i < files.length; i++) {
+      var opt = document.createElement('option');
+      opt.value = files[i].id;
+      var date = files[i].updated.substring(0, 10);
+      opt.textContent = files[i].name + '  (' + date + ')';
+      select.appendChild(opt);
+    }
+    if (loadingId) {
+      document.getElementById(loadingId).classList.add('hidden');
+    }
+  }
+
+  function populateOptgroup(groupId, files) {
+    var group = document.getElementById(groupId);
+    for (var i = 0; i < files.length; i++) {
+      var opt = document.createElement('option');
+      opt.value = files[i].id;
+      var date = files[i].updated.substring(0, 10);
+      opt.textContent = files[i].name + '  (' + date + ')';
+      group.appendChild(opt);
+    }
+  }
+
+  function loadPickers() {
+    google.script.run
+      .withSuccessHandler(function(files) {
+        populateOptgroup('picker-extraction-group', files);
+        populateSelect('picker-extraction-enrich', files, null);
+        pickerLoadCount++;
+        checkPickersLoaded();
+      })
+      .withFailureHandler(function() { pickerLoadCount++; checkPickersLoaded(); })
+      .listFolderFiles('EXTRACTION_FOLDER_ID');
+
+    google.script.run
+      .withSuccessHandler(function(files) {
+        populateOptgroup('picker-translation-group', files);
+        pickerLoadCount++;
+        checkPickersLoaded();
+      })
+      .withFailureHandler(function() { pickerLoadCount++; checkPickersLoaded(); })
+      .listFolderFiles('TRANSLATION_FOLDER_ID');
+
+    google.script.run
+      .withSuccessHandler(function(files) {
+        populateSelect('picker-pdf', files, 'picker-pdf-loading');
+        populateSelect('picker-translation-pdf', files, 'picker-translation-pdf-loading');
+        pickerLoadCount++;
+        checkPickersLoaded();
+      })
+      .withFailureHandler(function() { pickerLoadCount++; checkPickersLoaded(); })
+      .listFolderFiles('PDF_FOLDER_ID');
+  }
+
+  var pickerLoadCount = 0;
+  function checkPickersLoaded() {
+    if (pickerLoadCount >= 3) {
+      document.getElementById('picker-json-loading').classList.add('hidden');
+    }
+  }
+
+  function toggleFallback() {
+    var manualInput = document.getElementById('manual-file-id');
+    var picker = document.getElementById('picker-json');
+    var toggle = manualInput.previousElementSibling;
+    if (manualInput.classList.contains('hidden')) {
+      manualInput.classList.remove('hidden');
+      picker.classList.add('hidden');
+      toggle.textContent = 'Or select from folder';
+    } else {
+      manualInput.classList.add('hidden');
+      picker.classList.remove('hidden');
+      toggle.textContent = 'Or paste a file ID';
+    }
+    detectedType = null;
+    document.getElementById('main-button').textContent = 'Next';
+    document.getElementById('enrichment-inputs').classList.add('hidden');
+    document.getElementById('type-indicator').classList.add('hidden');
+  }
+
+  // ---- Init ----
+
+  if (FILE_ID) {
+    loadFile(FILE_ID);
+  } else {
+    showView('landing-view');
+    loadPickers();
+  }
+
+  document.getElementById('picker-json').addEventListener('change', function() {
+    detectedType = null;
+    document.getElementById('main-button').textContent = 'Next';
+    document.getElementById('enrichment-inputs').classList.add('hidden');
+    document.getElementById('type-indicator').classList.add('hidden');
+  });
+
+  document.getElementById('manual-file-id').addEventListener('input', function() {
+    detectedType = null;
+    document.getElementById('main-button').textContent = 'Next';
+    document.getElementById('enrichment-inputs').classList.add('hidden');
+    document.getElementById('type-indicator').classList.add('hidden');
+  });
+</script>
