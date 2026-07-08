@@ -24,6 +24,7 @@ EXTRACT_ROLE = "extract"
 PUBSUB_TOPIC_ENV_VAR = "PUBSUB_TOPIC_EXTRACTION_COMPLETE"
 PROCESSING_LOG_SHEET_NAME = "ProcessingLog"
 STATUS_EXTRACTED = "extracted"
+STATUS_FAILED = "failed"
 SCHEMA_DIR = Path(__file__).resolve().parent
 MARKDOWN_JSON_PATTERN = re.compile(r"```(?:json)?\s*\n(.*?)\n\s*```", re.DOTALL)
 
@@ -104,7 +105,7 @@ def build_output_filename(file_name, model, suffix):
     return f"{stem}_{safe_model}_{timestamp}_{suffix}"
 
 
-def save_extraction_results(file_name, model, raw_response):
+def save_extraction_results(file_name, model, raw_response, source_file_id):
     raw_filename = build_output_filename(file_name, model, "raw.txt")
     write_output(raw_filename, raw_response)
     logger.info("Saved raw response: %s", raw_filename)
@@ -121,10 +122,31 @@ def save_extraction_results(file_name, model, raw_response):
     except jsonschema.ValidationError as e:
         logger.warning("Schema validation failed: %s", e.message)
 
+    parsed["sourceFileId"] = source_file_id
+
     parsed_filename = build_output_filename(file_name, model, "extraction.json")
     drive_file_id = write_output(parsed_filename, parsed)
     logger.info("Saved parsed extraction: %s", parsed_filename)
     return {"parsed": parsed, "driveFileId": drive_file_id, "fileName": parsed_filename}
+
+
+def log_structured(status, provider, model, source_file_id, source_file_name,
+                    drive_file_id="", error=""):
+    entry = {
+        "severity": "ERROR" if status == STATUS_FAILED else "INFO",
+        "message": f"extraction {status} for {provider}/{model}",
+        "pipeline_stage": "extract",
+        "status": status,
+        "provider": provider,
+        "model": model,
+        "sourceFileId": source_file_id,
+        "sourceFileName": source_file_name,
+    }
+    if drive_file_id:
+        entry["driveFileId"] = drive_file_id
+    if error:
+        entry["error"] = error
+    print(json.dumps(entry), flush=True)
 
 
 def _get_sheets_service():
@@ -141,7 +163,6 @@ def log_extraction_result(file_id, file_name, extraction_result):
     service = _get_sheets_service()
 
     completed_at = datetime.now().strftime("%m/%d/%Y %H:%M")
-    # Column order must match orchestrator.js COL layout (A–I in ProcessingLog sheet)
     row = [
         file_id,
         file_name,
@@ -231,16 +252,23 @@ def run_extraction(file_id, file_name):
             logger.info("Received response from %s/%s (%d characters)", provider, model, len(raw_response))
         except Exception:
             logger.exception("LLM call failed for %s/%s", provider, model)
+            log_structured(STATUS_FAILED, provider, model, file_id, file_name,
+                           error="LLM call failed")
             continue
 
-        result = save_extraction_results(file_name, model, raw_response)
+        result = save_extraction_results(file_name, model, raw_response, source_file_id=file_id)
         if result:
             enriched = {**result, "model": model, "provider": provider}
             extraction_results.append(enriched)
+            log_structured(STATUS_EXTRACTED, provider, model, file_id, file_name,
+                           drive_file_id=result["driveFileId"])
             try:
                 log_extraction_result(file_id, file_name, enriched)
             except Exception:
                 logger.exception("Failed to log extraction result to processing sheet")
+        else:
+            log_structured(STATUS_FAILED, provider, model, file_id, file_name,
+                           error="Extraction parse/validation failed")
 
     publish_extraction_complete(file_id, file_name, extraction_results)
 

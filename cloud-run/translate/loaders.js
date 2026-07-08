@@ -10,6 +10,7 @@ const ACTIVE_YES = "YES";
 const MIN_SHEET_ROWS = 2;
 const COL_ACTIVE = "active";
 const COL_PROVIDER = "provider";
+const PROCESSING_LOG_TAB_NAME = "ProcessingLog";
 
 // https://developers.google.com/docs/api/reference/rest
 const DOCS_API_VERSION = "v1";
@@ -188,12 +189,65 @@ async function writeOutput(filename, data) {
   return created.id;
 }
 
+function formatTimestamp(date) {
+  return date
+    .toLocaleString("en-US", {
+      month: "2-digit",
+      day: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+    .replace(",", "");
+}
+
+async function logTranslationResult(sourceFileId, sourceFileName, translationResult) {
+  const sheetId = process.env.PROCESSING_LOG_SHEET_ID;
+  if (!sheetId) {
+    console.log("No PROCESSING_LOG_SHEET_ID set — skipping log update");
+    return;
+  }
+
+  const auth = new google.auth.GoogleAuth({
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
+  const sheets = google.sheets({ version: SHEETS_API_VERSION, auth });
+
+  const completedAt = formatTimestamp(new Date());
+
+  const row = [
+    sourceFileId || "",
+    sourceFileName,
+    completedAt,
+    translationResult.status,
+    translationResult.error || "",
+    "",
+    translationResult.outputFileId || "",
+    translationResult.provider,
+    translationResult.model,
+  ];
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId: sheetId,
+    range: `${PROCESSING_LOG_TAB_NAME}!A:I`,
+    valueInputOption: "RAW",
+    requestBody: { values: [row] },
+  });
+
+  console.log(
+    `Logged translation result for ${translationResult.provider}/${translationResult.model} to processing log`
+  );
+}
+
 module.exports = {
   loadDoc,
   loadSheet,
   loadConfig,
   loadExtractionJson,
   writeOutput,
+  logTranslationResult,
+  formatTimestamp,
   parseSheetRows,
   DOCS_API_VERSION,
   SHEETS_API_VERSION,

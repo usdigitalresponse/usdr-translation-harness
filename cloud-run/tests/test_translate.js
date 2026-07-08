@@ -21,6 +21,7 @@ jest.mock("../translate/loaders.js", () => ({
   loadExtractionJson: jest.fn(),
   loadConfig: jest.fn(),
   writeOutput: jest.fn(),
+  logTranslationResult: jest.fn().mockResolvedValue(),
 }));
 
 const {
@@ -29,6 +30,7 @@ const {
   loadExtractionJson,
   loadConfig,
   writeOutput,
+  logTranslationResult,
 } = require("../translate/loaders.js");
 
 // --- Mock llm so tests don't call real LLMs ---
@@ -181,7 +183,13 @@ describe("translate", () => {
     );
 
     expect(callLlm).toHaveBeenCalledWith("anthropic", "claude-sonnet-4-6", expect.any(String));
-    expect(writeOutput).toHaveBeenCalledWith("test_anthropic_claude-sonnet-4-6.json", '{"translated_text": "Hola"}');
+    expect(writeOutput).toHaveBeenCalledWith("test_anthropic_claude-sonnet-4-6.json", {
+      translated_text: "Hola",
+      sourceFileId: "src456",
+      extractionFileId: "file123",
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
+    });
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         status: "ok",
@@ -192,6 +200,7 @@ describe("translate", () => {
             provider: "anthropic",
             model: "claude-sonnet-4-6",
             outputFileId: "output-file-id",
+            status: "translated",
           }),
         ],
       })
@@ -247,8 +256,14 @@ describe("translate", () => {
     const result = res.json.mock.calls[0][0];
     expect(result.error).toBe("All translation models failed");
     expect(result.translations).toHaveLength(2);
-    expect(result.translations[0].error).toContain("Anthropic rate limit");
-    expect(result.translations[1].error).toContain("Gemini API key missing");
+    expect(result.translations[0]).toEqual(expect.objectContaining({
+      status: "failed",
+      error: expect.stringContaining("Anthropic rate limit"),
+    }));
+    expect(result.translations[1]).toEqual(expect.objectContaining({
+      status: "failed",
+      error: expect.stringContaining("Gemini API key missing"),
+    }));
   });
 
   test("reports per-model errors without failing the whole request", async () => {
@@ -544,5 +559,26 @@ describe("loadTranslationSchema", () => {
     const claude = loadTranslationSchema(PROVIDER_ANTHROPIC);
     const gemini = loadTranslationSchema(PROVIDER_GOOGLE);
     expect(claude.required).toEqual(gemini.required);
+  });
+});
+
+// --- formatTimestamp ---
+
+const { formatTimestamp } = jest.requireActual("../translate/loaders.js");
+
+describe("formatTimestamp", () => {
+  test("produces MM/DD/YYYY HH:MM with no comma", () => {
+    const result = formatTimestamp(new Date(2026, 6, 8, 14, 5));
+    expect(result).toBe("07/08/2026 14:05");
+  });
+
+  test("zero-pads single-digit month and day", () => {
+    const result = formatTimestamp(new Date(2026, 0, 3, 9, 7));
+    expect(result).toBe("01/03/2026 09:07");
+  });
+
+  test("handles midnight", () => {
+    const result = formatTimestamp(new Date(2026, 11, 25, 0, 0));
+    expect(result).toBe("12/25/2026 00:00");
   });
 });
