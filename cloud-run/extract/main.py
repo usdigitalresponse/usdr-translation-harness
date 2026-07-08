@@ -183,13 +183,19 @@ def publish_extraction_complete(file_id, file_name, extraction_results):
             "provider": result["provider"],
         }
         data = json.dumps(message).encode("utf-8")
-        future = publisher.publish(topic_name, data)
-        PUBLISH_TIMEOUT_SECONDS = 60
-        message_id = future.result(timeout=PUBLISH_TIMEOUT_SECONDS)
-        logger.info(
-            "Published extraction-complete for %s/%s (message %s)",
-            result["provider"], result["model"], message_id,
-        )
+        try:
+            future = publisher.publish(topic_name, data)
+            PUBLISH_TIMEOUT_SECONDS = 60
+            message_id = future.result(timeout=PUBLISH_TIMEOUT_SECONDS)
+            logger.info(
+                "Published extraction-complete for %s/%s (message %s)",
+                result["provider"], result["model"], message_id,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to publish extraction-complete for %s/%s",
+                result["provider"], result["model"],
+            )
 
 
 def run_extraction(file_id, file_name):

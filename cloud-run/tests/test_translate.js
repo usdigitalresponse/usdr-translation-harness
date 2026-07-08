@@ -86,35 +86,26 @@ describe("translate", () => {
     };
   }
 
-  test("returns 400 when body is empty", async () => {
+  test("returns 204 when body is empty", async () => {
     const res = mockRes();
     await translate({ body: {} }, res);
 
-    expect(res.status).toHaveBeenCalledWith(StatusCodes.BAD_REQUEST);
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ error: expect.stringContaining("Missing required fields") })
-    );
+    expect(res.status).toHaveBeenCalledWith(StatusCodes.NO_CONTENT);
   });
 
-  test("returns 400 when extractionFileId is missing", async () => {
+  test("returns 204 when extractionFileId is missing", async () => {
     const res = mockRes();
     await translate({ body: { sourceFileName: "test.pdf" } }, res);
 
-    expect(res.status).toHaveBeenCalledWith(StatusCodes.BAD_REQUEST);
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ error: expect.stringContaining("extractionFileId") })
-    );
+    expect(res.status).toHaveBeenCalledWith(StatusCodes.NO_CONTENT);
   });
 
-  test("returns 400 for invalid Pub/Sub envelope", async () => {
+  test("returns 204 for invalid Pub/Sub envelope", async () => {
     const res = mockRes();
     const encoded = Buffer.from("not json").toString("base64");
     await translate({ body: { message: { data: encoded } } }, res);
 
-    expect(res.status).toHaveBeenCalledWith(StatusCodes.BAD_REQUEST);
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ error: expect.stringContaining("Invalid Pub/Sub message") })
-    );
+    expect(res.status).toHaveBeenCalledWith(StatusCodes.NO_CONTENT);
   });
 
   test("returns 500 with structured error when prompt assembly fails", async () => {

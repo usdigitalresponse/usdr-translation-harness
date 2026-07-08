@@ -40,17 +40,15 @@ async function translate(req, res) {
   try {
     input = parseInput(req.body || {});
   } catch (err) {
-    res
-      .status(StatusCodes.BAD_REQUEST)
-      .json({ error: "Invalid Pub/Sub message: " + err.message });
+    console.error("Unprocessable Pub/Sub message, acking to prevent retries:", err.message);
+    res.status(StatusCodes.NO_CONTENT).json({ acked: true });
     return;
   }
 
   const missing = REQUIRED_FIELDS.filter((f) => !input[f]);
   if (missing.length) {
-    res
-      .status(StatusCodes.BAD_REQUEST)
-      .json({ error: `Missing required fields: ${missing.join(", ")}` });
+    console.error(`Missing required fields (${missing.join(", ")}), acking to prevent retries`);
+    res.status(StatusCodes.NO_CONTENT).json({ acked: true });
     return;
   }
 
