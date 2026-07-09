@@ -1,0 +1,36 @@
+{
+  "blocks": [
+    {
+      "id": "b01",
+      "original_text": "Family and Medical Leave Insurance (FAMLI)",
+      "translated_text": "Seguro Familiar y Medico de Licencia (FAMLI)",
+      "alt_translations": [],
+      "terms_flagged_for_clarification": [],
+      "back_translation_of_key_phrases": [],
+      "glossary_cross_check": []
+    },
+    {
+      "id": "b02",
+      "original_text": "You may be eligible for paid leave if you have earned at least $2,500 in wages over the past year. Benefits are paid every two weeks.",
+      "translated_text": "Usted podria ser elegible para la licencia pagada si ha ganado al menos $2,500 en salarios durante el ano pasado. Los beneficios son pagados cada dos semanas.",
+      "alt_translations": [],
+      "terms_flagged_for_clarification": [],
+      "back_translation_of_key_phrases": [],
+      "glossary_cross_check": []
+    },
+    {
+      "id": "b03",
+      "original_text": "To file a claim, visit our website or call the number listed below. Do not send cash through the mail.",
+      "translated_text": "Para presentar una reclamacion, visite nuestro sitio web o llame al numero que aparece abajo. No envie dinero en efectivo por correo.",
+      "alt_translations": [],
+      "terms_flagged_for_clarification": [],
+      "back_translation_of_key_phrases": [],
+      "glossary_cross_check": []
+    }
+  ],
+  "metadata": {
+    "source_language": "English",
+    "target_language": "Spanish",
+    "overall_notes": "Formal register (usted) used throughout. Accents intentionally omitted in this fixture so the judge has something to flag."
+  }
+}

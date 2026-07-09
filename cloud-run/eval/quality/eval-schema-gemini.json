@@ -1,0 +1,83 @@
+{
+  "type": "object",
+  "properties": {
+    "accuracy_and_relevance": {
+      "type": "object",
+      "description": "Accuracy & Relevance (30% weight)",
+      "properties": {
+        "score": { "type": "integer" },
+        "strengths": { "type": "string" },
+        "issues": { "type": "string" },
+        "recommendations": { "type": "string" },
+        "priority": { "type": "string", "enum": ["Critical", "High", "Medium", "Low"] }
+      },
+      "required": ["score", "strengths", "issues", "recommendations", "priority"]
+    },
+    "clarity_and_simplicity": {
+      "type": "object",
+      "description": "Clarity, Simplicity & Accessibility (25% weight)",
+      "properties": {
+        "score": { "type": "integer" },
+        "strengths": { "type": "string" },
+        "issues": { "type": "string" },
+        "recommendations": { "type": "string" },
+        "priority": { "type": "string", "enum": ["Critical", "High", "Medium", "Low"] }
+      },
+      "required": ["score", "strengths", "issues", "recommendations", "priority"]
+    },
+    "cultural_sensitivity": {
+      "type": "object",
+      "description": "Cultural Sensitivity (20% weight)",
+      "properties": {
+        "score": { "type": "integer" },
+        "strengths": { "type": "string" },
+        "issues": { "type": "string" },
+        "recommendations": { "type": "string" },
+        "priority": { "type": "string", "enum": ["Critical", "High", "Medium", "Low"] }
+      },
+      "required": ["score", "strengths", "issues", "recommendations", "priority"]
+    },
+    "active_voice_and_tone": {
+      "type": "object",
+      "description": "Active Voice & Tone (15% weight)",
+      "properties": {
+        "score": { "type": "integer" },
+        "strengths": { "type": "string" },
+        "issues": { "type": "string" },
+        "recommendations": { "type": "string" },
+        "priority": { "type": "string", "enum": ["Critical", "High", "Medium", "Low"] }
+      },
+      "required": ["score", "strengths", "issues", "recommendations", "priority"]
+    },
+    "consistency_and_style": {
+      "type": "object",
+      "description": "Consistency & Style (10% weight)",
+      "properties": {
+        "score": { "type": "integer" },
+        "strengths": { "type": "string" },
+        "issues": { "type": "string" },
+        "recommendations": { "type": "string" },
+        "priority": { "type": "string", "enum": ["Critical", "High", "Medium", "Low"] }
+      },
+      "required": ["score", "strengths", "issues", "recommendations", "priority"]
+    },
+    "weighted_overall_score": {
+      "type": "number",
+      "description": "Weighted overall score out of 5"
+    },
+    "overall_priority_rating": {
+      "type": "string",
+      "description": "Overall priority level for fixes needed",
+      "enum": ["Critical", "High", "Medium", "Low"]
+    }
+  },
+  "required": [
+    "accuracy_and_relevance",
+    "clarity_and_simplicity",
+    "cultural_sensitivity",
+    "active_voice_and_tone",
+    "consistency_and_style",
+    "weighted_overall_score",
+    "overall_priority_rating"
+  ]
+}
