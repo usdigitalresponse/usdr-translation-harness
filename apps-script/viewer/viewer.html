@@ -375,6 +375,12 @@
   var ALL_VIEWS = ['loading-view', 'landing-view', 'error-view', 'extraction-view', 'translation-view'];
 
   function showView(id) {
+    if (id === 'landing-view') {
+      FILE_ID = '';
+      EXTRACTION_FILE_ID = '';
+      PDF_FILE_ID = '';
+      detectedType = null;
+    }
     for (var i = 0; i < ALL_VIEWS.length; i++) {
       var el = document.getElementById(ALL_VIEWS[i]);
       if (el) {
@@ -422,11 +428,14 @@
   function onDataLoaded(data) {
     var type = detectJsonType(data);
     if (type === 'extraction') {
+      if (!PDF_FILE_ID && data.sourceFileId) PDF_FILE_ID = data.sourceFileId;
       showView('extraction-view');
       setupPdfPanel();
       renderExtraction(data);
       loadFileName('ext-file-info', FILE_ID);
     } else if (type === 'translation') {
+      if (!EXTRACTION_FILE_ID && data.extractionFileId) EXTRACTION_FILE_ID = data.extractionFileId;
+      if (!PDF_FILE_ID && data.sourceFileId) PDF_FILE_ID = data.sourceFileId;
       if (EXTRACTION_FILE_ID) {
         google.script.run
           .withSuccessHandler(function(extData) {
@@ -500,12 +509,25 @@
         var transEnrich = document.getElementById('translation-enrichment');
 
         if (type === 'extraction') {
+          if (data.sourceFileId) {
+            PDF_FILE_ID = data.sourceFileId;
+            FILE_ID = fileId;
+            loadFile(fileId);
+            return;
+          }
           indicator.textContent = 'Detected: Extraction JSON';
           indicator.classList.remove('hidden');
           enrichment.classList.remove('hidden');
           extEnrich.classList.remove('hidden');
           transEnrich.classList.add('hidden');
         } else if (type === 'translation') {
+          if (data.extractionFileId) EXTRACTION_FILE_ID = data.extractionFileId;
+          if (data.sourceFileId) PDF_FILE_ID = data.sourceFileId;
+          if (data.extractionFileId || data.sourceFileId) {
+            FILE_ID = fileId;
+            loadFile(fileId);
+            return;
+          }
           indicator.textContent = 'Detected: Translation JSON';
           indicator.classList.remove('hidden');
           enrichment.classList.remove('hidden');
@@ -528,8 +550,6 @@
   }
 
   function loadWithEnrichment(fileId) {
-    var params = 'fileId=' + encodeURIComponent(fileId);
-
     var pdfPicker = document.getElementById('picker-pdf');
     var translationPdfPicker = document.getElementById('picker-translation-pdf');
     var extractionPicker = document.getElementById('picker-extraction-enrich');
@@ -538,22 +558,10 @@
     var translationPdfVal = translationPdfPicker ? translationPdfPicker.value : '';
     var extractionVal = extractionPicker ? extractionPicker.value : '';
 
-    var pdfId = pdfVal || translationPdfVal;
-    if (pdfId) params += '&pdfFileId=' + encodeURIComponent(pdfId);
-    if (extractionVal) params += '&extractionFileId=' + encodeURIComponent(extractionVal);
-
-    showView('loading-view');
-    google.script.run
-      .withSuccessHandler(function(baseUrl) {
-        window.top.location.href = baseUrl + '?' + params;
-      })
-      .withFailureHandler(function() {
-        FILE_ID = fileId;
-        PDF_FILE_ID = pdfId || '';
-        EXTRACTION_FILE_ID = extractionVal || '';
-        loadFile(fileId);
-      })
-      .getWebAppUrl();
+    FILE_ID = fileId;
+    PDF_FILE_ID = pdfVal || translationPdfVal || '';
+    EXTRACTION_FILE_ID = extractionVal || '';
+    loadFile(fileId);
   }
 
   function parseFileId(input) {
