@@ -127,7 +127,7 @@ def _load_config_from_sheet(sheet_id):
 
 
 def _load_config_from_fixture():
-    return json.loads((FIXTURES_DIR / "config.json").read_text())
+    return json.loads((FIXTURES_DIR / "config.json").read_text(encoding="utf-8"))
 
 
 def load_config():
@@ -145,7 +145,7 @@ def load_translation_json(file_id):
         if not path.exists():
             raise FileNotFoundError(f"LOCAL_TRANSLATION_JSON_PATH not found: {local_path}")
         logger.info("Loading translation JSON from local path: %s", local_path)
-        return json.loads(path.read_text())
+        return json.loads(path.read_text(encoding="utf-8"))
 
     logger.info("Fetching translation JSON from Drive: %s", file_id)
     credentials, _ = google.auth.default()
@@ -159,7 +159,7 @@ def load_translation_json(file_id):
 def _write_to_drive(folder_id, filename, data):
     credentials, _ = google.auth.default()
     service = build("drive", DRIVE_API_VERSION, credentials=credentials)
-    content = data if isinstance(data, str) else json.dumps(data, indent=2)
+    content = data if isinstance(data, str) else json.dumps(data, indent=2, ensure_ascii=False)
     media = MediaIoBaseUpload(
         io.BytesIO(content.encode("utf-8")), mimetype="application/json"
     )
@@ -176,8 +176,8 @@ def _write_to_drive(folder_id, filename, data):
 def _write_to_local(filename, data):
     out_dir = FIXTURES_DIR / "output"
     out_dir.mkdir(parents=True, exist_ok=True)
-    content = data if isinstance(data, str) else json.dumps(data, indent=2)
-    (out_dir / filename).write_text(content)
+    content = data if isinstance(data, str) else json.dumps(data, indent=2, ensure_ascii=False)
+    (out_dir / filename).write_text(content, encoding="utf-8")
     logger.info("Wrote %s to %s", filename, out_dir)
 
 

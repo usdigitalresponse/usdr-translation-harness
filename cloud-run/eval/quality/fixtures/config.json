@@ -1,6 +1,6 @@
 {
   "models": [
-    { "role": "eval", "provider": "anthropic", "model": "claude-opus-4-8", "active": true },
-    { "role": "eval", "provider": "google", "model": "gemini-3.5-flash", "active": false }
+    { "role": "eval", "provider": "anthropic", "model": "claude-opus-4-8", "active": false },
+    { "role": "eval", "provider": "google", "model": "gemini-3.5-flash", "active": true }
   ]
 }

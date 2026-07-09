@@ -69,7 +69,7 @@ def load_eval_schema(provider):
     path = SCHEMA_PATHS.get(provider)
     if not path:
         raise ValueError(f"No eval schema for provider: {provider}")
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def call_llm(provider, model, prompt):
