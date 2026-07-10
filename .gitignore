@@ -24,3 +24,5 @@ cloud-run/*/fixtures/output/
 docs/internal/
 
 drafts/
+
+playground-scripts/

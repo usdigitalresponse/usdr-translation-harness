@@ -4,6 +4,7 @@ const { StatusCodes } = require("http-status-codes");
 const { buildTranslationPrompt } = require("./prompt-assembly");
 const { callLlm } = require("./llm");
 const { loadConfig, writeOutput, logTranslationResult } = require("./loaders");
+const { createTranslationDoc } = require("./doc-writer");
 
 const REQUIRED_FIELDS = ["extractionFileId", "sourceFileName"];
 const TRANSLATE_ROLE = "translate";
@@ -129,7 +130,7 @@ async function translate(req, res) {
         model,
       };
       const fileId = await writeOutput(outputFileName, outputData);
-      return { provider, model, outputFileId: fileId, outputFileName };
+      return { provider, model, outputFileId: fileId, outputFileName, translationJson: outputData };
     })
   );
 
@@ -164,13 +165,31 @@ async function translate(req, res) {
       error: "All translation models failed",
       extractionFileId,
       sourceFileName,
-      translations,
+      translations: translations.map(({ translationJson, ...rest }) => rest),
     });
     return;
   }
 
-  // TODO: Create output Google Doc(s)
-  // TODO: Set usdr_translation_review document property
+  const stagingFolderId = process.env.DRIVE_TRANSLATION_DOC_STAGING_FOLDER_ID;
+  const outputFolderId = process.env.DRIVE_TRANSLATION_DOC_FOLDER_ID;
+  for (const t of succeeded) {
+    try {
+      const docId = await createTranslationDoc({
+        translationJson: t.translationJson,
+        translationFileId: t.outputFileId,
+        sourceFileName,
+        provider: t.provider,
+        model: t.model,
+        stagingFolderId,
+        outputFolderId,
+      });
+      t.docId = docId;
+      console.log(`Created translation doc ${docId} for ${t.provider}/${t.model}`);
+    } catch (err) {
+      console.error(`Failed to create doc for ${t.provider}/${t.model}:`, err.message);
+      t.docError = err.message;
+    }
+  }
 
   const overallStatus = succeeded.length === translations.length ? "ok" : "partial";
   res.json({
@@ -179,7 +198,7 @@ async function translate(req, res) {
     sourceFileId,
     sourceFileName,
     promptLength: prompt.length,
-    translations,
+    translations: translations.map(({ translationJson, ...rest }) => rest),
   });
 }
 
