@@ -24,6 +24,12 @@ jest.mock("../translate/loaders.js", () => ({
   logTranslationResult: jest.fn().mockResolvedValue(),
 }));
 
+jest.mock("../translate/doc-writer.js", () => ({
+  createTranslationDoc: jest.fn().mockResolvedValue("mock-doc-id"),
+}));
+
+const { createTranslationDoc } = require("../translate/doc-writer.js");
+
 const {
   loadDoc,
   loadSheet,
