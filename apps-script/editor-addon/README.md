@@ -9,8 +9,12 @@ Adds a "Submit Review" menu to translation output Google Docs. Checks for the `u
 **Exception logging:** `STACKDRIVER` routes Apps Script errors to Cloud Logging in the linked GCP project (viewable in GCP Console → Logging → Log Explorer). This requires the Apps Script project to be linked to a GCP project under Project Settings → Google Cloud Platform Project. Centralizes logs alongside Cloud Run function logs and supports log-based alerts.
 
 **OAuth scopes:**
-- `auth/documents.currentonly` — read and check properties on the currently open doc only (more restrictive than `auth/documents`, which would grant access to all docs)
+- `auth/documents.currentonly` — read the currently open doc
 - `auth/script.container.ui` — add menus to the Docs UI
+- `auth/drive.readonly` — read Drive file properties set by the Cloud Run translate function
+
+**Advanced Services:**
+- Drive API v3 — enabled in `appsscript.json` to read the `usdr_translation_review` property from the Drive file. This is a Drive file property (set via the Drive API), NOT an Apps Script document property (PropertiesService) — those are separate storage systems.
 
 ## Required Script Properties
 
