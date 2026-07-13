@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<style>
+  :root {
+    --bg: #fff;
+    --text: #333;
+    --border: #ddd;
+    --section-bg: #f8f9fa;
+    --accent: #1a73e8;
+    --accent-light: #e8f0fe;
+    --warning: #f9ab00;
+    --warning-bg: #fef7e0;
+    --success: #34a853;
+    --muted: #888;
+    --orphan-bg: #fff3cd;
+    --highlight: #FFD700;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Google Sans', Roboto, Arial, sans-serif;
+    font-size: 13px;
+    color: var(--text);
+    background: var(--bg);
+    padding: 12px;
+    line-height: 1.45;
+  }
+
+  .loading { text-align: center; padding: 40px 0; color: var(--muted); }
+  .error { color: #d93025; padding: 12px; background: #fce8e6; border-radius: 6px; margin-bottom: 12px; }
+
+  /* Progress bar */
+  .progress-wrap { margin-bottom: 16px; }
+  .progress-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .progress-bar {
+    height: 6px;
+    background: #e0e0e0;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--success);
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+
+  /* Sections */
+  .section { margin-bottom: 16px; }
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    background: var(--section-bg);
+    border-radius: 6px 6px 0 0;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    cursor: pointer;
+    user-select: none;
+  }
+  .section-header:hover { background: #eef1f4; }
+  .section-title { font-weight: 600; font-size: 13px; }
+  .section-count {
+    font-size: 11px;
+    color: var(--muted);
+    background: #e0e0e0;
+    border-radius: 10px;
+    padding: 1px 8px;
+    margin-left: 6px;
+  }
+  .section-arrow { font-size: 10px; color: var(--muted); transition: transform 0.2s; }
+  .section-arrow.open { transform: rotate(90deg); }
+
+  .section-body {
+    border: 1px solid var(--border);
+    border-radius: 0 0 6px 6px;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s;
+  }
+  .section-body.open { max-height: 5000px; }
+
+  /* Items */
+  .item {
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    transition: background 0.15s;
+    position: relative;
+  }
+  .item:last-child { border-bottom: none; }
+  .item:hover { background: var(--accent-light); }
+  .item.highlighted { background: #fff8e1; }
+  .item.orphan { background: var(--orphan-bg); opacity: 0.7; }
+  .item.orphan::after {
+    content: "edited away";
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    font-size: 10px;
+    color: var(--warning);
+    font-style: italic;
+  }
+
+  .item-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .item-check input[type="checkbox"] {
+    margin-top: 3px;
+    accent-color: var(--accent);
+    flex-shrink: 0;
+  }
+  .item-content { flex: 1; min-width: 0; }
+
+  .item-block {
+    font-size: 10px;
+    color: var(--muted);
+    margin-bottom: 2px;
+  }
+  .item-phrase {
+    font-weight: 600;
+    word-break: break-word;
+  }
+  .item-translation {
+    color: var(--accent);
+    margin-top: 2px;
+    word-break: break-word;
+  }
+  .item-detail {
+    font-size: 12px;
+    color: #555;
+    margin-top: 4px;
+    word-break: break-word;
+  }
+  .item-status {
+    display: inline-block;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-top: 3px;
+  }
+  .item-status.followed { background: #e6f4ea; color: #137333; }
+  .item-status.deviated { background: #fce8e6; color: #c5221f; }
+
+  .clear-btn {
+    display: block;
+    width: 100%;
+    margin-top: 12px;
+    padding: 8px;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .clear-btn:hover { background: var(--section-bg); color: var(--text); }
+
+  .empty-msg { padding: 20px; text-align: center; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<div id="loading" class="loading">Loading suggestions...</div>
+<div id="error" class="error" style="display:none"></div>
+<div id="content" style="display:none">
+  <div class="progress-wrap">
+    <div class="progress-label"><span id="progress-text">0 / 0 reviewed</span></div>
+    <div class="progress-bar"><div id="progress-fill" class="progress-fill" style="width:0%"></div></div>
+  </div>
+  <div id="sections"></div>
+  <button class="clear-btn" onclick="clearAll()">Clear all highlights</button>
+</div>
+
+<script>
+var sidebarData = null;
+var checks = {};
+var orphans = {};
+var highlightedKey = null;
+var editToken = null;
+var pollTimer = null;
+
+var SECTIONS = [
+  { key: "alt_translations", title: "Alternative Translations", render: renderAltItem },
+  { key: "terms_flagged_for_clarification", title: "Terms Needing Clarification", render: renderTermItem },
+  { key: "back_translation_of_key_phrases", title: "Back-Translations", render: renderBackItem },
+  { key: "glossary_cross_check", title: "Glossary Cross-Check", render: renderGlossaryItem },
+];
+
+function init() {
+  google.script.run
+    .withSuccessHandler(function(res) {
+      if (!res || !res.data) {
+        document.getElementById("loading").style.display = "none";
+        document.getElementById("error").style.display = "block";
+        document.getElementById("error").textContent = "No translation data found for this document.";
+        return;
+      }
+      sidebarData = res.data;
+      checks = res.checks || {};
+      document.getElementById("loading").style.display = "none";
+      document.getElementById("content").style.display = "block";
+      renderSections();
+      updateProgress();
+      startOrphanPolling();
+    })
+    .withFailureHandler(function(err) {
+      document.getElementById("loading").style.display = "none";
+      document.getElementById("error").style.display = "block";
+      document.getElementById("error").textContent = "Error loading data: " + err.message;
+    })
+    .getSidebarData();
+}
+
+function renderSections() {
+  var container = document.getElementById("sections");
+  container.innerHTML = "";
+
+  for (var s = 0; s < SECTIONS.length; s++) {
+    var sec = SECTIONS[s];
+    var items = sidebarData[sec.key] || [];
+    if (!items.length) continue;
+
+    var section = document.createElement("div");
+    section.className = "section";
+
+    var header = document.createElement("div");
+    header.className = "section-header";
+    header.innerHTML =
+      '<div><span class="section-title">' + esc(sec.title) + '</span>' +
+      '<span class="section-count">' + items.length + '</span></div>' +
+      '<span class="section-arrow open">&#9654;</span>';
+    header.onclick = (function(h) {
+      return function() {
+        var body = h.nextElementSibling;
+        var arrow = h.querySelector(".section-arrow");
+        body.classList.toggle("open");
+        arrow.classList.toggle("open");
+      };
+    })(header);
+
+    var body = document.createElement("div");
+    body.className = "section-body open";
+
+    for (var i = 0; i < items.length; i++) {
+      var itemKey = sec.key + "::" + i;
+      var el = document.createElement("div");
+      el.className = "item" + (orphans[itemKey] ? " orphan" : "");
+      el.setAttribute("data-key", itemKey);
+
+      var checkId = "check-" + sec.key + "-" + i;
+      var checked = checks[itemKey] ? "checked" : "";
+
+      el.innerHTML =
+        '<div class="item-check">' +
+        '<input type="checkbox" id="' + checkId + '" ' + checked + ' onclick="event.stopPropagation(); toggleCheck(\'' + itemKey + '\', this.checked)">' +
+        '<div class="item-content">' + sec.render(items[i]) + '</div>' +
+        '</div>';
+
+      el.onclick = (function(item, key, secKey) {
+        return function(e) {
+          if (e.target.tagName === "INPUT") return;
+          toggleHighlight(item, key, secKey);
+        };
+      })(items[i], itemKey, sec.key);
+
+      body.appendChild(el);
+    }
+
+    section.appendChild(header);
+    section.appendChild(body);
+    container.appendChild(section);
+  }
+}
+
+function renderAltItem(item) {
+  return '<div class="item-block">Block ' + esc(item.block_id) + '</div>' +
+    '<div class="item-phrase">' + esc(item.original_phrase) + '</div>' +
+    '<div class="item-translation">' + esc(item.primary_translation) + '</div>' +
+    '<div class="item-detail"><strong>Alt:</strong> ' + esc(item.alt_translation) + '</div>' +
+    '<div class="item-detail">' + esc(item.rationale) + '</div>';
+}
+
+function renderTermItem(item) {
+  return '<div class="item-block">Block ' + esc(item.block_id) + '</div>' +
+    '<div class="item-phrase">' + esc(item.original_phrase) + '</div>' +
+    '<div class="item-translation">' + esc(item.translation) + '</div>' +
+    '<div class="item-detail">' + esc(item.needed_clarification) + '</div>';
+}
+
+function renderBackItem(item) {
+  return '<div class="item-block">Block ' + esc(item.block_id) + '</div>' +
+    '<div class="item-phrase">' + esc(item.original_phrase) + '</div>' +
+    '<div class="item-translation">' + esc(item.translation) + '</div>' +
+    '<div class="item-detail"><strong>Back:</strong> ' + esc(item.back_translation) + '</div>';
+}
+
+function renderGlossaryItem(item) {
+  var statusClass = (item.status || "").toLowerCase() === "followed" ? "followed" : "deviated";
+  return '<div class="item-block">Block ' + esc(item.block_id) + '</div>' +
+    '<div class="item-phrase">' + esc(item.term) + '</div>' +
+    '<div class="item-translation">' + esc(item.translation) + '</div>' +
+    '<div class="item-status ' + statusClass + '">' + esc(item.status) + '</div>' +
+    '<div class="item-detail">' + esc(item.note) + '</div>';
+}
+
+function toggleCheck(key, isChecked) {
+  if (isChecked) {
+    checks[key] = true;
+  } else {
+    delete checks[key];
+  }
+  updateProgress();
+  google.script.run.saveSidebarChecks(checks);
+}
+
+function updateProgress() {
+  var total = 0;
+  var checked = 0;
+  for (var s = 0; s < SECTIONS.length; s++) {
+    var items = sidebarData[SECTIONS[s].key] || [];
+    total += items.length;
+    for (var i = 0; i < items.length; i++) {
+      if (checks[SECTIONS[s].key + "::" + i]) checked++;
+    }
+  }
+  var pct = total ? Math.round((checked / total) * 100) : 0;
+  document.getElementById("progress-text").textContent = checked + " / " + total + " reviewed";
+  document.getElementById("progress-fill").style.width = pct + "%";
+}
+
+function getOriginalText(item, sectionKey) {
+  if (sectionKey === "glossary_cross_check") return item.term || "";
+  return item.original_phrase || "";
+}
+
+function getTranslationText(item, sectionKey) {
+  if (sectionKey === "alt_translations") return item.primary_translation || "";
+  return item.translation || "";
+}
+
+function toggleHighlight(item, key, sectionKey) {
+  var origText = getOriginalText(item, sectionKey);
+  var transText = getTranslationText(item, sectionKey);
+
+  if (highlightedKey === key) {
+    google.script.run
+      .withSuccessHandler(function() {
+        unhighlightUI(key);
+        highlightedKey = null;
+      })
+      .clearHighlight(origText, transText);
+    return;
+  }
+
+  if (highlightedKey) {
+    var prev = findItemByKey(highlightedKey);
+    if (prev) {
+      var prevOrig = getOriginalText(prev.item, prev.sectionKey);
+      var prevTrans = getTranslationText(prev.item, prev.sectionKey);
+      google.script.run.clearHighlight(prevOrig, prevTrans);
+      unhighlightUI(highlightedKey);
+    }
+  }
+
+  google.script.run
+    .withSuccessHandler(function(result) {
+      highlightUI(key);
+      highlightedKey = key;
+    })
+    .paintHighlight(origText, transText);
+}
+
+function findItemByKey(key) {
+  var parts = key.split("::");
+  var sectionKey = parts[0];
+  var idx = parseInt(parts[1], 10);
+  for (var s = 0; s < SECTIONS.length; s++) {
+    if (SECTIONS[s].key === sectionKey) {
+      var items = sidebarData[sectionKey] || [];
+      return { item: items[idx], sectionKey: sectionKey };
+    }
+  }
+  return null;
+}
+
+function highlightUI(key) {
+  var el = document.querySelector('[data-key="' + key + '"]');
+  if (el) el.classList.add("highlighted");
+}
+
+function unhighlightUI(key) {
+  var el = document.querySelector('[data-key="' + key + '"]');
+  if (el) el.classList.remove("highlighted");
+}
+
+function clearAll() {
+  google.script.run.clearAllHighlights();
+  highlightedKey = null;
+  var items = document.querySelectorAll(".item.highlighted");
+  for (var i = 0; i < items.length; i++) items[i].classList.remove("highlighted");
+}
+
+function startOrphanPolling() {
+  google.script.run
+    .withSuccessHandler(function(token) { editToken = token; })
+    .getDocEditToken();
+
+  pollTimer = setInterval(function() {
+    google.script.run
+      .withSuccessHandler(function(newToken) {
+        if (newToken !== editToken) {
+          editToken = newToken;
+          google.script.run
+            .withSuccessHandler(function(newOrphans) {
+              orphans = newOrphans || {};
+              var items = document.querySelectorAll(".item");
+              for (var i = 0; i < items.length; i++) {
+                var key = items[i].getAttribute("data-key");
+                if (orphans[key]) {
+                  items[i].classList.add("orphan");
+                } else {
+                  items[i].classList.remove("orphan");
+                }
+              }
+            })
+            .checkItemsExist();
+        }
+      })
+      .getDocEditToken();
+  }, 10000);
+}
+
+function esc(s) {
+  if (!s) return "";
+  var d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+init();
+</script>
+</body>
+</html>
