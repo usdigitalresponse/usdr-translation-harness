@@ -19,14 +19,12 @@ function testFolderAccess() {
   var folder = DriveApp.getFolderById(config.INPUT_FOLDER_ID);
   Logger.log("Folder name: %s", folder.getName());
 
-  var files = folder.getFilesByType(MimeType.PDF);
-  var count = 0;
-  while (files.hasNext()) {
-    var file = files.next();
-    Logger.log("  PDF: %s (id: %s, size: %s bytes)", file.getName(), file.getId(), file.getSize());
-    count++;
+  var allFiles = getInputFiles(folder);
+  for (var i = 0; i < allFiles.length; i++) {
+    var file = allFiles[i];
+    Logger.log("  File: %s (id: %s, type: %s, size: %s bytes)", file.getName(), file.getId(), file.getMimeType(), file.getSize());
   }
-  Logger.log("Total PDFs: %s", count);
+  Logger.log("Total files: %s", allFiles.length);
 }
 
 function testProcessingLog() {
@@ -71,7 +69,7 @@ function testWatchWithStub() {
     return;
   }
 
-  var files = folder.getFilesByType(MimeType.PDF);
+  var allFiles = getInputFiles(folder);
   var processed;
   try {
     processed = getProcessedFileIds(config.PROCESSING_LOG_SHEET_ID);
@@ -83,8 +81,8 @@ function testWatchWithStub() {
   var newCount = 0;
   var skippedCount = 0;
 
-  while (files.hasNext()) {
-    var file = files.next();
+  for (var i = 0; i < allFiles.length; i++) {
+    var file = allFiles[i];
     if (processed.has(file.getId())) {
       skippedCount++;
       continue;
@@ -105,3 +103,4 @@ function testWatchWithStub() {
 
   Logger.log("Done. New files processed: %s, already triggered: %s", newCount, skippedCount);
 }
+

@@ -3,7 +3,7 @@ const { StatusCodes } = require("http-status-codes");
 
 const { buildTranslationPrompt } = require("./prompt-assembly");
 const { callLlm } = require("./llm");
-const { loadConfig, writeOutput, logTranslationResult } = require("./loaders");
+const { loadConfig, writeOutput, logTranslationResult, stripExtension } = require("./loaders");
 const { createTranslationDoc } = require("./doc-writer");
 
 const REQUIRED_FIELDS = ["extractionFileId", "sourceFileName"];
@@ -104,7 +104,7 @@ async function translate(req, res) {
     return;
   }
 
-  const baseName = sourceFileName.replace(/\.pdf$/i, "");
+  const baseName = stripExtension(sourceFileName);
 
   const results = await Promise.allSettled(
     activeModels.map(async ({ provider, model }) => {
