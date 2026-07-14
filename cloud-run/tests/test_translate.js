@@ -15,14 +15,18 @@ const {
 
 // --- Mock loaders so tests don't hit Google APIs ---
 
-jest.mock("../translate/loaders.js", () => ({
-  loadDoc: jest.fn(),
-  loadSheet: jest.fn(),
-  loadExtractionJson: jest.fn(),
-  loadConfig: jest.fn(),
-  writeOutput: jest.fn(),
-  logTranslationResult: jest.fn().mockResolvedValue(),
-}));
+jest.mock("../translate/loaders.js", () => {
+  const path = require("path");
+  return {
+    loadDoc: jest.fn(),
+    loadSheet: jest.fn(),
+    loadExtractionJson: jest.fn(),
+    loadConfig: jest.fn(),
+    writeOutput: jest.fn(),
+    logTranslationResult: jest.fn().mockResolvedValue(),
+    stripExtension: (fileName) => path.parse(fileName).name,
+  };
+});
 
 jest.mock("../translate/doc-writer.js", () => ({
   createTranslationDoc: jest.fn().mockResolvedValue("mock-doc-id"),

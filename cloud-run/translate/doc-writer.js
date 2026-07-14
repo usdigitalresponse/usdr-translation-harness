@@ -1,5 +1,5 @@
 const { google } = require("googleapis");
-const { DOCS_API_VERSION, DRIVE_API_VERSION } = require("./loaders");
+const { DOCS_API_VERSION, DRIVE_API_VERSION, stripExtension } = require("./loaders");
 
 const DOC_PROPERTY_KEY = "usdr_translation_review";
 const HEADER_BG = { red: 0.93, green: 0.93, blue: 0.93 };
@@ -47,7 +47,7 @@ async function createTranslationDoc({
   const drive = google.drive({ version: DRIVE_API_VERSION, auth });
 
   const blocks = translationJson.blocks || [];
-  const baseName = sourceFileName.replace(/\.pdf$/i, "");
+  const baseName = stripExtension(sourceFileName);
   const docTitle = `${baseName} — ${provider}/${model} — Spanish Translation`;
 
   // Create an empty Google Doc in the staging folder via Drive API.

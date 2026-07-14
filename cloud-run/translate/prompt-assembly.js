@@ -4,10 +4,14 @@ const path = require("path");
 const { loadDoc, loadSheet, loadExtractionJson } = require("./loaders");
 
 const CONTENT_PLACEHOLDER = "[Paste content to be translated in the area below]";
-const EXTRACTION_CONTEXT = fs.readFileSync(
+const PDF_EXTRACTION_CONTEXT = fs.readFileSync(
   path.join(__dirname, "extraction-context.md"),
   "utf-8"
 );
+const TEXT_EXTRACTION_CONTEXT =
+  "The content below is structured text from a document. " +
+  "Each block contains a paragraph. Translate blocks where " +
+  '"translate" is true. Preserve block IDs in your response.';
 const DEFAULT_GLOSSARY_SHEET_TAB = "Glossary";
 const GLOSSARY_SHEET_COLUMNS = "A:I";
 
@@ -116,7 +120,10 @@ async function buildTranslationPrompt(extractionFileId) {
 
   let prompt = basePrompt.replace(CONTENT_PLACEHOLDER, "").trimEnd();
 
-  prompt += `\n\n<extraction_context>\n${EXTRACTION_CONTEXT}</extraction_context>`;
+  const extractionContext = extractionJson.sourceType === "text"
+    ? TEXT_EXTRACTION_CONTEXT
+    : PDF_EXTRACTION_CONTEXT;
+  prompt += `\n\n<extraction_context>\n${extractionContext}</extraction_context>`;
 
   const extractionStr = JSON.stringify(extractionJson, null, 2);
   prompt += `\n\n<extraction>\n${extractionStr}\n</extraction>`;

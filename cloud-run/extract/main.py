@@ -15,6 +15,7 @@ import google.auth
 from google.cloud import pubsub_v1
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
+import docx
 import pdfplumber
 
 from llm import call_llm
@@ -25,6 +26,14 @@ PUBSUB_TOPIC_ENV_VAR = "PUBSUB_TOPIC_EXTRACTION_COMPLETE"
 PROCESSING_LOG_SHEET_NAME = "ProcessingLog"
 STATUS_EXTRACTED = "extracted"
 STATUS_FAILED = "failed"
+
+MIME_PDF = "application/pdf"
+MIME_GOOGLE_DOCS = "application/vnd.google-apps.document"
+MIME_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+TEXT_MIME_TYPES = {MIME_GOOGLE_DOCS, MIME_DOCX}
+
+PASSTHROUGH_PROVIDER = "passthrough"
+PASSTHROUGH_MODEL = "text"
 SCHEMA_DIR = Path(__file__).resolve().parent
 MARKDOWN_JSON_PATTERN = re.compile(r"```(?:json)?\s*\n(.*?)\n\s*```", re.DOTALL)
 
@@ -87,6 +96,48 @@ def extract_text_with_pdfplumber(pdf_bytes):
     return "\n\n".join(pages_text)
 
 
+def fetch_text_from_drive(file_id, mime_type):
+    credentials, _ = google.auth.default()
+    service = build("drive", DRIVE_API_VERSION, credentials=credentials)
+
+    if mime_type == MIME_GOOGLE_DOCS:
+        request = service.files().export_media(fileId=file_id, mimeType="text/plain")
+    else:
+        request = service.files().get_media(fileId=file_id)
+
+    buffer = io.BytesIO()
+    downloader = MediaIoBaseDownload(buffer, request)
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+
+    raw_bytes = buffer.getvalue()
+
+    if mime_type == MIME_DOCX:
+        doc = docx.Document(io.BytesIO(raw_bytes))
+        return "\n\n".join(p.text for p in doc.paragraphs if p.text.strip())
+
+    return raw_bytes.decode("utf-8-sig")
+
+
+def text_to_extraction_json(text, source_file_id):
+    paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
+    blocks = []
+    for i, paragraph in enumerate(paragraphs):
+        blocks.append({
+            "id": f"block-{i + 1}",
+            "role": "body",
+            "text": paragraph,
+            "translate": True,
+        })
+
+    return {
+        "sourceType": "text",
+        "sourceFileId": source_file_id,
+        "blocks": blocks,
+    }
+
+
 def parse_extraction_response(raw_response):
     match = MARKDOWN_JSON_PATTERN.search(raw_response)
     text = match.group(1) if match else raw_response
@@ -123,6 +174,7 @@ def save_extraction_results(file_name, model, raw_response, source_file_id):
         logger.warning("Schema validation failed: %s", e.message)
 
     parsed["sourceFileId"] = source_file_id
+    parsed["sourceType"] = "pdf"
 
     parsed_filename = build_output_filename(file_name, model, "extraction.json")
     drive_file_id = write_output(parsed_filename, parsed)
@@ -219,8 +271,50 @@ def publish_extraction_complete(file_id, file_name, extraction_results):
             )
 
 
-def run_extraction(file_id, file_name):
-    """Background extraction pipeline (runs after 202 response)."""
+def run_text_extraction(file_id, file_name, mime_type):
+    """Text passthrough path for Google Docs and DOCX files."""
+    logger.info("Text extraction for %s (MIME: %s)", file_name, mime_type)
+
+    try:
+        text = fetch_text_from_drive(file_id, mime_type)
+        logger.info("Fetched text: %d characters", len(text))
+    except Exception:
+        logger.exception("Failed to fetch text for %s", file_name)
+        log_structured(STATUS_FAILED, PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
+                       file_id, file_name, error="Text fetch failed")
+        return
+
+    try:
+        parsed = text_to_extraction_json(text, file_id)
+        parsed_filename = build_output_filename(file_name, PASSTHROUGH_MODEL, "extraction.json")
+        drive_file_id = write_output(parsed_filename, parsed)
+        logger.info("Saved text extraction: %s", parsed_filename)
+    except Exception:
+        logger.exception("Failed to save text extraction for %s", file_name)
+        log_structured(STATUS_FAILED, PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
+                       file_id, file_name, error="Text extraction save failed")
+        return
+
+    enriched = {
+        "parsed": parsed,
+        "driveFileId": drive_file_id,
+        "fileName": parsed_filename,
+        "model": PASSTHROUGH_MODEL,
+        "provider": PASSTHROUGH_PROVIDER,
+    }
+
+    log_structured(STATUS_EXTRACTED, PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
+                   file_id, file_name, drive_file_id=drive_file_id)
+    try:
+        log_extraction_result(file_id, file_name, enriched)
+    except Exception:
+        logger.exception("Failed to log extraction result to processing sheet")
+
+    publish_extraction_complete(file_id, file_name, [enriched])
+
+
+def run_pdf_extraction(file_id, file_name):
+    """LLM-based extraction pipeline for PDF files."""
     config = load_config()
     active_models = get_active_models(config, EXTRACT_ROLE)
     if not active_models:
@@ -273,16 +367,35 @@ def run_extraction(file_id, file_name):
     publish_extraction_complete(file_id, file_name, extraction_results)
 
 
+SUPPORTED_MIME_TYPES = {MIME_PDF} | TEXT_MIME_TYPES
+
+
+def run_extraction(file_id, file_name, mime_type):
+    if mime_type not in SUPPORTED_MIME_TYPES:
+        logger.error("Unsupported MIME type '%s' for %s", mime_type, file_name)
+        log_structured(STATUS_FAILED, PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
+                       file_id, file_name, error=f"Unsupported MIME type: {mime_type}")
+        return
+
+    if mime_type in TEXT_MIME_TYPES:
+        run_text_extraction(file_id, file_name, mime_type)
+    else:
+        run_pdf_extraction(file_id, file_name)
+
+
 @functions_framework.http
 def extract(request):
     body = request.get_json(silent=True) or {}
     file_id = body.get("fileId")
     file_name = body.get("fileName")
+    mime_type = body.get("mimeType", MIME_PDF)
+
+    logger.info("Received request: fileId=%s, fileName=%s, mimeType=%s", file_id, file_name, mime_type)
 
     if not file_id:
         return json.dumps({"error": "Provide fileId"}), HTTPStatus.BAD_REQUEST
 
-    thread = threading.Thread(target=run_extraction, args=(file_id, file_name))
+    thread = threading.Thread(target=run_extraction, args=(file_id, file_name, mime_type))
     thread.start()
 
     return json.dumps({
