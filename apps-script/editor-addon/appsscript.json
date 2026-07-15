@@ -19,6 +19,9 @@
     "openid",
     "https://www.googleapis.com/auth/userinfo.email"
   ],
+  "urlFetchWhitelist": [
+    "https://capture-feedback-<GCP_PROJECT_NUMBER>.us-central1.run.app/"
+  ],
   "addOns": {
     "common": {
       "name": "Translation Review",

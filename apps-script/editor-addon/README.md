@@ -29,5 +29,6 @@ Set these in the Script Editor under Project Settings → Script Properties:
 1. Create an Apps Script project at [script.google.com](https://script.google.com)
 2. Link it to the GCP project under Project Settings
 3. Update `.clasp.json` with the script ID
-4. Run `clasp push` to deploy
-5. Publish as an Editor Add-on and push-install to reviewer accounts via Workspace Admin
+4. **Before `clasp push`:** Replace `<GCP_PROJECT_NUMBER>` in `appsscript.json`'s `urlFetchWhitelist` with the actual GCP project number. Do not commit the real value.
+5. Run `clasp push` to deploy
+6. Publish as an internal Workspace Marketplace add-on (see App Configuration in the Marketplace SDK)
