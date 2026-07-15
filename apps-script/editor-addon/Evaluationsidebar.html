@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #071A51; --ink-soft: #4b5580; --ink-faint: #8b93b8;
+      --line: #dbe4f7; --line-strong: #c7d2ea; --line-soft: #eef3fc; --paper: #ffffff; --raise: #f5f8ff;
+      --accent: #0066FF; --accent-bg: #e8f0ff;
+      --code-bg: #f3f6fb; --code-ink: #1c2540;
+      --red-ink:    #b23b3b; --red-bg:    #fdeceb; --red-bdr:    #f3c6c2;
+      --yellow-ink: #b07a3a; --yellow-bg: #fef3e2; --yellow-bdr: #f5d9a8;
+      --green-ink:  #1f7a5c; --green-bg:  #e9f7f1; --green-bdr:  #bfe3d3;
+      --font-head: 'Lora', Georgia, 'Times New Roman', serif;
+      --font-body: 'Inter', Roboto, -apple-system, 'Segoe UI', sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin:0; padding:0; height:100%; background:var(--paper); color:var(--ink);
+      font-family:var(--font-body); font-size:13px; line-height:1.5; }
+    #root { display:flex; flex-direction:column; height:100vh; }
+    .top { flex:0 0 auto; padding:14px 14px 12px; border-bottom:1px solid var(--line); }
+    .scroll { flex:1 1 auto; overflow-y:auto; padding:14px 14px 40px; }
+
+    .title-row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    h1 { margin:0; font-family:var(--font-head); font-size:15px; font-weight:600; letter-spacing:0; text-transform:none; color:var(--ink); }    .refresh-icon-btn {
+      font-size:15px; line-height:1; color:var(--ink-soft); cursor:pointer;
+      padding:2px 4px; border-radius:5px;
+    }
+    .refresh-icon-btn:hover { background:var(--line-soft); color:var(--ink); }
+    .meta { margin-top:6px; font-size:11px; color:var(--ink-faint); }
+
+    /* Rubric link row + manage menu */
+    .rubric-row { margin-top:8px; display:flex; align-items:center; gap:10px; position:relative; }
+    .rubric-link { font-size:12px; font-weight:600; color:var(--accent); text-decoration:none; }
+    .rubric-link:hover { text-decoration:underline; }
+
+    .manage-wrap { margin-left:auto; position:relative; }
+    .manage-btn {
+      border:none; background:none; cursor:pointer;
+      font-size:20px; font-weight:700; line-height:1; color:var(--ink);
+      padding:3px 6px; border-radius:5px;
+    }
+    .manage-btn:hover { background:var(--line-soft); }
+    .manage-menu {
+      display:none; position:absolute; right:0; top:28px; z-index:20;
+      background:var(--paper); border:1px solid var(--line); border-radius:8px;
+      padding:5px; min-width:150px; box-shadow:0 4px 14px rgba(0,0,0,0.08);
+    }
+    .manage-menu.open { display:block; }
+    .manage-item {
+      font-size:12px; color:var(--ink-soft); padding:7px 9px; border-radius:6px;
+      cursor:pointer; white-space:nowrap;
+    }
+    .manage-item:hover { background:var(--line-soft); color:var(--ink); }
+
+    .rubric-edit-panel { margin-top:8px; padding:10px; background:var(--raise);
+      border:1px solid var(--line); border-radius:8px; }
+    .rubric-input { width:100%; font-size:11.5px; font-family:inherit; color:var(--ink);
+      padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--paper);
+      margin-bottom:8px; }
+    .rubric-input:focus { outline:none; border-color:var(--accent); }
+    .rubric-edit-actions { display:flex; gap:8px; }
+    .rubric-save, .rubric-cancel { font-size:11px; font-weight:600; border-radius:6px;
+      padding:5px 10px; cursor:pointer; border:1px solid transparent; }
+    .rubric-save { background:var(--accent); color:#fff; }
+    .rubric-save:hover { opacity:.9; }
+    .rubric-save:disabled { opacity:.6; cursor:default; }
+    .rubric-cancel { background:none; border-color:var(--line); color:var(--ink-soft); }
+    .rubric-cancel:hover { background:var(--line-soft); }
+    .rubric-warn { margin-top:7px; font-size:11px; color:var(--red-ink); min-height:0; }
+
+    .score-card { margin-top:14px; display:flex; align-items:center; gap:14px; }
+    .score-big { font-family:var(--font-head); font-size:32px; font-weight:600; color:var(--ink); line-height:1; }    .score-big small { font-size:14px; font-weight:600; color:var(--ink-faint); }
+    .priority-badge { font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+      border-radius:5px; padding:3px 8px; display:inline-block; }
+    .priority-badge.red    { color:var(--red-ink);    background:var(--red-bg);    border:1px solid var(--red-bdr); }
+    .priority-badge.yellow { color:var(--yellow-ink); background:var(--yellow-bg); border:1px solid var(--yellow-bdr); }
+    .priority-badge.green  { color:var(--green-ink);  background:var(--green-bg);  border:1px solid var(--green-bdr); }
+
+
+    section { margin-top:20px; }
+
+    details.dim { border:1px solid var(--line); border-radius:9px; margin-bottom:7px; overflow:hidden; }
+    details.dim[open] { border-color:var(--line-strong); }
+    .dim-summary {
+      cursor:pointer; list-style:none; display:flex; justify-content:space-between;
+      align-items:center; gap:8px; padding:10px 12px;
+    }
+    .dim-summary::-webkit-details-marker { display:none; }
+    .dim-summary::after {
+      content:'\25b8'; font-size:11px; color:var(--ink-soft); margin-left:6px;
+      transition: transform 120ms ease; display:inline-block;
+    }
+    details.dim[open] .dim-summary::after { transform: rotate(90deg); }
+    .dim-name { font-family:var(--font-head); font-weight:600; font-size:13px; flex:1; color:var(--ink); }
+    .dim-score-wrap { display:flex; align-items:center; gap:6px; }
+    .score-dot { width:8px; height:8px; border-radius:50%; display:inline-block; flex:0 0 auto; }
+    .score-dot.red    { background: var(--red-ink); }
+    .score-dot.yellow { background: var(--yellow-ink); }
+    .score-dot.green  { background: var(--green-ink); }
+    .dim-score { font-variant-numeric:tabular-nums; font-weight:700; color:var(--ink); white-space:nowrap; }
+    .dim-body { padding:2px 12px 12px; border-top:1px solid var(--line-soft); }
+
+    .rubric-scale { margin:8px 0 10px; }
+    .rubric-row-item { display:flex; gap:8px; padding:4px 6px; border-radius:0 6px 6px 0; border-left:3px solid transparent; }
+    .rubric-row-item .rn { font-size:12px; font-weight:700; min-width:14px; color:var(--ink-faint); }
+    .rubric-row-item .rd { font-size:12px; color:var(--ink-soft); }
+    .rubric-row-item.current { background:var(--raise); border-left-color:var(--yellow-ink); }
+    .rubric-row-item.current.red    { border-left-color:var(--red-ink); }
+    .rubric-row-item.current.green  { border-left-color:var(--green-ink); }
+    .rubric-row-item.current .rn,
+    .rubric-row-item.current .rd { color:var(--ink); font-weight:600; }
+
+
+    details.subdim { border:none; margin-top:2px; }
+    .subdim-summary {
+      cursor:pointer; list-style:none; font-size:11px; color:var(--ink-faint);
+      text-decoration:underline; display:inline-block; padding:2px 0;
+    }
+    .subdim-summary::-webkit-details-marker { display:none; }
+    .subdim-toggles { display:flex; gap:14px; flex-wrap:wrap; margin-top:6px; }
+    .dim-list { margin-top:8px; }
+    .dim-list-title { font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:3px; }
+    .dim-list ul { margin:0; padding-left:16px; }
+    .dim-list li { font-size:12px; color:var(--ink-soft); margin-bottom:2px; }
+    .dim-comment { font-size:12px; color:var(--ink-soft); white-space:pre-wrap; margin-top:8px; }
+    .dim-comment.empty-val { color:var(--ink-faint); font-style:italic; }
+    .dim-rubric-link { display:block; margin-top:10px; font-size:11px; color:var(--ink-faint); text-decoration:none; }
+    .dim-rubric-link:hover { color:var(--accent); text-decoration:underline; }
+
+    .debug-toggle {
+      width:100%; display:flex; align-items:center; justify-content:space-between;
+      background:none; border:none; cursor:pointer; padding:4px 0;
+      color:var(--ink-faint); font-size:12px;
+    }
+    .debug-toggle .chevron { font-size:12px; color:var(--ink-faint); transition:transform 120ms ease; }
+    .debug-toggle.open .chevron { transform:rotate(90deg); }
+    .debug-body { margin-top:6px; }
+    details.debug-item { border:none; border-top:1px solid var(--line-soft); }
+    details.debug-item summary {
+      cursor:pointer; padding:8px 0; font-size:12px; color:var(--ink-faint); list-style:none;
+    }
+    details.debug-item summary::-webkit-details-marker { display:none; }
+    details.debug-item summary::before { content:'\25b8'; margin-right:6px; display:inline-block; font-size:11px; }
+    details.debug-item[open] summary::before { transform: rotate(90deg); display:inline-block; }
+    .debug-body-inner { padding:0 0 10px; }
+    pre.json { margin:0; background:var(--code-bg); border:1px solid var(--line-soft); border-radius:7px;
+      padding:8px 9px; font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace; font-size:11px;
+      line-height:1.45; color:var(--code-ink); white-space:pre-wrap; word-break:break-word; overflow-x:auto; }
+    .text-block { font-size:12px; color:var(--ink-soft); white-space:pre-wrap; word-break:break-word; }
+
+    .empty-sec { font-size:12px; color:var(--ink-faint); padding:9px 11px; border:1px dashed var(--line); border-radius:9px; }
+    .stage { text-align:center; color:var(--ink-soft); padding:56px 16px; font-size:12.5px; }
+    .stage strong { display:block; color:var(--ink); font-size:13px; margin-bottom:6px; }
+    .stage .hint { color:var(--ink-faint); margin-top:8px; font-size:12px; }
+  </style>
+</head>
+<body>
+<div id="root">
+  <div class="top" id="topBar"></div>
+  <div class="scroll" id="content"><div class="stage">Loading evaluation…</div></div>
+</div>
+
+<script>
+  var DATA = null;
+  var manageOpen = false;
+
+  var DEFAULT_RUBRIC_URL = 'https://docs.google.com/document/d/1JldVu3T0OCSddWIqL6BVfrD0_HR8hjzS7W8WB7Ukx7E/edit?tab=t.chdst7j0fwjs#heading=h.32t2w6jzxg1e';
+  var rubricUrl = DEFAULT_RUBRIC_URL;
+
+  var DIMENSIONS = [
+    { key: 'accuracy',    rawKey: 'accuracy_and_relevance',   label: 'Accuracy & Relevance',
+      rubricUrl: 'https://docs.google.com/document/d/1JldVu3T0OCSddWIqL6BVfrD0_HR8hjzS7W8WB7Ukx7E/edit?tab=t.chdst7j0fwjs#bookmark=id.pizpw123tlho' },
+    { key: 'clarity',     rawKey: 'clarity_and_simplicity',    label: 'Clarity, Simplicity & Accessibility',
+      rubricUrl: 'https://docs.google.com/document/d/1JldVu3T0OCSddWIqL6BVfrD0_HR8hjzS7W8WB7Ukx7E/edit?tab=t.chdst7j0fwjs#bookmark=id.3ceunrlkwf8l' },
+    { key: 'cultural',    rawKey: 'cultural_sensitivity',      label: 'Cultural Sensitivity',
+      rubricUrl: 'https://docs.google.com/document/d/1JldVu3T0OCSddWIqL6BVfrD0_HR8hjzS7W8WB7Ukx7E/edit?tab=t.chdst7j0fwjs#bookmark=id.qjid81dzmqap' },
+    { key: 'voice',       rawKey: 'active_voice_and_tone',     label: 'Active Voice & Tone',
+      rubricUrl: 'https://docs.google.com/document/d/1JldVu3T0OCSddWIqL6BVfrD0_HR8hjzS7W8WB7Ukx7E/edit?tab=t.chdst7j0fwjs#bookmark=id.rtk8zfx79yy8' },
+    { key: 'consistency', rawKey: 'consistency_and_style',     label: 'Consistency & Style',
+      rubricUrl: 'https://docs.google.com/document/d/1JldVu3T0OCSddWIqL6BVfrD0_HR8hjzS7W8WB7Ukx7E/edit?tab=t.chdst7j0fwjs#bookmark=id.49zthsz5ptsp' }
+  ];
+
+  // From rubric at https://docs.google.com/document/d/1JldVu3T0OCSddWIqL6BVfrD0_HR8hjzS7W8WB7Ukx7E/edit?tab=t.chdst7j0fwjs#heading=h.32t2w6jzxg1e 
+  var RUBRIC_SCALE = {
+    accuracy: [
+      { n: 5, d: 'Meaning fully preserved. All deadlines, legal nuances, key steps, and acronyms handled correctly.' },
+      { n: 4, d: 'Meaning preserved. All deadlines and key steps are correct. Missed one or two minor legal nuances.' },
+      { n: 3, d: 'Meaning mostly preserved. One minor detail unclear. One acronym handled incorrectly.' },
+      { n: 2, d: 'Meaning is altered, but reader can still piece together the correct meaning with effort. Does not handle acronyms correctly.' },
+      { n: 1, d: 'Meaning entirely altered. Does not handle deadlines, legal nuances, key steps, or acronyms correctly.' }
+    ],
+    clarity: [
+      { n: 5, d: 'Sentences short, direct, easy to read. Jargon explained. Easy to scan.' },
+      { n: 4, d: 'One or two sentences are hard to scan or one jargon is unexplained. Some formatting issues.' },
+      { n: 3, d: 'Several complex sentences or technical/jargon terms unexplained. Some formatting issues.' },
+      { n: 2, d: 'Hard to understand. Majority of sentences are long and dense. Bureaucratic terms without explanation.' },
+      { n: 1, d: 'Extremely hard to understand. Technical or legalistic language throughout. No attempt at plain language.' }
+    ],
+    cultural: [
+      { n: 5, d: 'Fully gender-neutral, uses Central American Spanish, and is culturally respectful.' },
+      { n: 4, d: 'Minor uses of gendered terms. Missed opportunity for cultural equivalent. One regionalism not broadly understood.' },
+      { n: 3, d: 'Some use of gendered terms. Missed opportunities for cultural equivalents.' },
+      { n: 2, d: 'Frequent use of gendered or regionally-inappropriate terms. Uses overly-literal translations.'},
+      { n: 1, d: 'Offensive use of exclusive or inappropriate terms.' }
+    ],
+    voice: [
+      { n: 5, d: 'Consistently active, direct, and friendly, consistent use of “usted.”' },
+      { n: 4, d: 'Some passive voice not impacting readability. Some usage of "tú."' },
+      { n: 3, d: 'Some passive voice that slows reading. Spanish idiom incorrectly introduced.' },
+      { n: 2, d: 'Mainly passive or formal voice. Frequent use of "tú." Multiple idioms incorrectly introduced.' },
+      { n: 1, d: 'Inappropriate voice for context type. Frequent use of “tú." Multiple idioms incorrectly introduced.' }
+    ],
+    consistency: [
+      { n: 5, d: 'Fully consistent; style aligned with Spanish writing guidance.' },
+      { n: 4, d: 'Very consistent, with only one or two inconsistent terms or formatting.' },
+      { n: 3, d: 'Some inconsistent terms or formatting.' },
+      { n: 2, d: 'Inconsistent terms or formatting confuse the reader.' },
+      { n: 1, d: 'Inconsistent terms or formatting appear unprofessional.' }
+    ]
+  };
+
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function prettyJson(v){ if (typeof v==='string') return v; try { return JSON.stringify(v,null,2); } catch(e){ return String(v); } }
+  function tryParse(s){ if (typeof s!=='string') return s; try { return JSON.parse(s); } catch(e){ return null; } }
+
+  function dimNode(parsedRaw, rawKey) {
+    var node = parsedRaw && parsedRaw[rawKey];
+    return (node && typeof node === 'object') ? node : null;
+  }
+  function extractList_(node, keys) {
+    if (!node) return [];
+    for (var i = 0; i < keys.length; i++) {
+      var v = node[keys[i]];
+      if (v === undefined || v === null || v === '') continue;
+      if (Array.isArray(v)) return v.filter(Boolean);
+      return [v];
+    }
+    return [];
+  }
+  function rawComment(node) {
+    if (!node) return '';
+    return node.rationale || node.comment || node.justification || node.notes || node.explanation || node.feedback || '';
+  }
+
+  function dimScoreClass(val) {
+    var n = parseFloat(val);
+    if (isNaN(n)) return '';
+    if (n <= 2) return 'red';
+    if (n === 3) return 'yellow';
+    return 'green';
+  }
+
+  function overallScoreClass(val) {
+    var n = parseFloat(val);
+    if (isNaN(n)) return '';
+    if (n <= 3) return 'red';
+    if (n < 4) return 'yellow';
+    return 'green';
+  }
+
+  function priorityClass(rating) {
+    var s = String(rating || '');
+    if (/critical/i.test(s)) return 'red';
+    if (/medium/i.test(s))   return 'yellow';
+    if (/high|urgent/i.test(s)) return 'red';
+    if (/low|none/i.test(s))    return 'green';
+    return '';
+  }
+
+  function isFallback(scores) {
+    return scores && scores.accuracy === 'See full response';
+  }
+  function subdimToggle(label, items) {
+    if (!items.length) return '';
+    var content = items.map(function(it){ return '<div class="dim-comment">' + esc(it) + '</div>'; }).join('');
+    return '<details class="subdim"><summary class="subdim-summary">' + esc(label) + '</summary>' + content + '</details>';
+  }
+
+  function rubricScaleBlock(dimKey, currentVal, colorClass) {
+    var levels = RUBRIC_SCALE[dimKey];
+    if (!levels) return '';
+    var n = parseFloat(currentVal);
+    return '<div class="rubric-scale">' + levels.map(function(l) {
+      var isCurrent = !isNaN(n) && l.n === n;
+      return '<div class="rubric-row-item' + (isCurrent ? ' current ' + colorClass : '') + '">'
+        + '<span class="rn">' + l.n + '</span><span class="rd">' + esc(l.d) + '</span>'
+        + '</div>';
+    }).join('') + '</div>';
+  }
+
+  // ---- Header / rubric link ----
+
+  function buildTopHtml() {
+    return '<div class="title-row"><h1>Evaluation Results</h1>'
+      +   '<span class="refresh-icon-btn" id="refreshIconBtn" title="Refresh" aria-label="Refresh">&#8635;</span>'
+      + '</div>'
+      + '<div class="rubric-row">'
+      +   '<a href="' + esc(rubricUrl) + '" target="_blank" rel="noopener" class="rubric-link" id="rubricLink">View rubric</a>'
+      +   '<div class="manage-wrap">'
+      +     '<button type="button" class="manage-btn" id="manageBtn" aria-label="Manage">&#8942;</button>'
+      +     '<div class="manage-menu' + (manageOpen ? ' open' : '') + '" id="manageMenu">'
+      +       '<div class="manage-item" id="changeRubricItem">Change rubric</div>'
+      +     '</div>'
+      +   '</div>'
+      + '</div>'
+      + '<div class="rubric-edit-panel" id="rubricEditPanel" hidden>'
+      +   '<input type="text" class="rubric-input" id="rubricInput" placeholder="Paste new rubric doc URL" value="' + esc(rubricUrl) + '">'
+      +   '<div class="rubric-edit-actions">'
+      +     '<button type="button" class="rubric-save" id="rubricSaveBtn">Save</button>'
+      +     '<button type="button" class="rubric-cancel" id="rubricCancelBtn">Cancel</button>'
+      +   '</div>'
+      +   '<div class="rubric-warn" id="rubricWarn"></div>'
+      + '</div>';
+  }
+
+  function attachTopBarListeners() {
+    var refreshIconBtn = document.getElementById('refreshIconBtn');
+    if (refreshIconBtn) refreshIconBtn.addEventListener('click', runRefreshEvaluation);
+
+    var manageBtn = document.getElementById('manageBtn');
+    if (manageBtn) manageBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      manageOpen = !manageOpen;
+      document.getElementById('manageMenu').classList.toggle('open', manageOpen);
+    });
+    document.addEventListener('click', function() {
+      if (manageOpen) {
+        manageOpen = false;
+        var menu = document.getElementById('manageMenu');
+        if (menu) menu.classList.remove('open');
+      }
+    });
+
+    var panel    = document.getElementById('rubricEditPanel');
+    var input    = document.getElementById('rubricInput');
+    var saveBtn  = document.getElementById('rubricSaveBtn');
+    var cancelBtn = document.getElementById('rubricCancelBtn');
+    var warnEl   = document.getElementById('rubricWarn');
+
+    var changeRubricItem = document.getElementById('changeRubricItem');
+    if (changeRubricItem) changeRubricItem.addEventListener('click', function(e) {
+      e.stopPropagation();
+      manageOpen = false;
+      document.getElementById('manageMenu').classList.remove('open');
+      input.value = rubricUrl;
+      warnEl.textContent = '';
+      panel.hidden = !panel.hidden;
+    });
+
+    if (cancelBtn) cancelBtn.addEventListener('click', function () {
+      panel.hidden = true;
+      warnEl.textContent = '';
+    });
+
+    if (saveBtn) saveBtn.addEventListener('click', function () {
+      var newUrl = (input.value || '').trim();
+      if (!newUrl) {
+        warnEl.textContent = 'Please enter a URL.';
+        return;
+      }
+      if (newUrl === rubricUrl) {
+        panel.hidden = true;
+        return;
+      }
+
+      var confirmed = window.confirm(
+        'Change the rubric link shown in this sidebar?\n\n' +
+        'New link:\n' + newUrl + '\n\n' +
+        'This updates the link for everyone who opens this sidebar. It does not change how evaluations are scored.'
+      );
+      if (!confirmed) return;
+
+      saveBtn.disabled = true;
+      warnEl.textContent = '';
+      google.script.run
+        .withSuccessHandler(function () {
+          rubricUrl = newUrl;
+          saveBtn.disabled = false;
+          panel.hidden = true;
+          var link = document.getElementById('rubricLink');
+          if (link) link.href = rubricUrl;
+        })
+        .withFailureHandler(function (err) {
+          saveBtn.disabled = false;
+          warnEl.textContent = 'Couldn\'t save: ' + (err && err.message ? err.message : err);
+        })
+        .setRubricUrl(newUrl);
+    });
+  }
+
+  // ---- Main render ----
+
+  function render() {
+    if (!DATA) { renderEmpty(); return; }
+
+    var scores    = DATA.scores || {};
+    var parsedRaw = tryParse(DATA.raw_eval_text) || {};
+    var fallback  = isFallback(scores);
+    var ts        = DATA.timestamp ? new Date(DATA.timestamp).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
+
+    var topHtml = buildTopHtml();
+    if (ts) topHtml += '<div class="meta">Generated ' + esc(ts) + '</div>';
+
+    if (!fallback && (scores.weightedOverall !== '' || scores.priorityRating)) {
+      topHtml += '<div class="score-card">';
+      if (scores.weightedOverall !== '') {
+        topHtml += '<div class="score-big">'
+              + esc(scores.weightedOverall) + '<small>/5</small></div>';
+      }
+      if (scores.priorityRating) {
+        topHtml += '<span class="priority-badge ' + priorityClass(scores.priorityRating) + '">'
+              + esc(scores.priorityRating) + ' FIX PRIORITY</span>';
+      }
+      topHtml += '</div>';
+    }
+
+    document.getElementById('topBar').innerHTML = topHtml;
+    attachTopBarListeners();
+
+    var html = '<section>';
+    if (fallback) {
+      html += '<div class="empty-sec">The model didn\'t return parseable JSON for this evaluation — see the full response below.</div>';
+    } else {
+      DIMENSIONS.forEach(function(d) {
+        var val        = scores[d.key];
+        var node       = dimNode(parsedRaw, d.rawKey);
+        var strengths  = extractList_(node, ['strengths','strength','pros']);
+        var issues     = extractList_(node, ['issues','weaknesses','problems','concerns']);
+        var recs       = extractList_(node, ['recommendations','recommendation','suggestions','fixes']);
+        var comment    = rawComment(node);
+        var hasLists   = strengths.length || issues.length || recs.length;
+        var colorClass = dimScoreClass(val);
+
+
+        html += '<details class="dim">'
+          + '<summary class="dim-summary">'
+          +   '<span class="dim-name">' + esc(d.label) + '</span>'
+          +   (val !== '' && val !== undefined ? '<span class="dim-score-wrap"><span class="score-dot ' + colorClass + '"></span><span class="dim-score">' + esc(val) + '</span></span>' : '')
+          + '</summary>'
+          + '<div class="dim-body">'
+          +   rubricScaleBlock(d.key, val, colorClass)
+          +   (hasLists
+                ? '<div class="subdim-toggles">'
+                  + subdimToggle('Strengths', strengths)
+                  + subdimToggle('Issues', issues)
+                  + subdimToggle('Recommendations', recs)
+                  + '</div>'
+                : (comment ? '<div class="dim-comment">' + esc(comment) + '</div>' : '<div class="dim-comment empty-val">No additional detail provided.</div>'))
+          +   '<a href="' + esc(d.rubricUrl || rubricUrl) + '" target="_blank" rel="noopener" class="dim-rubric-link">View rubric &#8599;</a>'
+          + '</div>'
+          + '</details>';
+      });
+    }
+    html += '</section>';
+
+    html += '<section>'
+      + '<button class="debug-toggle" id="debugToggle"><span>Debug info</span><span class="chevron">&#9656;</span></button>'
+      + '<div class="debug-body" id="debugBody" style="display:none;">'
+      +   '<details class="debug-item"><summary>Source text</summary><div class="debug-body-inner"><div class="text-block">' + esc(DATA.source_text || '—') + '</div></div></details>'
+      +   '<details class="debug-item"><summary>Translated text</summary><div class="debug-body-inner"><div class="text-block">' + esc(DATA.translated_text || '—') + '</div></div></details>'
+      +   '<details class="debug-item"><summary>Full evaluation response</summary><div class="debug-body-inner"><pre class="json">'
+      +     esc(parsedRaw && Object.keys(parsedRaw).length ? prettyJson(parsedRaw) : (DATA.raw_eval_text || '—'))
+      +   '</pre></div></details>'
+      + '</div>'
+      + '</section>';
+
+    document.getElementById('content').innerHTML = html;
+
+    var debugToggle = document.getElementById('debugToggle');
+    if (debugToggle) debugToggle.addEventListener('click', function() {
+      var body = document.getElementById('debugBody');
+      var open = body.style.display !== 'none';
+      body.style.display = open ? 'none' : 'block';
+      debugToggle.classList.toggle('open', !open);
+    });
+  }
+
+  function renderEmpty() {
+    document.getElementById('topBar').innerHTML = buildTopHtml();
+    attachTopBarListeners();
+    document.getElementById('content').innerHTML = '<div class="stage"><strong>No evaluation yet</strong>'
+      + 'Run an evaluation to see results here.'
+      + '<div class="hint">Translation Playground&nbsp;&#9656;&nbsp;Evaluate Translation</div></div>';
+  }
+
+  function onData(res) { DATA = res; render(); }
+  function onErr(err) {
+    document.getElementById('content').innerHTML =
+      '<div class="stage"><strong>Couldn\'t load evaluation</strong>' + esc(err && err.message ? err.message : err) + '</div>';
+  }
+  function reload() {
+    document.getElementById('content').innerHTML = '<div class="stage">Loading evaluation…</div>';
+    google.script.run.withSuccessHandler(onData).withFailureHandler(onErr).getEvalData();
+  }
+
+  function problemLabel(problem) {
+    if (problem === 'no_translation') return 'No translated text';
+    if (problem === 'config') return 'Config error';
+    return 'Evaluation error';
+  }
+
+  function runRefreshEvaluation() {
+    document.getElementById('content').innerHTML = '<div class="stage">Re-evaluating the translation…<div class="hint">This can take up to a minute.</div></div>';
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (res && res.problem) {
+          document.getElementById('content').innerHTML = '<div class="stage"><strong>'
+            + esc(problemLabel(res.problem)) + '</strong>' + esc(res.message || '') + '</div>';
+          return;
+        }
+        reload();
+      })
+      .withFailureHandler(function(err) {
+        document.getElementById('content').innerHTML = '<div class="stage"><strong>Evaluation failed</strong>'
+          + esc(err && err.message ? err.message : err) + '</div>';
+      })
+      .evaluateTranslationFromSidebar();
+  }
+
+  function boot() {
+    document.getElementById('topBar').innerHTML = buildTopHtml();
+    attachTopBarListeners();
+    google.script.run
+      .withSuccessHandler(function (url) {
+        if (url) {
+          rubricUrl = url;
+          var link = document.getElementById('rubricLink');
+          if (link) link.href = rubricUrl;
+          var input = document.getElementById('rubricInput');
+          if (input) input.value = rubricUrl;
+        }
+      })
+      .withFailureHandler(function () { /* keep default rubric link silently */ })
+      .getRubricUrl();
+    reload();
+  }
+
+  boot();
+</script>
+</body>
+</html>
