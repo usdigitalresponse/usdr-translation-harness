@@ -1,10 +1,12 @@
-// Watches a Drive input folder for new PDFs and triggers the Extract Cloud Run function.
-// The extract function is fire-and-forget: it returns 202 immediately and processes in the background.
-// Processing history is logged to a Google Sheet for auditability.
-
 var HTTP_ACCEPTED = 202;
 var POLL_INTERVAL_MINUTES = 5;
 var HEADER_ROWS = 1;
+
+var SUPPORTED_MIME_TYPES = [
+  MimeType.PDF,
+  MimeType.GOOGLE_DOCS,
+  MimeType.MICROSOFT_WORD,
+];
 
 var STATUS = {
   TRIGGERED: "triggered",
@@ -79,6 +81,7 @@ function callExtractFunction(file, extractUrl) {
     payload: JSON.stringify({
       fileId: file.getId(),
       fileName: file.getName(),
+      mimeType: file.getMimeType(),
     }),
     muteHttpExceptions: true,
   };
@@ -102,7 +105,18 @@ function callExtractFunction(file, extractUrl) {
   };
 }
 
-function watchForNewPDFs() {
+function getInputFiles(folder) {
+  var allFiles = [];
+  for (var i = 0; i < SUPPORTED_MIME_TYPES.length; i++) {
+    var files = folder.getFilesByType(SUPPORTED_MIME_TYPES[i]);
+    while (files.hasNext()) {
+      allFiles.push(files.next());
+    }
+  }
+  return allFiles;
+}
+
+function watchForNewFiles() {
   var config;
   try {
     config = getConfig();
@@ -119,7 +133,7 @@ function watchForNewPDFs() {
     return;
   }
 
-  var files = folder.getFilesByType(MimeType.PDF);
+  var allFiles = getInputFiles(folder);
   var processed;
   try {
     processed = getProcessedFileIds(config.PROCESSING_LOG_SHEET_ID);
@@ -128,8 +142,8 @@ function watchForNewPDFs() {
     return;
   }
 
-  while (files.hasNext()) {
-    var file = files.next();
+  for (var i = 0; i < allFiles.length; i++) {
+    var file = allFiles[i];
     if (processed.has(file.getId())) continue;
 
     var startTime = Date.now();
@@ -149,7 +163,7 @@ function watchForNewPDFs() {
 }
 
 function createTimeTrigger() {
-  ScriptApp.newTrigger("watchForNewPDFs")
+  ScriptApp.newTrigger("watchForNewFiles")
     .timeBased()
     .everyMinutes(POLL_INTERVAL_MINUTES)
     .create();

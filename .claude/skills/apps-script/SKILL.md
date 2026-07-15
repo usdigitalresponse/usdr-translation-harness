@@ -239,7 +239,7 @@ The orchestrator has a `createTimeTrigger()` function that sets up a 5-minute po
 
 Alternatively, the user can set up the trigger manually:
 1. Go to Triggers (clock icon in left sidebar)
-2. Add trigger: `watchForNewPDFs`, time-driven, every 5 minutes
+2. Add trigger: `watchForNewFiles`, time-driven, every 5 minutes
 
 Only one trigger should exist — check Triggers page to avoid duplicates.
 

@@ -1,6 +1,6 @@
 # Orchestrator
 
-Watches a Google Drive input folder for new PDFs and calls the Extract Cloud Run function.
+Watches a Google Drive input folder for new files and calls the Extract Cloud Run function. Supports PDFs, Google Docs, and DOCX files.
 
 ## Configuration notes
 
@@ -9,7 +9,7 @@ Watches a Google Drive input folder for new PDFs and calls the Extract Cloud Run
 **Exception logging:** `STACKDRIVER` routes Apps Script errors to Cloud Logging in the linked GCP project (viewable in GCP Console → Logging → Log Explorer). This requires the Apps Script project to be linked to a GCP project under Project Settings → Google Cloud Platform Project. Centralizes logs alongside Cloud Run function logs and supports log-based alerts.
 
 **OAuth scopes:**
-- `auth/drive` — read PDFs and watch the input folder
+- `auth/drive` — read files and watch the input folder
 - `auth/spreadsheets` — read/write the processing log Google Sheet
 - `auth/script.external_request` — call the Extract Cloud Run function via `UrlFetchApp`
 - `auth/script.scriptapp` — create and manage time-based triggers
@@ -21,7 +21,7 @@ Set these in the Script Editor under Project Settings → Script Properties:
 
 | Property | Description |
 |---|---|
-| `INPUT_FOLDER_ID` | Google Drive folder ID the orchestrator watches for new PDFs |
+| `INPUT_FOLDER_ID` | Google Drive folder ID the orchestrator watches for new files (PDFs, Google Docs, DOCX) |
 | `EXTRACT_FUNCTION_URL` | Deployed Extract Cloud Run function URL |
 | `PROCESSING_LOG_SHEET_ID` | Google Sheet ID for the processing log (must have a tab named `ProcessingLog` with headers: `fileId`, `fileName`, `processedAt`, `status`, `durationMs`, `errorDetail`, `extractionFileId`, `provider`, `model`). Share with the Cloud Run service account as Editor so Extract can write back to it. |
 
@@ -34,7 +34,7 @@ Set these in the Script Editor under Project Settings → Script Properties:
 | `extracted` | Extract | One row per model extraction with the output file ID |
 | `failed` | Orchestrator | Extract function call returned an error |
 
-When multiple extract models are active, a single PDF produces multiple `extracted` rows (one per model). A saved filter view sorted by `fileId` then `processedAt` groups related rows together.
+When multiple extract models are active, a single PDF produces multiple `extracted` rows (one per model). Google Docs and DOCX files produce a single `extracted` row with `provider: passthrough` / `model: text` since no LLM is needed. A saved filter view sorted by `fileId` then `processedAt` groups related rows together.
 
 ## Retry behavior
 

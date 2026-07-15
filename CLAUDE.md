@@ -12,8 +12,9 @@ The system has two layers that communicate over HTTP:
 Apps Script (Google Workspace)          Cloud Run (GCP)
 ─────────────────────────────           ───────────────
 Orchestrator                            Extract
-  watches Drive input folder              accepts fileId, fetches PDF from Drive
-  calls Extract (fire-and-forget, 202)    sends PDF to LLM, stores extraction JSON
+  watches Drive input folder              accepts fileId + mimeType
+  for PDFs, Google Docs, DOCX             PDF: pdfplumber + LLM extraction
+  calls Extract (fire-and-forget, 202)    Doc/DOCX: text passthrough (no LLM)
                                           publishes to Pub/Sub
                                               │
                                               ▼
@@ -37,7 +38,7 @@ When changing one component, check the other side of each interface it touches:
 
 | Caller | Callee | Contract |
 |---|---|---|
-| Orchestrator | Extract | `POST { fileId, fileName }` → `202 Accepted` |
+| Orchestrator | Extract | `POST { fileId, fileName, mimeType }` → `202 Accepted` |
 | Editor Add-on | Capture Feedback | `POST { documentId }` → `200` with decisions |
 | Extract | Translate | Pub/Sub message with extraction JSON location |
 | Translate | Editor Add-on | `usdr_translation_review` document property on output docs |

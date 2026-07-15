@@ -16,6 +16,7 @@ const SCHEMA_PATHS = {
 };
 
 const DEFAULT_MAX_TOKENS = 16384;
+const LLM_TIMEOUT_MS = 240_000;
 
 function loadTranslationSchema(provider) {
   const schemaPath = SCHEMA_PATHS[provider];
@@ -26,7 +27,7 @@ function loadTranslationSchema(provider) {
 }
 
 async function callClaude(prompt, { model, maxTokens = DEFAULT_MAX_TOKENS, outputSchema } = {}) {
-  const client = new Anthropic();
+  const client = new Anthropic({ timeout: LLM_TIMEOUT_MS });
   const kwargs = {
     model,
     max_tokens: maxTokens,

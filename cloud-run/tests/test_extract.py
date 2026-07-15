@@ -11,8 +11,10 @@ import pytest
 from extract.main import (
     extract, extract_text_with_pdfplumber, get_active_models,
     load_pdf_bytes, build_extraction_prompt, publish_extraction_complete,
-    log_extraction_result,
-    EXTRACT_ROLE, PUBSUB_TOPIC_ENV_VAR, STATUS_EXTRACTED,
+    log_extraction_result, text_to_extraction_json, run_extraction,
+    EXTRACT_ROLE, PUBSUB_TOPIC_ENV_VAR, STATUS_EXTRACTED, STATUS_FAILED,
+    MIME_PDF, MIME_GOOGLE_DOCS, MIME_DOCX, TEXT_MIME_TYPES,
+    PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
 )
 from extract.llm import call_llm, PROVIDER_ANTHROPIC, PROVIDER_GOOGLE
 
@@ -230,6 +232,80 @@ class TestPublishExtractionComplete:
             publish_extraction_complete("source-file-id", "test.pdf", two_results)
 
         assert mock_publisher.publish.call_count == 2
+
+
+class TestTextToExtractionJson:
+    def test_splits_paragraphs_into_blocks(self):
+        text = "First paragraph.\n\nSecond paragraph.\n\nThird."
+        result = text_to_extraction_json(text, "file-123")
+        assert result["sourceType"] == "text"
+        assert result["sourceFileId"] == "file-123"
+        assert len(result["blocks"]) == 3
+        assert result["blocks"][0]["text"] == "First paragraph."
+        assert result["blocks"][1]["text"] == "Second paragraph."
+        assert result["blocks"][2]["text"] == "Third."
+
+    def test_blocks_have_correct_structure(self):
+        result = text_to_extraction_json("Hello world.", "file-123")
+        block = result["blocks"][0]
+        assert block["id"] == "block-1"
+        assert block["role"] == "body"
+        assert block["translate"] is True
+        assert "spatial" not in block
+        assert "typography" not in block
+
+    def test_skips_blank_lines(self):
+        text = "Line one.\n\n\n\n\nLine two."
+        result = text_to_extraction_json(text, "file-123")
+        assert len(result["blocks"]) == 2
+
+    def test_omits_pdf_specific_fields(self):
+        result = text_to_extraction_json("Some text.", "file-123")
+        assert "page_metadata" not in result
+        assert "non_translatable_elements" not in result
+        assert "translation_warnings" not in result
+
+
+class TestExtractEndpointMimeType:
+    @patch("extract.main.run_extraction")
+    def test_passes_mime_type_to_run_extraction(self, mock_run):
+        req = FakeRequest({"fileId": "abc", "fileName": "doc.docx", "mimeType": MIME_DOCX})
+        body, status = extract(req)
+        assert status == HTTPStatus.ACCEPTED
+        mock_run.assert_called_once()
+        args = mock_run.call_args[0]
+        assert args[2] == MIME_DOCX
+
+    @patch("extract.main.run_extraction")
+    def test_defaults_to_pdf_when_no_mime_type(self, mock_run):
+        req = FakeRequest({"fileId": "abc", "fileName": "test.pdf"})
+        extract(req)
+        args = mock_run.call_args[0]
+        assert args[2] == MIME_PDF
+
+
+class TestRunExtractionRouting:
+    @patch("extract.main.run_text_extraction")
+    def test_routes_google_docs_to_text_path(self, mock_text):
+        run_extraction("file-id", "My Doc", MIME_GOOGLE_DOCS)
+        mock_text.assert_called_once_with("file-id", "My Doc", MIME_GOOGLE_DOCS)
+
+    @patch("extract.main.run_text_extraction")
+    def test_routes_docx_to_text_path(self, mock_text):
+        run_extraction("file-id", "report.docx", MIME_DOCX)
+        mock_text.assert_called_once_with("file-id", "report.docx", MIME_DOCX)
+
+    @patch("extract.main.run_pdf_extraction")
+    def test_routes_pdf_to_pdf_path(self, mock_pdf):
+        run_extraction("file-id", "test.pdf", MIME_PDF)
+        mock_pdf.assert_called_once_with("file-id", "test.pdf")
+
+    @patch("extract.main.log_structured")
+    def test_rejects_unsupported_mime_type(self, mock_log):
+        run_extraction("file-id", "image.png", "image/png")
+        mock_log.assert_called_once()
+        args = mock_log.call_args[0]
+        assert args[0] == STATUS_FAILED
 
 
 class TestLogExtractionResult:

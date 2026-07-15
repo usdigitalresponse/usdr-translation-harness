@@ -12,6 +12,7 @@ from google import genai
 
 PROVIDER_ANTHROPIC = "anthropic"
 PROVIDER_GOOGLE = "google"
+LLM_TIMEOUT_SECONDS = 240
 
 SCHEMA_DIR = Path(__file__).resolve().parent
 SCHEMA_PATHS = {
@@ -21,7 +22,7 @@ SCHEMA_PATHS = {
 
 
 def call_claude(prompt, *, model="claude-sonnet-4-6", max_tokens=16384, system=None, pdf_base64=None, output_schema=None):
-    client = anthropic.Anthropic()
+    client = anthropic.Anthropic(timeout=LLM_TIMEOUT_SECONDS)
     content = []
 
     if pdf_base64:

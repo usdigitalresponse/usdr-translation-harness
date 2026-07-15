@@ -18,7 +18,11 @@ function loadOrchestrator(globals) {
       getIdentityToken: jest.fn().mockReturnValue("fake-token"),
       newTrigger: jest.fn(),
     },
-    MimeType: { PDF: "application/pdf" },
+    MimeType: {
+      PDF: "application/pdf",
+      GOOGLE_DOCS: "application/vnd.google-apps.document",
+      MICROSOFT_WORD: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    },
     Date: Date,
     ...globals,
   };
@@ -54,23 +58,30 @@ function mockSheet(rows) {
   };
 }
 
-function mockFolder(files) {
-  var index = 0;
+function mockFolder(filesByMimeType) {
+  if (Array.isArray(filesByMimeType)) {
+    filesByMimeType = { "application/pdf": filesByMimeType };
+  }
   return {
     getFolderById: jest.fn().mockReturnValue({
       getName: jest.fn().mockReturnValue("Test Folder"),
-      getFilesByType: jest.fn().mockReturnValue({
-        hasNext: function () { return index < files.length; },
-        next: function () { return files[index++]; },
+      getFilesByType: jest.fn().mockImplementation(function (mimeType) {
+        var files = filesByMimeType[mimeType] || [];
+        var index = 0;
+        return {
+          hasNext: function () { return index < files.length; },
+          next: function () { return files[index++]; },
+        };
       }),
     }),
   };
 }
 
-function makeFile(id, name) {
+function makeFile(id, name, mimeType) {
   return {
     getId: jest.fn().mockReturnValue(id),
     getName: jest.fn().mockReturnValue(name),
+    getMimeType: jest.fn().mockReturnValue(mimeType || "application/pdf"),
     getSize: jest.fn().mockReturnValue(1024),
   };
 }
@@ -248,6 +259,7 @@ describe("callExtractFunction", () => {
     var payload = JSON.parse(options.payload);
     expect(payload.fileId).toBe("file-1");
     expect(payload.fileName).toBe("test.pdf");
+    expect(payload.mimeType).toBe("application/pdf");
   });
 
   test("sends identity token in authorization header", () => {
@@ -265,7 +277,7 @@ describe("callExtractFunction", () => {
   });
 });
 
-describe("watchForNewPDFs", () => {
+describe("watchForNewFiles", () => {
   test("skips already-triggered files", () => {
     var sheetMock = mockSheet([
       HEADER_ROW,
@@ -283,7 +295,7 @@ describe("watchForNewPDFs", () => {
       UrlFetchApp: { fetch: fetchMock },
     });
 
-    ctx.watchForNewPDFs();
+    ctx.watchForNewFiles();
 
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -302,7 +314,7 @@ describe("watchForNewPDFs", () => {
       UrlFetchApp: { fetch: fetchMock },
     });
 
-    ctx.watchForNewPDFs();
+    ctx.watchForNewFiles();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(sheetMock._sheet.appendRow).toHaveBeenCalledTimes(1);
@@ -331,7 +343,7 @@ describe("watchForNewPDFs", () => {
       UrlFetchApp: { fetch: fetchMock },
     });
 
-    ctx.watchForNewPDFs();
+    ctx.watchForNewFiles();
 
     expect(sheetMock._sheet.appendRow).toHaveBeenCalledTimes(2);
     var failRow = sheetMock._sheet.appendRow.mock.calls[0][0];
@@ -341,12 +353,46 @@ describe("watchForNewPDFs", () => {
     expect(okRow[3]).toBe("triggered");
   });
 
+  test("processes Google Docs and DOCX files alongside PDFs", () => {
+    var sheetMock = mockSheet([HEADER_ROW]);
+    var fetchMock = jest.fn().mockReturnValue({
+      getResponseCode: jest.fn().mockReturnValue(202),
+      getContentText: jest.fn().mockReturnValue(""),
+    });
+
+    var ctx = loadOrchestrator({
+      PropertiesService: mockScriptProperties(VALID_PROPS),
+      DriveApp: mockFolder({
+        "application/pdf": [makeFile("f1", "doc.pdf", "application/pdf")],
+        "application/vnd.google-apps.document": [makeFile("f2", "My Doc", "application/vnd.google-apps.document")],
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [makeFile("f3", "report.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")],
+      }),
+      SpreadsheetApp: sheetMock,
+      UrlFetchApp: { fetch: fetchMock },
+    });
+
+    ctx.watchForNewFiles();
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    var payloads = fetchMock.mock.calls.map(function (call) {
+      return JSON.parse(call[1].payload);
+    });
+    expect(payloads).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ fileId: "f1", mimeType: "application/pdf" }),
+        expect.objectContaining({ fileId: "f2", mimeType: "application/vnd.google-apps.document" }),
+        expect.objectContaining({ fileId: "f3", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }),
+      ])
+    );
+  });
+
   test("exits gracefully on missing config", () => {
     var ctx = loadOrchestrator({
       PropertiesService: mockScriptProperties({}),
     });
 
-    expect(() => ctx.watchForNewPDFs()).not.toThrow();
+    expect(() => ctx.watchForNewFiles()).not.toThrow();
     expect(ctx.Logger.log).toHaveBeenCalledWith(
       "Configuration error: %s",
       expect.stringContaining("Missing required script properties")

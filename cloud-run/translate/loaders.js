@@ -240,6 +240,10 @@ async function logTranslationResult(sourceFileId, sourceFileName, translationRes
   );
 }
 
+function stripExtension(fileName) {
+  return path.parse(fileName).name;
+}
+
 module.exports = {
   loadDoc,
   loadSheet,
@@ -249,6 +253,7 @@ module.exports = {
   logTranslationResult,
   formatTimestamp,
   parseSheetRows,
+  stripExtension,
   DOCS_API_VERSION,
   SHEETS_API_VERSION,
   DRIVE_API_VERSION,
