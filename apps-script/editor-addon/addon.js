@@ -274,19 +274,25 @@ function checkItemsExist() {
 // ── Menu and sidebar ─────────────────────────────────────────────────────
 
 function onOpen(e) {
-  var translationFileId = getTranslationFileId_();
-
-  if (translationFileId) {
-    clearAllHighlights();
-    DocumentApp.getUi()
-      .createMenu("Translation Review")
-      .addItem("Show AI Suggestions", "showReviewPanel")
-      .addItem("Submit Review", "submitReview")
-      .addToUi();
-  }
+  DocumentApp.getUi()
+    .createAddonMenu()
+    .addItem("Show AI Suggestions", "showReviewPanel")
+    .addItem("Submit Review", "submitReview")
+    .addToUi();
 }
 
 function showReviewPanel() {
+  var translationFileId = getTranslationFileId_();
+  if (!translationFileId) {
+    DocumentApp.getUi().alert(
+      "Not a Translation Document",
+      "This document does not have translation data associated with it.",
+      DocumentApp.getUi().ButtonSet.OK
+    );
+    return;
+  }
+
+  clearAllHighlights();
   var html = HtmlService.createHtmlOutputFromFile("Sidebar")
     .setTitle("AI Suggestions")
     .setWidth(340);
