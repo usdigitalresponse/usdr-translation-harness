@@ -297,6 +297,16 @@ function submitReview() {
   var doc = DocumentApp.getActiveDocument();
   var ui = DocumentApp.getUi();
 
+  var translationFileId = getTranslationFileId_();
+  if (!translationFileId) {
+    ui.alert(
+      "Not a Translation Document",
+      "This document does not have translation data associated with it.",
+      ui.ButtonSet.OK
+    );
+    return;
+  }
+
   var confirm = ui.alert(
     "Submit Review",
     "This will submit your edits as translation feedback. Continue?",
