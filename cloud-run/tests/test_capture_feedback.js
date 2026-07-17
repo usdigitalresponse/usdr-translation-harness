@@ -1,6 +1,7 @@
 const { diffBlocks, levenshtein, tokenize } = require("../capture-feedback/differ");
 const {
   extractDecisions,
+  buildSidebarKeyToBlockMap,
   classifyBlockSignal,
   classifyTab,
   collectFlaggedPhrases,
@@ -8,7 +9,7 @@ const {
   TAB_MODEL_FLAGGED,
   TAB_OTHER_CHANGES,
 } = require("../capture-feedback/decisions");
-const { computeMetrics } = require("../capture-feedback/metrics");
+const { computeMetrics, computeTimeToApprove } = require("../capture-feedback/metrics");
 
 describe("diffBlocks", () => {
   test("reports no changes when texts match", () => {
@@ -102,7 +103,22 @@ describe("extractDecisions", () => {
     expect(result[0].translationFileId).toBe("tf456");
   });
 
-  test("classifies as Reviewed tab when sidebar signal is reviewed_and_changed", () => {
+  test("classifies as Reviewed tab when reviewer accepted then changed text", () => {
+    const translationJson = {
+      blocks: [{
+        id: "b1",
+        translated_text: "elegibilidad",
+        alt_translations: [{
+          original_phrase: "eligibility",
+          primary_translation: "elegibilidad",
+          alt_translation: "idoneidad",
+          rationale: "more natural",
+        }],
+        terms_flagged_for_clarification: [],
+        back_translation_of_key_phrases: [],
+        glossary_cross_check: [],
+      }],
+    };
     const diffs = [{
       hasChanges: true,
       blockId: "b1",
@@ -113,13 +129,85 @@ describe("extractDecisions", () => {
       ],
     }];
     const sidebar = {
-      checks: { "alt_translations::0": true },
+      checks: { status: { "alt_translations::0": "accepted" }, flagged: {} },
       orphans: { "alt_translations::0": true },
     };
 
-    const result = extractDecisions(diffs, {}, sidebar);
+    const result = extractDecisions(diffs, translationJson, sidebar);
 
-    expect(result[0].reviewSignal).toBe("reviewed_and_changed");
+    expect(result[0].reviewSignal).toBe("accepted_then_changed");
+    expect(result[0].tab).toBe(TAB_REVIEWED);
+  });
+
+  test("classifies as Reviewed tab when reviewer used alternative", () => {
+    const translationJson = {
+      blocks: [{
+        id: "b1",
+        translated_text: "elegibilidad",
+        alt_translations: [{
+          original_phrase: "eligibility",
+          primary_translation: "elegibilidad",
+          alt_translation: "idoneidad",
+          rationale: "more natural",
+        }],
+        terms_flagged_for_clarification: [],
+        back_translation_of_key_phrases: [],
+        glossary_cross_check: [],
+      }],
+    };
+    const diffs = [{
+      hasChanges: true,
+      blockId: "b1",
+      reviewedText: "idoneidad",
+      changes: [
+        { removed: true, value: "elegibilidad" },
+        { added: true, value: "idoneidad" },
+      ],
+    }];
+    const sidebar = {
+      checks: { status: { "alt_translations::0": "alternative" }, flagged: {} },
+      orphans: { "alt_translations::0": true },
+    };
+
+    const result = extractDecisions(diffs, translationJson, sidebar);
+
+    expect(result[0].reviewSignal).toBe("used_alternative");
+    expect(result[0].tab).toBe(TAB_REVIEWED);
+  });
+
+  test("classifies as Reviewed tab when reviewer fixed manually", () => {
+    const translationJson = {
+      blocks: [{
+        id: "b1",
+        translated_text: "elegibilidad",
+        alt_translations: [{
+          original_phrase: "eligibility",
+          primary_translation: "elegibilidad",
+          alt_translation: "idoneidad",
+          rationale: "more natural",
+        }],
+        terms_flagged_for_clarification: [],
+        back_translation_of_key_phrases: [],
+        glossary_cross_check: [],
+      }],
+    };
+    const diffs = [{
+      hasChanges: true,
+      blockId: "b1",
+      reviewedText: "idoneidad",
+      changes: [
+        { removed: true, value: "elegibilidad" },
+        { added: true, value: "idoneidad" },
+      ],
+    }];
+    const sidebar = {
+      checks: { status: { "alt_translations::0": "fixed" }, flagged: {} },
+      orphans: {},
+    };
+
+    const result = extractDecisions(diffs, translationJson, sidebar);
+
+    expect(result[0].reviewSignal).toBe("fixed_manually");
     expect(result[0].tab).toBe(TAB_REVIEWED);
   });
 
@@ -180,7 +268,7 @@ describe("extractDecisions", () => {
       ],
     }];
     const sidebar = {
-      checks: { "alt_translations::0": true },
+      checks: { status: { "alt_translations::0": "accepted" }, flagged: {} },
       orphans: { "alt_translations::0": true },
     };
 
@@ -244,9 +332,16 @@ describe("collectFlaggedPhrases", () => {
 describe("classifyTab", () => {
   const flagged = new Set(["elegibilidad", "formulario"]);
 
-  test("returns Reviewed for reviewed signals", () => {
-    expect(classifyTab("reviewed_and_changed", "elegibilidad", flagged)).toBe(TAB_REVIEWED);
-    expect(classifyTab("reviewed_and_accepted", "anything", new Set())).toBe(TAB_REVIEWED);
+  test("returns Reviewed for sidebar review signals", () => {
+    expect(classifyTab("used_alternative", "elegibilidad", flagged)).toBe(TAB_REVIEWED);
+    expect(classifyTab("accepted_then_changed", "anything", new Set())).toBe(TAB_REVIEWED);
+    expect(classifyTab("fixed_manually", "anything", new Set())).toBe(TAB_REVIEWED);
+    expect(classifyTab("needs_work", "anything", new Set())).toBe(TAB_REVIEWED);
+  });
+
+  test("does not route plain accepted to Reviewed tab", () => {
+    expect(classifyTab("accepted", "elegibilidad", flagged)).toBe(TAB_MODEL_FLAGGED);
+    expect(classifyTab("accepted", "la", new Set())).toBe(TAB_OTHER_CHANGES);
   });
 
   test("returns ModelFlagged when term overlaps with flagged phrase", () => {
@@ -338,25 +433,125 @@ describe("computeMetrics", () => {
   });
 });
 
-describe("classifyBlockSignal", () => {
-  test("returns reviewed_and_changed when checked and orphan", () => {
-    const checks = { "alt_translations::0": true };
-    const orphans = { "alt_translations::0": true };
-    expect(classifyBlockSignal("b1", checks, orphans)).toBe("reviewed_and_changed");
+describe("computeTimeToApprove", () => {
+  test("computes seconds between open and submit", () => {
+    const opened = "2026-07-16T14:00:00.000Z";
+    const submitted = "2026-07-16T14:05:30.000Z";
+    expect(computeTimeToApprove(opened, submitted)).toBe(330);
   });
 
-  test("returns reviewed_and_accepted when checked only", () => {
-    const checks = { "alt_translations::0": true };
-    expect(classifyBlockSignal("b1", checks, {})).toBe("reviewed_and_accepted");
+  test("returns null when sidebarOpenedAt is null", () => {
+    expect(computeTimeToApprove(null, "2026-07-16T14:05:30.000Z")).toBeNull();
+  });
+
+  test("returns null when sidebarOpenedAt is undefined", () => {
+    expect(computeTimeToApprove(undefined, "2026-07-16T14:05:30.000Z")).toBeNull();
+  });
+
+  test("returns null for invalid date strings", () => {
+    expect(computeTimeToApprove("not-a-date", "2026-07-16T14:05:30.000Z")).toBeNull();
+  });
+
+  test("returns null when submitted is before opened", () => {
+    const opened = "2026-07-16T14:05:30.000Z";
+    const submitted = "2026-07-16T14:00:00.000Z";
+    expect(computeTimeToApprove(opened, submitted)).toBeNull();
+  });
+
+  test("returns 0 when opened and submitted are the same", () => {
+    const ts = "2026-07-16T14:00:00.000Z";
+    expect(computeTimeToApprove(ts, ts)).toBe(0);
+  });
+});
+
+describe("buildSidebarKeyToBlockMap", () => {
+  test("maps flat sidebar keys to block IDs", () => {
+    const translationJson = {
+      blocks: [
+        {
+          id: "b1",
+          alt_translations: [{ primary_translation: "a" }],
+          terms_flagged_for_clarification: [],
+          back_translation_of_key_phrases: [],
+          glossary_cross_check: [],
+        },
+        {
+          id: "b2",
+          alt_translations: [{ primary_translation: "b" }, { primary_translation: "c" }],
+          terms_flagged_for_clarification: [{ translation: "d" }],
+          back_translation_of_key_phrases: [],
+          glossary_cross_check: [],
+        },
+      ],
+    };
+
+    const map = buildSidebarKeyToBlockMap(translationJson);
+
+    expect(map["alt_translations::0"]).toBe("b1");
+    expect(map["alt_translations::1"]).toBe("b2");
+    expect(map["alt_translations::2"]).toBe("b2");
+    expect(map["terms_flagged_for_clarification::0"]).toBe("b2");
+  });
+
+  test("returns empty map for empty blocks", () => {
+    expect(buildSidebarKeyToBlockMap({})).toEqual({});
+  });
+});
+
+describe("classifyBlockSignal", () => {
+  test("returns used_alternative when status is alternative", () => {
+    const checks = { status: { "alt_translations::0": "alternative" }, flagged: {} };
+    const orphans = { "alt_translations::0": true };
+    expect(classifyBlockSignal("b1", checks, orphans)).toBe("used_alternative");
+  });
+
+  test("returns fixed_manually when status is fixed", () => {
+    const checks = { status: { "alt_translations::0": "fixed" }, flagged: {} };
+    expect(classifyBlockSignal("b1", checks, {})).toBe("fixed_manually");
+  });
+
+  test("returns accepted_then_changed when accepted + orphan", () => {
+    const checks = { status: { "alt_translations::0": "accepted" }, flagged: {} };
+    const orphans = { "alt_translations::0": true };
+    expect(classifyBlockSignal("b1", checks, orphans)).toBe("accepted_then_changed");
+  });
+
+  test("returns accepted when accepted + no orphan", () => {
+    const checks = { status: { "alt_translations::0": "accepted" }, flagged: {} };
+    expect(classifyBlockSignal("b1", checks, {})).toBe("accepted");
+  });
+
+  test("returns needs_work when flagged", () => {
+    const checks = { status: {}, flagged: { "terms_flagged_for_clarification::0": true } };
+    expect(classifyBlockSignal("b1", checks, {})).toBe("needs_work");
   });
 
   test("returns changed_without_review when orphan only", () => {
+    const checks = { status: {}, flagged: {} };
     const orphans = { "terms_flagged_for_clarification::1": true };
-    expect(classifyBlockSignal("b1", {}, orphans)).toBe("changed_without_review");
+    expect(classifyBlockSignal("b1", checks, orphans)).toBe("changed_without_review");
   });
 
   test("returns no_sidebar_interaction when neither", () => {
     expect(classifyBlockSignal("b1", {}, {})).toBe("no_sidebar_interaction");
+  });
+
+  test("filters to block when keyToBlock is provided", () => {
+    const checks = { status: { "alt_translations::0": "alternative", "alt_translations::1": "accepted" }, flagged: {} };
+    const orphans = {};
+    const keyToBlock = { "alt_translations::0": "b1", "alt_translations::1": "b2" };
+    expect(classifyBlockSignal("b1", checks, orphans, keyToBlock)).toBe("used_alternative");
+    expect(classifyBlockSignal("b2", checks, orphans, keyToBlock)).toBe("accepted");
+  });
+
+  test("returns strongest signal when block has multiple items", () => {
+    const checks = {
+      status: { "alt_translations::0": "accepted", "terms_flagged_for_clarification::0": "fixed" },
+      flagged: {},
+    };
+    const orphans = {};
+    const keyToBlock = { "alt_translations::0": "b1", "terms_flagged_for_clarification::0": "b1" };
+    expect(classifyBlockSignal("b1", checks, orphans, keyToBlock)).toBe("fixed_manually");
   });
 });
 

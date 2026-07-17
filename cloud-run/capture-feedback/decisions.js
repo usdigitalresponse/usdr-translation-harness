@@ -1,26 +1,57 @@
-const REVIEWED_SIGNALS = new Set(["reviewed_and_changed", "reviewed_and_accepted"]);
+const REVIEWED_SIGNALS = new Set([
+  "used_alternative",
+  "accepted_then_changed",
+  "fixed_manually",
+  "needs_work",
+]);
 
 const TAB_REVIEWED = "Reviewed";
 const TAB_MODEL_FLAGGED = "ModelFlagged";
 const TAB_OTHER_CHANGES = "OtherChanges";
 
+const SECTION_KEYS = [
+  "alt_translations",
+  "terms_flagged_for_clarification",
+  "back_translation_of_key_phrases",
+  "glossary_cross_check",
+];
+
+function buildSidebarKeyToBlockMap(translationJson) {
+  const blocks = translationJson.blocks || [];
+  const map = {};
+
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+    const blockId = block.id || "b" + (i + 1);
+
+    for (const key of SECTION_KEYS) {
+      const items = block[key] || [];
+      const baseIndex = map._counters?.[key] || 0;
+      for (let j = 0; j < items.length; j++) {
+        map[key + "::" + (baseIndex + j)] = blockId;
+      }
+      if (!map._counters) map._counters = {};
+      map._counters[key] = baseIndex + items.length;
+    }
+  }
+
+  delete map._counters;
+  return map;
+}
+
 /**
  * Extract terminology decisions from block diffs + sidebar review state.
  *
- * Each decision is classified into a tab for the derived glossary:
- *   1. "Reviewed" — reviewer interacted with the sidebar (highest priority)
- *   2. "ModelFlagged" — changed text overlaps with a model-flagged phrase
- *   3. "OtherChanges" — everything else (short words, grammar, incidental)
- *
  * @param {Array} diffs - Output from diffBlocks()
  * @param {Object} translationJson - Full translation JSON (for metadata/glossary context)
- * @param {Object} sidebar - { checks: {key: true}, orphans: {key: true} }
+ * @param {Object} sidebar - { checks: { status: {id: status}, flagged: {id: true} }, orphans: {key: true} }
  * @param {Object} docIds - { documentId, translationFileId } for linking back to source artifacts
  * @returns {Array<Object>} Terminology decisions with classification
  */
 function extractDecisions(diffs, translationJson, sidebar = {}, docIds = {}) {
   const { checks = {}, orphans = {} } = sidebar;
   const aiBlocks = translationJson.blocks || [];
+  const keyToBlock = buildSidebarKeyToBlockMap(translationJson);
   const decisions = [];
 
   for (const block of diffs) {
@@ -28,7 +59,7 @@ function extractDecisions(diffs, translationJson, sidebar = {}, docIds = {}) {
 
     const aiBlock = aiBlocks.find((b) => b.id === block.blockId) || {};
     const flaggedPhrases = collectFlaggedPhrases(aiBlock);
-    const reviewSignal = classifyBlockSignal(block.blockId, checks, orphans);
+    const reviewSignal = classifyBlockSignal(block.blockId, checks, orphans, keyToBlock);
 
     const changes = block.changes || [];
     let i = 0;
@@ -130,41 +161,76 @@ function containsWholeWord(haystack, needle) {
 }
 
 /**
- * Check sidebar state for any items associated with this block.
+ * Determine the strongest review signal for a block from sidebar state.
  *
- * Sidebar keys are formatted as "sectionKey::index". Items carry a block_id,
- * but the sidebar keys use flat indices per section, not block IDs. So we
- * look for any sidebar interaction on items from this block by checking
- * if any checked or orphaned key exists.
+ * The sidebar persists checks as { status: { key: status }, flagged: { key: true } }
+ * where status is "accepted" | "alternative" | "fixed" and flagged means "needs work".
+ * Orphans (from checkItemsExist) are { key: true } for items whose text is missing
+ * from the doc — indicating the reviewer edited the text.
  *
- * Returns the strongest signal found for the block:
- *   "reviewed_and_changed" — checked + orphan (strongest)
- *   "reviewed_and_accepted" — checked + not orphan
- *   "changed_without_review" — orphan + not checked
+ * Signal priority (strongest first):
+ *   "used_alternative"      — status is "alternative"
+ *   "fixed_manually"        — status is "fixed"
+ *   "accepted_then_changed" — status is "accepted" + text was edited (orphan)
+ *   "needs_work"            — flagged
+ *   "accepted"              — status is "accepted" + text unchanged
+ *   "changed_without_review" — orphan but no sidebar status
  *   "no_sidebar_interaction" — fallback
  */
-function classifyBlockSignal(blockId, checks, orphans) {
-  let hasChecked = false;
-  let hasOrphan = false;
+function classifyBlockSignal(blockId, checks, orphans, keyToBlock = {}) {
+  const status = checks.status || {};
+  const flagged = checks.flagged || {};
 
-  const allKeys = new Set([...Object.keys(checks), ...Object.keys(orphans)]);
+  const hasKeyMap = Object.keys(keyToBlock).length > 0;
+  const blockKeys = Object.keys(keyToBlock).filter((k) => keyToBlock[k] === blockId);
+  const allKeys = blockKeys.length
+    ? blockKeys
+    : hasKeyMap
+      ? []
+      : [...new Set([...Object.keys(status), ...Object.keys(flagged), ...Object.keys(orphans)])];
+
+  let strongest = "no_sidebar_interaction";
+  const PRIORITY = {
+    no_sidebar_interaction: 0,
+    changed_without_review: 1,
+    accepted: 2,
+    needs_work: 3,
+    accepted_then_changed: 4,
+    fixed_manually: 5,
+    used_alternative: 6,
+  };
+
   for (const key of allKeys) {
-    if (checks[key]) hasChecked = true;
-    if (orphans[key]) hasOrphan = true;
+    let signal = "no_sidebar_interaction";
+    const itemStatus = status[key];
+    const itemFlagged = flagged[key];
+    const itemOrphan = orphans[key];
+
+    if (itemStatus === "alternative") {
+      signal = "used_alternative";
+    } else if (itemStatus === "fixed") {
+      signal = "fixed_manually";
+    } else if (itemStatus === "accepted" && itemOrphan) {
+      signal = "accepted_then_changed";
+    } else if (itemFlagged) {
+      signal = "needs_work";
+    } else if (itemStatus === "accepted") {
+      signal = "accepted";
+    } else if (itemOrphan) {
+      signal = "changed_without_review";
+    }
+
+    if (PRIORITY[signal] > PRIORITY[strongest]) {
+      strongest = signal;
+    }
   }
 
-  // TODO: Once we can map sidebar keys back to block IDs, filter to
-  // only items from this specific block. For now, we report the
-  // aggregate signal across all sidebar items.
-
-  if (hasChecked && hasOrphan) return "reviewed_and_changed";
-  if (hasChecked) return "reviewed_and_accepted";
-  if (hasOrphan) return "changed_without_review";
-  return "no_sidebar_interaction";
+  return strongest;
 }
 
 module.exports = {
   extractDecisions,
+  buildSidebarKeyToBlockMap,
   classifyBlockSignal,
   classifyTab,
   collectFlaggedPhrases,

@@ -16,7 +16,7 @@ const {
   DOC_PROPERTY_KEY,
 } = require("./loaders");
 const { readDocTable } = require("./doc-reader");
-const { computeMetrics } = require("./metrics");
+const { computeMetrics, computeTimeToApprove } = require("./metrics");
 
 const PIPELINE_STAGE = "capture_feedback";
 const STATUS_OK = "ok";
@@ -38,7 +38,7 @@ const AUTH_SCOPES = [
 ];
 
 async function captureFeedback(req, res) {
-  const { documentId, sidebarChecks, sidebarOrphans } = req.body;
+  const { documentId, sidebarChecks, sidebarOrphans, sidebarOpenedAt } = req.body;
 
   if (!documentId) {
     res.status(StatusCodes.BAD_REQUEST).json({ error: "Provide documentId" });
@@ -107,9 +107,11 @@ async function captureFeedback(req, res) {
 
   // Step 6: Compute quality metrics
   const metrics = computeMetrics(diffs, translationJson);
+  const reviewedAt = new Date().toISOString();
+  const timeToApproveSeconds = computeTimeToApprove(sidebarOpenedAt, reviewedAt);
 
   // Step 7: Emit structured log for Cloud Logging dashboards
-  logStructured("INFO", `feedback captured for ${metrics.provider}/${metrics.model}`, {
+  const logFields = {
     status: STATUS_OK,
     documentId,
     translationFileId,
@@ -124,7 +126,11 @@ async function captureFeedback(req, res) {
     normalizedCharEditDistance: metrics.editDistance.normalizedCharacter,
     normalizedWordEditDistance: metrics.editDistance.normalizedWord,
     terminologyDecisions: decisions.length,
-  });
+  };
+  if (timeToApproveSeconds !== null) {
+    logFields.timeToApproveSeconds = timeToApproveSeconds;
+  }
+  logStructured("INFO", `feedback captured for ${metrics.provider}/${metrics.model}`, logFields);
 
   // Step 8: Write terminology decisions to derived glossary sheet
   const warnings = [];
@@ -140,11 +146,12 @@ async function captureFeedback(req, res) {
 
   // Step 9: Store feedback results in Drive
   const feedbackFolderId = process.env.DRIVE_FEEDBACK_FOLDER_ID;
-  const reviewedAt = new Date().toISOString();
   const feedbackResult = {
     documentId,
     translationFileId,
     reviewedAt,
+    sidebarOpenedAt: sidebarOpenedAt || null,
+    timeToApproveSeconds,
     metrics,
     decisions,
     diffs,

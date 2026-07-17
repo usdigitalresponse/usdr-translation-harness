@@ -60,4 +60,17 @@ function computeMetrics(diffs, translationJson) {
   };
 }
 
-module.exports = { computeMetrics };
+/**
+ * Compute seconds between sidebar open and review submission.
+ * Returns null if sidebarOpenedAt is missing (reviewer never opened the sidebar).
+ */
+function computeTimeToApprove(sidebarOpenedAt, submittedAt) {
+  if (!sidebarOpenedAt) return null;
+  const opened = new Date(sidebarOpenedAt);
+  const submitted = new Date(submittedAt);
+  if (isNaN(opened.getTime()) || isNaN(submitted.getTime())) return null;
+  const seconds = (submitted - opened) / 1000;
+  return seconds >= 0 ? Math.round(seconds) : null;
+}
+
+module.exports = { computeMetrics, computeTimeToApprove };
