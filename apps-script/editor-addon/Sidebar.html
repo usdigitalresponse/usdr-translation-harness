@@ -1,450 +1,1024 @@
 <!DOCTYPE html>
 <html>
 <head>
-<base target="_top">
-<style>
-  :root {
-    --bg: #fff;
-    --text: #333;
-    --border: #ddd;
-    --section-bg: #f8f9fa;
-    --accent: #1a73e8;
-    --accent-light: #e8f0fe;
-    --warning: #f9ab00;
-    --warning-bg: #fef7e0;
-    --success: #34a853;
-    --muted: #888;
-    --orphan-bg: #fff3cd;
-    --highlight: #FFD700;
-  }
+  <base target="_top">
+  <meta charset="utf-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink:        #071A51;
+      --ink-soft:   #4b5580;
+      --ink-faint:  #8b93b8;
+      --line:       #dbe4f7;
+      --line-soft:  #eef3fc;
+      --paper:      #ffffff;
+      --raise:      #f5f8ff;
+      --accent:     #0066FF;
+      --accent-bg:  #e8f0ff;
+      --done-ink:   #8b93b8;
+      --code-bg:    #f3f6fb;
+      --code-ink:   #1c2540;
+      --warn-bg:    #fff1e6;
+      --warn-ink:   #9a4c14;
+      --warn-bdr:   #ffd2ab;
+      --red-ink:    #b23b3b;
+      --red-bg:     #fdeceb;
+      --yellow-ink: #b07a3a;
+      --font-head:  'Lora', Georgia, 'Times New Roman', serif;
+      --font-body:  'Inter', Roboto, -apple-system, 'Segoe UI', sans-serif;
+    }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+    * { box-sizing: border-box; }
 
-  body {
-    font-family: 'Google Sans', Roboto, Arial, sans-serif;
-    font-size: 13px;
-    color: var(--text);
-    background: var(--bg);
-    padding: 12px;
-    line-height: 1.45;
-  }
+    html, body {
+      margin: 0; padding: 0; height: 100%;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--font-body);
+      font-size: 13px; line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
 
-  .loading { text-align: center; padding: 40px 0; color: var(--muted); }
-  .error { color: #d93025; padding: 12px; background: #fce8e6; border-radius: 6px; margin-bottom: 12px; }
+    #root { display: flex; flex-direction: column; height: 100vh; }
+    .top    { flex: 0 0 auto; padding: 14px 14px 12px; border-bottom: 1px solid var(--line); background: var(--paper); }
+    .scroll { flex: 1 1 auto; overflow-y: auto; padding: 14px 14px 40px; }
 
-  /* Progress bar */
-  .progress-wrap { margin-bottom: 16px; }
-  .progress-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
-  .progress-bar {
-    height: 6px;
-    background: #e0e0e0;
-    border-radius: 3px;
-    overflow: hidden;
-  }
-  .progress-fill {
-    height: 100%;
-    background: var(--success);
-    border-radius: 3px;
-    transition: width 0.3s;
-  }
+    /* ---------- Header ---------- */
+    .title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    h1 { margin: 0; font-family: var(--font-head); font-size: 15px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ink); }    .refresh-icon-btn {
+      font-size: 15px; line-height: 1; color: var(--ink-soft); cursor: pointer;
+      padding: 2px 4px; border-radius: 5px;
+    }
+    .refresh-icon-btn:hover { background: var(--line-soft); color: var(--ink); }
 
-  /* Sections */
-  .section { margin-bottom: 16px; }
-  .section-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 10px;
-    background: var(--section-bg);
-    border-radius: 6px 6px 0 0;
-    border: 1px solid var(--border);
-    border-bottom: none;
-    cursor: pointer;
-    user-select: none;
-  }
-  .section-header:hover { background: #eef1f4; }
-  .section-title { font-weight: 600; font-size: 13px; }
-  .section-count {
-    font-size: 11px;
-    color: var(--muted);
-    background: #e0e0e0;
-    border-radius: 10px;
-    padding: 1px 8px;
-    margin-left: 6px;
-  }
-  .section-arrow { font-size: 10px; color: var(--muted); transition: transform 0.2s; }
-  .section-arrow.open { transform: rotate(90deg); }
+    /* ---------- Prompt row + manage menu ---------- */
+    .prompt-row { margin-top: 10px; display: flex; align-items: center; gap: 10px; position: relative; }
+    .prompt-link { font-size: 12px; font-weight: 600; color: var(--accent); text-decoration: none; }
+    .prompt-link:hover { text-decoration: underline; }
 
-  .section-body {
-    border: 1px solid var(--border);
-    border-radius: 0 0 6px 6px;
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.3s;
-  }
-  .section-body.open { max-height: 5000px; }
+    .manage-wrap { margin-left: auto; position: relative; }
+    .manage-btn {
+      border: none; background: none; cursor: pointer;
+      font-size: 20px; font-weight: 700; line-height: 1; color: var(--ink);
+      padding: 3px 6px; border-radius: 5px;
+    }
+    .manage-btn:hover { background: var(--line-soft); }
+    .manage-menu {
+      display: none; position: absolute; right: 0; top: 28px; z-index: 20;
+      background: var(--paper); border: 1px solid var(--line); border-radius: 8px;
+      padding: 5px; min-width: 140px; box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+    }
+    .manage-menu.open { display: block; }
+    .manage-item {
+      font-size: 12px; color: var(--ink-soft); padding: 7px 9px; border-radius: 6px;
+      cursor: pointer; white-space: nowrap;
+    }
+    .manage-item:hover { background: var(--line-soft); color: var(--ink); }
 
-  /* Items */
-  .item {
-    padding: 10px 12px;
-    border-bottom: 1px solid #eee;
-    cursor: pointer;
-    transition: background 0.15s;
-    position: relative;
-  }
-  .item:last-child { border-bottom: none; }
-  .item:hover { background: var(--accent-light); }
-  .item.highlighted { background: #fff8e1; }
-  .item.orphan { background: var(--orphan-bg); opacity: 0.7; }
-  .item.orphan::after {
-    content: "edited away";
-    position: absolute;
-    top: 6px;
-    right: 8px;
-    font-size: 10px;
-    color: var(--warning);
-    font-style: italic;
-  }
+    .prompt-edit-panel { margin-top: 8px; padding: 10px; background: var(--raise);
+      border: 1px solid var(--line); border-radius: 8px; }
+    .prompt-input { width: 100%; font-size: 11.5px; font-family: inherit; color: var(--ink);
+      padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper);
+      margin-bottom: 8px; }
+    .prompt-input:focus { outline: none; border-color: var(--accent); }
+    .prompt-edit-actions { display: flex; gap: 8px; }
+    .prompt-save, .prompt-cancel { font-size: 11px; font-weight: 600; border-radius: 6px;
+      padding: 5px 10px; cursor: pointer; border: 1px solid transparent; }
+    .prompt-save { background: var(--accent); color: #fff; }
+    .prompt-save:hover { opacity: .9; }
+    .prompt-save:disabled { opacity: .6; cursor: default; }
+    .prompt-cancel { background: none; border-color: var(--line); color: var(--ink-soft); }
+    .prompt-cancel:hover { background: var(--line-soft); }
+    .prompt-warn { margin-top: 7px; font-size: 11px; color: var(--red-ink); min-height: 0; }
 
-  .item-check {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-  }
-  .item-check input[type="checkbox"] {
-    margin-top: 3px;
-    accent-color: var(--accent);
-    flex-shrink: 0;
-  }
-  .item-content { flex: 1; min-width: 0; }
+    /* ---------- Collapsible section headers ---------- */
+    .sec-toggle {
+      width: 100%; display: flex; align-items: center; justify-content: space-between;
+      background: none; border: none; cursor: pointer; padding: 2px 0 8px;
+      font-family: var(--font-head); font-size: 14.5px; font-weight: 600; color: var(--ink);
+    }
+    .chevron {
+      display: inline-block; font-size: 11px; color: var(--ink);
+      transform: rotate(0deg); transition: transform 120ms ease;
+    }
+    .chevron.open { transform: rotate(90deg); }
 
-  .item-block {
-    font-size: 10px;
-    color: var(--muted);
-    margin-bottom: 2px;
-  }
-  .item-phrase {
-    font-weight: 600;
-    word-break: break-word;
-  }
-  .item-translation {
-    color: var(--accent);
-    margin-top: 2px;
-    word-break: break-word;
-  }
-  .item-detail {
-    font-size: 12px;
-    color: #555;
-    margin-top: 4px;
-    word-break: break-word;
-  }
-  .item-status {
-    display: inline-block;
-    font-size: 10px;
-    padding: 1px 6px;
-    border-radius: 3px;
-    margin-top: 3px;
-  }
-  .item-status.followed { background: #e6f4ea; color: #137333; }
-  .item-status.deviated { background: #fce8e6; color: #c5221f; }
+    .divider { border-top: 1px solid var(--line); margin: 14px 0; }
 
-  .clear-btn {
-    display: block;
-    width: 100%;
-    margin-top: 12px;
-    padding: 8px;
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--muted);
-    cursor: pointer;
-    font-size: 12px;
-  }
-  .clear-btn:hover { background: var(--section-bg); color: var(--text); }
+    /* ---------- Progress ---------- */
+    .meter { margin-bottom: 14px; }
+    .meter-track { height: 5px; border-radius: 99px; background: var(--line-soft); overflow: hidden; }
+    .meter-fill  { height: 100%; width: 0%; background: var(--accent); border-radius: 99px; transition: width 240ms ease; }
 
-  .empty-msg { padding: 20px; text-align: center; color: var(--muted); font-size: 12px; }
-</style>
+    /* ---------- Review card ---------- */
+    .review-card {
+      border: 1px solid var(--line); border-radius: 10px; padding: 14px;
+      margin-bottom: 6px; background: var(--raise); cursor: pointer;
+      transition: background 120ms ease, border-color 120ms ease;
+    }
+    .review-card.highlighting { border-color: #c9a800; background: #fffbcc; }
+    .card-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .nav-arrow {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: var(--paper); border: 1px solid var(--line);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; color: var(--ink); cursor: pointer;
+    }
+    .nav-arrow:hover { background: var(--line-soft); border-color: var(--ink-faint); }
+    .nav-count { font-size: 13px; font-weight: 600; color: var(--ink); }
+
+    .no-hl-badge {
+      font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+      color: #5a6a7a; background: #eef3f8; border: 1px solid #c8d8e8;
+      border-radius: 4px; padding: 1px 6px; margin-bottom: 8px; display: inline-block;
+    }
+    .flag-banner {
+      background: var(--warn-bg); color: var(--warn-ink); border: 1px solid var(--warn-bdr);
+      border-radius: 7px; padding: 7px 10px; font-size: 12px; margin-bottom: 10px;
+    }
+    .field-label { font-size: 11px; color: var(--ink-faint); margin-bottom: 2px; }
+    .field-val   { font-size: 13px; color: var(--ink); margin-bottom: 10px; word-break: break-word; white-space: pre-wrap; }
+
+
+    .note-box {
+      background: var(--code-bg); border-radius: 7px; padding: 9px 10px; margin-bottom: 12px; border-left: 3px solid var(--yellow-ink);
+    }
+    .note-box .note-label { font-size: 11px; font-weight: 600; color: var(--yellow-ink); margin-bottom: 2px; }
+    .note-box .note-val    { font-size: 12.5px; color: var(--ink); word-break: break-word; white-space: pre-wrap; }
+
+    .alt-box {
+      background: var(--accent-bg); border-radius: 7px; padding: 9px 10px; margin-bottom: 8px; border-left: 3px solid var(--accent);
+    }
+    .alt-box .alt-label { font-size: 11px; font-weight: 600; color: var(--accent); margin-bottom: 2px; }
+    .alt-box .alt-val    { font-size: 13px; color: var(--ink); word-break: break-word; white-space: pre-wrap; }
+    .rationale { font-size: 12px; color: var(--ink-soft); margin-bottom: 12px; word-break: break-word; white-space: pre-wrap; }
+
+    .btn-row { display: flex; gap: 8px; }
+    .btn {
+      flex: 1; font-size: 12.5px; font-weight: 600; padding: 8px 10px;
+      border-radius: 7px; border: 1px solid var(--line); background: var(--paper);
+      color: var(--ink-soft); cursor: pointer; text-align: center;
+    }
+    .btn:hover { background: var(--line-soft); color: var(--ink); }
+    .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .btn.primary:hover { opacity: .9; }
+
+    .fixed-manually-row { text-align: center; margin-top: 10px; }
+    .fixed-manually-link {
+      background: none; border: none; color: var(--ink-faint); font-size: 11px;
+      text-decoration: underline; cursor: pointer; padding: 0;
+    }
+    .fixed-manually-link:hover { color: var(--ink-soft); }
+
+    .all-done {
+      border: 1px solid var(--line); border-radius: 10px; padding: 14px;
+      margin-bottom: 6px; background: var(--raise); text-align: center;
+      font-size: 12px; color: var(--ink-soft);
+    }
+
+    /* ---------- Reviewed list ---------- */
+    .list-toggle {
+      width: 100%; display: flex; align-items: center; justify-content: space-between;
+      background: none; border: none; cursor: pointer; padding: 6px 0;
+      color: var(--ink-soft); font-size: 12.5px; font-weight: 600;
+    }
+    .list-toggle .chevron { color: var(--ink-soft); }
+
+    .reviewed-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 8px 0; border-top: 1px solid var(--line); cursor: pointer;
+    }
+    .reviewed-row .rr-text { font-size: 12px; color: var(--ink-faint); flex: 1; word-break: break-word; }
+    .rr-badge {
+      font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 5px; white-space: nowrap;
+    }
+    .rr-badge.alt   { background: var(--accent-bg); color: var(--accent); }
+    .rr-badge.fixed { background: var(--line-soft); color: var(--ink-soft); }
+    .rr-check      { font-size: 13px; color: var(--ink-faint); }
+    .rr-revert     { font-size: 13px; color: var(--ink-soft); cursor: pointer; margin-right: 8px; }
+    .rr-revert:hover { color: var(--ink); }
+    .reviewed-detail { padding: 0 0 10px; font-size: 12px; color: var(--ink-soft); }
+    .reviewed-detail .rd-row { margin-bottom: 4px; word-break: break-word; }
+    .reviewed-detail .rd-label { color: var(--ink-faint); }
+    .review-again-btn { width: 100%; margin-bottom: 8px; }
+
+    /* ---------- Reference (plain list) ---------- */
+    .ref-row { padding: 8px 0; border-top: 1px solid var(--line); cursor: pointer; }
+    .ref-row:first-child { border-top: none; }
+    .ref-line { font-size: 12px; color: var(--ink); word-break: break-word; }
+    .ref-note { font-size: 11px; color: var(--ink-faint); margin-top: 2px; word-break: break-word; }
+    .ref-row.highlighting { background: #fffbcc; }
+
+    .empty-sec { font-size: 12px; color: var(--ink-faint); padding: 9px 11px; border: 1px dashed var(--line); border-radius: 9px; }
+    .stage { text-align: center; color: var(--ink-soft); padding: 56px 16px; font-size: 12.5px; }
+    .stage strong { display: block; color: var(--ink); font-size: 13px; margin-bottom: 6px; }
+    .stage .hint  { color: var(--ink-faint); margin-top: 8px; font-size: 12px; }
+    
+
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(28,27,26,0.35);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 50; padding: 20px;
+    }
+    .modal-box {
+      background: var(--paper); border: 1px solid var(--line); border-radius: 10px;
+      padding: 16px; max-width: 320px; width: 100%; box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    }
+    .modal-msg { font-size: 13px; color: var(--ink); margin-bottom: 14px; line-height: 1.5; }
+    .modal-actions { display: flex; gap: 8px; }
+    .modal-btn {
+      flex: 1; font-size: 12.5px; font-weight: 600; padding: 8px 10px;
+      border-radius: 7px; cursor: pointer; border: 1px solid var(--line);
+      background: var(--paper); color: var(--ink-soft); text-align: center;
+    }
+    .modal-btn:hover { background: var(--line-soft); color: var(--ink); }
+    .modal-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .modal-btn.primary:hover { opacity: .9; }
+    .modal-btn:disabled { opacity: .6; cursor: default; }
+
+
+    /* ---------- Transient error bar ---------- */
+    .error-bar {
+      position: fixed; left: 14px; right: 14px; bottom: 14px; z-index: 60;
+      background: var(--red-bg, #fdeceb); color: var(--red-ink);
+      border: 1px solid #f3c6c2; border-radius: 8px;
+      padding: 9px 12px; font-size: 12.5px; font-weight: 600;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.10);
+      animation: errorbar-in 120ms ease;
+    }
+    @keyframes errorbar-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .error-bar-dismiss {
+      background: none; border: none; color: var(--red-ink); font-size: 14px;
+      cursor: pointer; line-height: 1; padding: 0 2px; flex: 0 0 auto;
+    }
+  </style>
 </head>
 <body>
-
-<div id="loading" class="loading">Loading suggestions...</div>
-<div id="error" class="error" style="display:none"></div>
-<div id="content" style="display:none">
-  <div class="progress-wrap">
-    <div class="progress-label"><span id="progress-text">0 / 0 reviewed</span></div>
-    <div class="progress-bar"><div id="progress-fill" class="progress-fill" style="width:0%"></div></div>
-  </div>
-  <div id="sections"></div>
-  <button class="clear-btn" onclick="clearAll()">Clear all highlights</button>
-</div>
+<div id="root"><div class="stage">Loading suggestions…</div></div>
 
 <script>
-var sidebarData = null;
-var checks = {};
-var orphans = {};
-var highlightedKey = null;
-var editToken = null;
-var pollTimer = null;
+  // ── Data shape ──────────────────────────────────────────────────────────
+  var REVIEWABLE_SECTIONS = [
+    { key: 'alt_translations', type: 'translation',
+      f: { original: 'original_text', current: 'translation', alt: 'alt_translation', rationale: 'alt_translation_rationale' } },
+    { key: 'terms_flagged_for_clarification', type: 'clarification',
+      f: { original: 'original_text', current: 'translation', note: 'needed_clarification' } }
+  ];
+  var REFERENCE_SECTION = {
+    key: 'glossary_cross_check',
+    f: { original: 'original_text', current: 'translation', note: 'glossary_usage_or_deviation' }
+  };
 
-var SECTIONS = [
-  { key: "alt_translations", title: "Alternative Translations", render: renderAltItem },
-  { key: "terms_flagged_for_clarification", title: "Terms Needing Clarification", render: renderTermItem },
-  { key: "back_translation_of_key_phrases", title: "Back-Translations", render: renderBackItem },
-  { key: "glossary_cross_check", title: "Glossary Cross-Check", render: renderGlossaryItem },
-];
+  var DATA         = null;
+  var REVIEW_ITEMS = [];   // flat list built from REVIEWABLE_SECTIONS
+  var STATUS       = {};   // id -> 'accepted' | 'alternative' | 'fixed'
+  var FLAGGED      = {};   // id -> true  (clarification items marked "needs work")
+  var NO_HL        = {};   // id -> true  (not directly highlightable)
 
-function init() {
-  google.script.run
-    .withSuccessHandler(function(res) {
-      if (!res || !res.data) {
-        document.getElementById("loading").style.display = "none";
-        document.getElementById("error").style.display = "block";
-        document.getElementById("error").textContent = "No translation data found for this document.";
-        return;
-      }
-      sidebarData = res.data;
-      checks = res.checks || {};
-      document.getElementById("loading").style.display = "none";
-      document.getElementById("content").style.display = "block";
-      renderSections();
-      updateProgress();
-      startOrphanPolling();
-    })
-    .withFailureHandler(function(err) {
-      document.getElementById("loading").style.display = "none";
-      document.getElementById("error").style.display = "block";
-      document.getElementById("error").textContent = "Error loading data: " + err.message;
-    })
-    .getSidebarData();
-}
+  var reviewPos          = 0;
+  var showingAltId       = null;
+  var expandedReviewedId = null;
 
-function renderSections() {
-  var container = document.getElementById("sections");
-  container.innerHTML = "";
+  var needsReviewOpen = true;
+  var reviewedOpen    = false;
+  var referenceOpen   = false;
+  var manageOpen      = false;
 
-  for (var s = 0; s < SECTIONS.length; s++) {
-    var sec = SECTIONS[s];
-    var items = sidebarData[sec.key] || [];
-    if (!items.length) continue;
+  var saveTimer = null;
 
-    var section = document.createElement("div");
-    section.className = "section";
+  var DEFAULT_PROMPT_URL = 'https://docs.google.com/document/d/1gKwAkp8RjmN0QjUJwXD_cmVAnO27THVw5KPitNtzvhM/edit?tab=t.0#heading=h.jj3x0twkwyk';
+  var promptUrl = DEFAULT_PROMPT_URL;
 
-    var header = document.createElement("div");
-    header.className = "section-header";
-    header.innerHTML =
-      '<div><span class="section-title">' + esc(sec.title) + '</span>' +
-      '<span class="section-count">' + items.length + '</span></div>' +
-      '<span class="section-arrow open">&#9654;</span>';
-    header.onclick = (function(h) {
-      return function() {
-        var body = h.nextElementSibling;
-        var arrow = h.querySelector(".section-arrow");
-        body.classList.toggle("open");
-        arrow.classList.toggle("open");
-      };
-    })(header);
+  // ── Utilities ─────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function coerce(v) {
+    if (typeof v !== 'string') return v;
+    var s = v.trim();
+    if (s && (s[0]==='[' || s[0]==='{')) { try { return JSON.parse(s); } catch(e){} }
+    return v;
+  }
+  function asArray(v) {
+    v = coerce(v);
+    if (v===null||v===undefined||v==='') return [];
+    if (Array.isArray(v)) { if (v.length===1&&Array.isArray(coerce(v[0]))) return coerce(v[0]); return v; }
+    if (typeof v==='object') return Object.keys(v).map(function(k){ return v[k]; });
+    return [v];
+  }
+  function pickVal(item, key) {
+    if (!item||typeof item!=='object') return '';
+    return item[key] !== undefined && item[key] !== null ? item[key] : '';
+  }
 
-    var body = document.createElement("div");
-    body.className = "section-body open";
+  // ── Build the flat reviewable list from raw DATA ───────────────────────
+  function buildReviewItems() {
+    var list = [];
+    REVIEWABLE_SECTIONS.forEach(function(sec) {
+      asArray(DATA[sec.key]).forEach(function(raw, i) {
+        var id = sec.key + '::' + i;
+        list.push({ id: id, sectionKey: sec.key, type: sec.type, f: sec.f, data: coerce(raw) });
+      });
+    });
+    return list;
+  }
+  function referenceItems() {
+    return asArray(DATA[REFERENCE_SECTION.key]).map(function(raw, i) {
+      return { id: REFERENCE_SECTION.key + '::' + i, f: REFERENCE_SECTION.f, data: coerce(raw) };
+    });
+  }
 
-    for (var i = 0; i < items.length; i++) {
-      var itemKey = sec.key + "::" + i;
-      var el = document.createElement("div");
-      el.className = "item" + (orphans[itemKey] ? " orphan" : "");
-      el.setAttribute("data-key", itemKey);
+  function reviewablePool() {
+    return REVIEW_ITEMS.filter(function(it) {
+      return STATUS[it.id] !== 'accepted' && STATUS[it.id] !== 'alternative' && STATUS[it.id] !== 'fixed';
+    });
+  }
+  function reviewedPool() {
+    return REVIEW_ITEMS.filter(function(it) {
+      var s = STATUS[it.id];
+      return s === 'accepted' || s === 'alternative' || s === 'fixed';
+    });
+  }
+  function totalReviewable() {
+    return REVIEW_ITEMS.length;
+  }
 
-      var checkId = "check-" + sec.key + "-" + i;
-      var checked = checks[itemKey] ? "checked" : "";
+  // ── Persistence ─────────────────────────────────────────────────────────
+  function scheduleSave() {
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(function() {
+      google.script.run.saveSidebarChecks({ status: STATUS, flagged: FLAGGED });
+    }, 350);
+  }
 
-      el.innerHTML =
-        '<div class="item-check">' +
-        '<input type="checkbox" id="' + checkId + '" ' + checked + ' onclick="event.stopPropagation(); toggleCheck(\'' + itemKey + '\', this.checked)">' +
-        '<div class="item-content">' + sec.render(items[i]) + '</div>' +
-        '</div>';
+  // ── Render: root ────────────────────────────────────────────────────────
+  function render() {
+    if (!DATA) { renderEmpty(); return; }
 
-      el.onclick = (function(item, key, secKey) {
-        return function(e) {
-          if (e.target.tagName === "INPUT") return;
-          toggleHighlight(item, key, secKey);
-        };
-      })(items[i], itemKey, sec.key);
+    var ts = DATA.timestamp
+      ? new Date(DATA.timestamp).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
 
-      body.appendChild(el);
+    var refItems = referenceItems();
+
+    var html = '<div class="top">'
+      + '<div class="title-row"><h1>AI Suggestions</h1>'
+      +   '<span class="refresh-icon-btn" id="refreshIconBtn" title="Refresh" aria-label="Refresh">&#8635;</span>'
+      + '</div>'
+      + (ts ? '<div class="meta">Generated ' + esc(ts) + '</div>' : '')
+      + '<div class="prompt-row">'
+      +   '<a href="' + esc(promptUrl) + '" target="_blank" rel="noopener" class="prompt-link" id="promptLink">View prompt</a>'
+      +   '<div class="manage-wrap">'
+      +     '<button type="button" class="manage-btn" id="manageBtn" aria-label="Manage">&#8942;</button>'
+      +     '<div class="manage-menu' + (manageOpen ? ' open' : '') + '" id="manageMenu">'
+      +       '<div class="manage-item" id="changePromptItem">Change prompt</div>'
+      +       '<div class="manage-item" id="downloadItem">Download</div>'
+      +     '</div>'
+      +   '</div>'
+      + '</div>'
+      + '<div class="prompt-edit-panel" id="promptEditPanel" hidden>'
+      +   '<input type="text" class="prompt-input" id="promptInput" placeholder="Paste new prompt doc URL" value="' + esc(promptUrl) + '">'
+      +   '<div class="prompt-edit-actions">'
+      +     '<button type="button" class="prompt-save" id="promptSaveBtn">Save</button>'
+      +     '<button type="button" class="prompt-cancel" id="promptCancelBtn">Cancel</button>'
+      +   '</div>'
+      +   '<div class="prompt-warn" id="promptWarn"></div>'
+      + '</div>'
+      + '</div>';
+
+    html += '<div class="scroll">';
+
+    // ---- Needs review ----
+    var remaining = reviewablePool().length;
+    html += '<button class="sec-toggle" id="needsReviewToggle">'
+      + '<span>Needs review (' + remaining + ')</span>'
+      + '<span class="chevron' + (needsReviewOpen ? ' open' : '') + '" id="needsReviewChevron">&#9656;</span>'
+      + '</button>';
+
+    html += '<div id="needsReviewBody" style="display:' + (needsReviewOpen ? 'block' : 'none') + ';">';
+    html += renderProgressBar();
+    html += renderReviewCardOrDone();
+    html += renderReviewedToggle();
+    html += '</div>';
+
+    html += '<div class="divider"></div>';
+
+    // ---- Reference ----
+    html += '<button class="sec-toggle" id="referenceToggle">'
+      + '<span>Reference (' + refItems.length + ')</span>'
+      + '<span class="chevron' + (referenceOpen ? ' open' : '') + '" id="referenceChevron">&#9656;</span>'
+      + '</button>';
+    html += '<div id="referenceBody" style="display:' + (referenceOpen ? 'block' : 'none') + ';">';
+    html += renderReferenceList(refItems);
+    html += '</div>';
+
+    html += '</div>'; // .scroll
+
+    document.getElementById('root').innerHTML = html;
+    wireEvents();
+    updateProgress();
+  }
+
+  function renderEmpty() {
+    document.getElementById('root').innerHTML = '<div class="stage"><strong>No translation yet</strong>'
+      + 'Run a translation to populate suggestions.'
+      + '<div class="hint">Translation Playground&nbsp;&#9656;&nbsp;Run Translation</div></div>';
+  }
+
+  // ── Render: progress bar ────────────────────────────────────────────────
+  function renderProgressBar() {
+    var total = totalReviewable();
+    var done  = reviewedPool().length;
+    var pct   = total ? Math.round(done / total * 100) : 0;
+    return '<div class="meter"><div class="meter-track"><div class="meter-fill" id="meterFill" style="width:' + pct + '%"></div></div></div>';
+  }
+  function updateProgress() {
+    var total = totalReviewable();
+    var done  = reviewedPool().length;
+    var pct   = total ? Math.round(done / total * 100) : 0;
+    var fill  = document.getElementById('meterFill');
+    if (fill) fill.style.width = pct + '%';
+  }
+
+  // ── Render: review card ─────────────────────────────────────────────────
+  function renderReviewCardOrDone() {
+    var pool = reviewablePool();
+    if (!pool.length) {
+      return '<div class="all-done">All caught up on reviewable items.</div>';
+    }
+    if (reviewPos >= pool.length) reviewPos = 0;
+    var it = pool[reviewPos];
+    return renderCard(it, pool.length);
+  }
+
+  function renderCard(it, poolLength) {
+    var original = pickVal(it.data, it.f.original);
+    var current   = pickVal(it.data, it.f.current);
+    var noHl      = NO_HL[it.id];
+    var flagged   = FLAGGED[it.id];
+
+    var html = '<div class="review-card" id="reviewCard" data-id="' + esc(it.id) + '" '
+      + 'data-original="' + esc(String(original)) + '" data-translation="' + esc(String(current)) + '">';
+
+    html += '<div class="card-nav">'
+      + '<span class="nav-arrow" id="prevBtn">&#8249;</span>'
+      + '<span class="nav-count">' + (reviewPos + 1) + ' of ' + poolLength + '</span>'
+      + '<span class="nav-arrow" id="nextBtn">&#8250;</span>'
+      + '</div>';
+
+    if (noHl) html += '<span class="no-hl-badge">Highlighting not available</span>';
+    if (flagged) html += '<div class="flag-banner">Fix this manually in the doc</div>';
+
+    html += '<div class="field-label">Original</div><div class="field-val">' + esc(original) + '</div>';
+
+    if (it.type === 'translation') {
+      html += '<div class="field-label">Current translation</div><div class="field-val">' + esc(current) + '</div>';
+      html += '<div id="actionArea">' + renderTranslationActions(it) + '</div>';
+    } else {
+      var note = pickVal(it.data, it.f.note);
+      html += '<div class="field-label">Translation</div><div class="field-val">' + esc(current) + '</div>';
+      html += '<div class="note-box"><div class="note-label">Clarification needed</div><div class="note-val">' + esc(note) + '</div></div>';
+      html += '<div id="actionArea">' + renderClarificationActions() + '</div>';
     }
 
-    section.appendChild(header);
-    section.appendChild(body);
-    container.appendChild(section);
+    html += '</div>';
+    return html;
   }
-}
 
-function renderAltItem(item) {
-  return '<div class="item-block">Block ' + esc(item.block_id) + '</div>' +
-    '<div class="item-phrase">' + esc(item.original_phrase) + '</div>' +
-    '<div class="item-translation">' + esc(item.primary_translation) + '</div>' +
-    '<div class="item-detail"><strong>Alt:</strong> ' + esc(item.alt_translation) + '</div>' +
-    '<div class="item-detail">' + esc(item.rationale) + '</div>';
-}
-
-function renderTermItem(item) {
-  return '<div class="item-block">Block ' + esc(item.block_id) + '</div>' +
-    '<div class="item-phrase">' + esc(item.original_phrase) + '</div>' +
-    '<div class="item-translation">' + esc(item.translation) + '</div>' +
-    '<div class="item-detail">' + esc(item.needed_clarification) + '</div>';
-}
-
-function renderBackItem(item) {
-  return '<div class="item-block">Block ' + esc(item.block_id) + '</div>' +
-    '<div class="item-phrase">' + esc(item.original_phrase) + '</div>' +
-    '<div class="item-translation">' + esc(item.translation) + '</div>' +
-    '<div class="item-detail"><strong>Back:</strong> ' + esc(item.back_translation) + '</div>';
-}
-
-function renderGlossaryItem(item) {
-  var statusClass = (item.status || "").toLowerCase() === "followed" ? "followed" : "deviated";
-  return '<div class="item-block">Block ' + esc(item.block_id) + '</div>' +
-    '<div class="item-phrase">' + esc(item.term) + '</div>' +
-    '<div class="item-translation">' + esc(item.translation) + '</div>' +
-    '<div class="item-status ' + statusClass + '">' + esc(item.status) + '</div>' +
-    '<div class="item-detail">' + esc(item.note) + '</div>';
-}
-
-function toggleCheck(key, isChecked) {
-  if (isChecked) {
-    checks[key] = true;
-  } else {
-    delete checks[key];
-  }
-  updateProgress();
-  google.script.run.saveSidebarChecks(checks);
-}
-
-function updateProgress() {
-  var total = 0;
-  var checked = 0;
-  for (var s = 0; s < SECTIONS.length; s++) {
-    var items = sidebarData[SECTIONS[s].key] || [];
-    total += items.length;
-    for (var i = 0; i < items.length; i++) {
-      if (checks[SECTIONS[s].key + "::" + i]) checked++;
+  function renderTranslationActions(it) {
+    if (showingAltId !== it.id) {
+      return '<div class="btn-row">'
+        + '<button class="btn primary" id="looksGoodBtn">Looks good</button>'
+        + '<button class="btn" id="suggestAltBtn">Suggest alternative</button>'
+        + '</div>'
+        + '<div class="fixed-manually-row"><button class="fixed-manually-link" id="fixedManuallyBtn">Fixed manually</button></div>';
     }
+    var alt       = pickVal(it.data, it.f.alt);
+    var rationale = pickVal(it.data, it.f.rationale);
+    return '<div class="alt-box"><div class="alt-label">Suggested alternative</div><div class="alt-val">' + esc(alt) + '</div></div>'
+      + (rationale ? '<div class="rationale">' + esc(rationale) + '</div>' : '')
+      + '<div class="btn-row">'
+      + '<button class="btn primary" id="useAltBtn">Use alternative</button>'
+      + '<button class="btn" id="keepOrigBtn">Keep original</button>'
+      + '</div>';
   }
-  var pct = total ? Math.round((checked / total) * 100) : 0;
-  document.getElementById("progress-text").textContent = checked + " / " + total + " reviewed";
-  document.getElementById("progress-fill").style.width = pct + "%";
-}
 
-function getOriginalText(item, sectionKey) {
-  if (sectionKey === "glossary_cross_check") return item.term || "";
-  return item.original_phrase || "";
-}
+  function renderClarificationActions() {
+    return '<div class="btn-row">'
+      + '<button class="btn primary" id="looksGoodBtn">Looks good</button>'
+      + '<button class="btn" id="needsWorkBtn">Needs work</button>'
+      + '</div>';
+  }
 
-function getTranslationText(item, sectionKey) {
-  if (sectionKey === "alt_translations") return item.primary_translation || "";
-  return item.translation || "";
-}
+  // ── Render: reviewed list ────────────────────────────────────────────────
+  function renderReviewedToggle() {
+    var done = reviewedPool();
+    if (!done.length) return '';
+    var html = '<button class="list-toggle" id="reviewedToggle">'
+      + '<span>Show reviewed (' + done.length + ')</span>'
+      + '<span class="chevron' + (reviewedOpen ? ' open' : '') + '">&#9656;</span>'
+      + '</button>';
+    if (reviewedOpen) {
+      html += '<div id="reviewedList">' + done.map(renderReviewedRow).join('') + '</div>';
+    }
+    return html;
+  }
 
-function toggleHighlight(item, key, sectionKey) {
-  var origText = getOriginalText(item, sectionKey);
-  var transText = getTranslationText(item, sectionKey);
+  function renderReviewedRow(it) {
+    var original = pickVal(it.data, it.f.original);
+    var isOpen   = expandedReviewedId === it.id;
+    var status   = STATUS[it.id];
+    var marker;
+    if (status === 'alternative') marker = '<span class="rr-badge alt">Alternative used</span>';
+    else if (status === 'fixed')  marker = '<span class="rr-badge fixed">Fixed manually</span>';
+    else                          marker = '<span class="rr-check">&#10003;</span>';
+    var revert = '<span class="rr-revert" data-id="' + esc(it.id) + '" data-action="revert">&#8630;</span>';
 
-  if (highlightedKey === key) {
+    var row = '<div class="reviewed-row" data-id="' + esc(it.id) + '" data-action="toggle">'
+      + '<div class="rr-text">' + esc(original) + '</div>'
+      + '<div style="display:flex;align-items:center;">' + (isOpen ? '' : revert) + marker + '</div>'
+      + '</div>';
+
+    if (!isOpen) return row;
+
+    var current = pickVal(it.data, it.f.current);
+    var detail = '<div class="reviewed-detail">';
+    if (it.type === 'translation') {
+      var alt = pickVal(it.data, it.f.alt);
+      detail += '<div class="rd-row"><span class="rd-label">Current: </span>' + esc(current) + '</div>';
+      detail += '<div class="rd-row"><span class="rd-label">Alternative: </span>' + esc(alt) + '</div>';
+    } else {
+      var note = pickVal(it.data, it.f.note);
+      detail += '<div class="rd-row"><span class="rd-label">Translation: </span>' + esc(current) + '</div>';
+      detail += '<div class="rd-row"><span class="rd-label">Clarification: </span>' + esc(note) + '</div>';
+    }
+    detail += '</div>';
+    detail += '<button class="btn review-again-btn" data-id="' + esc(it.id) + '" data-action="revert">Review again</button>';
+
+    return row + detail;
+  }
+
+  // ── Render: reference (plain list) ──────────────────────────────────────
+  function renderReferenceList(refItems) {
+    if (!refItems.length) return '<div class="empty-sec">None.</div>';
+    return refItems.map(function(it) {
+      var original = pickVal(it.data, it.f.original);
+      var current   = pickVal(it.data, it.f.current);
+      var note      = pickVal(it.data, it.f.note);
+      var noHl      = NO_HL[it.id];
+      return '<div class="ref-row" data-id="' + esc(it.id) + '" '
+        + 'data-original="' + esc(String(original)) + '" data-translation="' + esc(String(current)) + '">'
+        + (noHl ? '<span class="no-hl-badge">Highlighting not available</span><br>' : '')
+        + '<div class="ref-line">' + esc(original) + ' &rarr; ' + esc(current) + '</div>'
+        + (note ? '<div class="ref-note">' + esc(note) + '</div>' : '')
+        + '</div>';
+    }).join('');
+  }
+
+  // ── Actions: resolving a card ────────────────────────────────────────────
+  function resolve(id, status) {
+    releaseHighlight();
+    STATUS[id] = status;
+    showingAltId = null;
+    var pool = reviewablePool();
+    if (reviewPos >= pool.length) reviewPos = 0;
+    scheduleSave();
+    render();
+  }
+
+  function useAlternative(it) {
+    var current = pickVal(it.data, it.f.current);
+    var alt     = pickVal(it.data, it.f.alt);
+    var area = document.getElementById('actionArea');
+    if (area) area.innerHTML = '<div style="text-align:center;font-size:12px;color:var(--ink-soft);padding:8px 0;">Updating the doc…</div>';
+
     google.script.run
-      .withSuccessHandler(function() {
-        unhighlightUI(key);
-        highlightedKey = null;
-      })
-      .clearHighlight(origText, transText);
-    return;
-  }
-
-  if (highlightedKey) {
-    var prev = findItemByKey(highlightedKey);
-    if (prev) {
-      var prevOrig = getOriginalText(prev.item, prev.sectionKey);
-      var prevTrans = getTranslationText(prev.item, prev.sectionKey);
-      google.script.run.clearHighlight(prevOrig, prevTrans);
-      unhighlightUI(highlightedKey);
-    }
-  }
-
-  google.script.run
-    .withSuccessHandler(function(result) {
-      highlightUI(key);
-      highlightedKey = key;
-    })
-    .paintHighlight(origText, transText);
-}
-
-function findItemByKey(key) {
-  var parts = key.split("::");
-  var sectionKey = parts[0];
-  var idx = parseInt(parts[1], 10);
-  for (var s = 0; s < SECTIONS.length; s++) {
-    if (SECTIONS[s].key === sectionKey) {
-      var items = sidebarData[sectionKey] || [];
-      return { item: items[idx], sectionKey: sectionKey };
-    }
-  }
-  return null;
-}
-
-function highlightUI(key) {
-  var el = document.querySelector('[data-key="' + key + '"]');
-  if (el) el.classList.add("highlighted");
-}
-
-function unhighlightUI(key) {
-  var el = document.querySelector('[data-key="' + key + '"]');
-  if (el) el.classList.remove("highlighted");
-}
-
-function clearAll() {
-  google.script.run.clearAllHighlights();
-  highlightedKey = null;
-  var items = document.querySelectorAll(".item.highlighted");
-  for (var i = 0; i < items.length; i++) items[i].classList.remove("highlighted");
-}
-
-function startOrphanPolling() {
-  google.script.run
-    .withSuccessHandler(function(token) { editToken = token; })
-    .getDocEditToken();
-
-  pollTimer = setInterval(function() {
-    google.script.run
-      .withSuccessHandler(function(newToken) {
-        if (newToken !== editToken) {
-          editToken = newToken;
-          google.script.run
-            .withSuccessHandler(function(newOrphans) {
-              orphans = newOrphans || {};
-              var items = document.querySelectorAll(".item");
-              for (var i = 0; i < items.length; i++) {
-                var key = items[i].getAttribute("data-key");
-                if (orphans[key]) {
-                  items[i].classList.add("orphan");
-                } else {
-                  items[i].classList.remove("orphan");
-                }
-              }
-            })
-            .checkItemsExist();
+      .withSuccessHandler(function(result) {
+        if (result && result.replaced) {
+          resolve(it.id, 'alternative');
+        } else {
+          render();
+          alert('Couldn\'t find "' + current + '" in the document to replace.');
         }
       })
-      .getDocEditToken();
-  }, 10000);
-}
+      .withFailureHandler(function(err) {
+        render();
+        alert('Replace failed: ' + (err && err.message ? err.message : err));
+      })
+      .replaceTranslationInDoc(current, alt);
+  }
 
-function esc(s) {
-  if (!s) return "";
-  var d = document.createElement("div");
-  d.textContent = s;
-  return d.innerHTML;
-}
+  function markNeedsWork(it) {
+    releaseHighlight();
+    FLAGGED[it.id] = true;
+    var pool = reviewablePool();
+    if (pool.length > 1) reviewPos = (reviewPos + 1) % pool.length;
+    scheduleSave();
+    render();
+  }
 
-init();
+  // ── Highlight state (click a card / reference row to highlight it) ─────
+  var _activeEl = null, _activeOriginal = '', _activeTranslation = '';
+
+  function activateHighlight(el, originalText, translationText, id) {
+    if (NO_HL[id]) return;
+    _activeEl = el; _activeOriginal = originalText; _activeTranslation = translationText;
+    el.classList.add('highlighting');
+    google.script.run
+      .withSuccessHandler(function(result) {
+        if (result && result.original === 'not_found' && result.translation === 'not_found') {
+          el.style.borderColor = '#c97b6a';
+          setTimeout(function() { el.style.borderColor = ''; }, 800);
+        }
+      })
+      .paintHighlight(originalText, translationText);
+  }
+
+  function releaseHighlight() {
+    if (!_activeEl) return;
+    _activeEl.classList.remove('highlighting');
+    google.script.run.clearHighlight(_activeOriginal, _activeTranslation);
+    _activeEl = null; _activeOriginal = ''; _activeTranslation = '';
+  }
+
+  function toggleHighlight(el, originalText, translationText, id) {
+    if (_activeEl === el) { releaseHighlight(); }
+    else { releaseHighlight(); activateHighlight(el, originalText, translationText, id); }
+  }
+
+  // ── Wiring ────────────────────────────────────────────────────────────
+  function wireEvents() {
+    var needsReviewToggle = document.getElementById('needsReviewToggle');
+    if (needsReviewToggle) needsReviewToggle.onclick = function() {
+      needsReviewOpen = !needsReviewOpen;
+      render();
+    };
+
+    var referenceToggle = document.getElementById('referenceToggle');
+    if (referenceToggle) referenceToggle.onclick = function() {
+      referenceOpen = !referenceOpen;
+      render();
+    };
+
+    var reviewedToggle = document.getElementById('reviewedToggle');
+    if (reviewedToggle) reviewedToggle.onclick = function() {
+      reviewedOpen = !reviewedOpen;
+      render();
+    };
+
+    // Manage menu
+    var manageBtn = document.getElementById('manageBtn');
+    if (manageBtn) manageBtn.onclick = function(e) {
+      e.stopPropagation();
+      manageOpen = !manageOpen;
+      var menu = document.getElementById('manageMenu');
+      if (menu) menu.classList.toggle('open', manageOpen);
+    };
+    document.addEventListener('click', function() {
+      if (manageOpen) {
+        manageOpen = false;
+        var menu = document.getElementById('manageMenu');
+        if (menu) menu.classList.remove('open');
+      }
+    });
+
+    var changePromptItem = document.getElementById('changePromptItem');
+    if (changePromptItem) changePromptItem.onclick = function(e) {
+      e.stopPropagation();
+      manageOpen = false;
+      document.getElementById('manageMenu').classList.remove('open');
+      var panel = document.getElementById('promptEditPanel');
+      var input = document.getElementById('promptInput');
+      input.value = promptUrl;
+      document.getElementById('promptWarn').textContent = '';
+      panel.hidden = !panel.hidden;
+    };
+    var downloadItem = document.getElementById('downloadItem');
+    if (downloadItem) downloadItem.onclick = function(e) {
+      e.stopPropagation();
+      manageOpen = false;
+      document.getElementById('manageMenu').classList.remove('open');
+      downloadDocx();
+    };
+
+    var refreshIconBtn = document.getElementById('refreshIconBtn');
+    if (refreshIconBtn) refreshIconBtn.onclick = function() { showRegenerateConfirm(); };
+
+    wirePromptEditEvents();
+
+    // Review card
+    var card = document.getElementById('reviewCard');
+    if (card) {
+      var pool = reviewablePool();
+      var it = pool[reviewPos];
+
+      card.addEventListener('mousedown', function(e) {
+        if (e.target.closest('button') || e.target.closest('.nav-arrow')) return;
+        var original = card.getAttribute('data-original') || '';
+        var translation = card.getAttribute('data-translation') || '';
+        toggleHighlight(card, original, translation, it.id);
+      });
+
+      var prevBtn = document.getElementById('prevBtn');
+      var nextBtn = document.getElementById('nextBtn');
+      if (prevBtn) prevBtn.onclick = function() {
+        releaseHighlight();
+        var p = reviewablePool();
+        reviewPos = (reviewPos - 1 + p.length) % p.length;
+        showingAltId = null;
+        render();
+      };
+      if (nextBtn) nextBtn.onclick = function() {
+        releaseHighlight();
+        var p = reviewablePool();
+        reviewPos = (reviewPos + 1) % p.length;
+        showingAltId = null;
+        render();
+      };
+
+      var looksGoodBtn = document.getElementById('looksGoodBtn');
+      if (looksGoodBtn) looksGoodBtn.onclick = function() { resolve(it.id, 'accepted'); };
+
+      var suggestAltBtn = document.getElementById('suggestAltBtn');
+      if (suggestAltBtn) suggestAltBtn.onclick = function() { showingAltId = it.id; render(); };
+
+      var fixedManuallyBtn = document.getElementById('fixedManuallyBtn');
+      if (fixedManuallyBtn) fixedManuallyBtn.onclick = function() { resolve(it.id, 'fixed'); };
+
+      var useAltBtn = document.getElementById('useAltBtn');
+      if (useAltBtn) useAltBtn.onclick = function() { useAlternative(it); };
+
+      var keepOrigBtn = document.getElementById('keepOrigBtn');
+      if (keepOrigBtn) keepOrigBtn.onclick = function() { resolve(it.id, 'accepted'); };
+
+      var needsWorkBtn = document.getElementById('needsWorkBtn');
+      if (needsWorkBtn) needsWorkBtn.onclick = function() { markNeedsWork(it); };
+    }
+
+    // Reviewed rows
+    document.querySelectorAll('.reviewed-row[data-action="toggle"]').forEach(function(row) {
+      row.addEventListener('click', function(e) {
+        if (e.target.closest('[data-action="revert"]')) return;
+        var id = row.getAttribute('data-id');
+        expandedReviewedId = (expandedReviewedId === id) ? null : id;
+        render();
+      });
+    });
+    document.querySelectorAll('[data-action="revert"]').forEach(function(el) {
+      el.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var id = el.getAttribute('data-id');
+        delete STATUS[id];
+        expandedReviewedId = null;
+        scheduleSave();
+        render();
+      });
+    });
+
+    // Reference rows — click to highlight
+    document.querySelectorAll('.ref-row').forEach(function(row) {
+      var id          = row.getAttribute('data-id');
+      var original    = row.getAttribute('data-original') || '';
+      var translation = row.getAttribute('data-translation') || '';
+      row.addEventListener('mousedown', function() {
+        toggleHighlight(row, original, translation, id);
+      });
+    });
+  }
+
+  function wirePromptEditEvents() {
+    var panel     = document.getElementById('promptEditPanel');
+    var input     = document.getElementById('promptInput');
+    var saveBtn   = document.getElementById('promptSaveBtn');
+    var cancelBtn = document.getElementById('promptCancelBtn');
+    var warnEl    = document.getElementById('promptWarn');
+
+    if (cancelBtn) cancelBtn.addEventListener('click', function() {
+      panel.hidden = true;
+      warnEl.textContent = '';
+    });
+
+    if (saveBtn) saveBtn.addEventListener('click', function() {
+      var newUrl = (input.value || '').trim();
+      if (!newUrl) { warnEl.textContent = 'Please enter a URL.'; return; }
+      if (newUrl === promptUrl) { panel.hidden = true; return; }
+
+      var confirmed = window.confirm(
+        'Change the translator prompt link shown in this sidebar?\n\n' +
+        'New link:\n' + newUrl + '\n\n' +
+        'This updates the link for everyone who opens this sidebar. It does not change the prompt actually used to translate — only where this link points.'
+      );
+      if (!confirmed) return;
+
+      saveBtn.disabled = true;
+      warnEl.textContent = '';
+      google.script.run
+        .withSuccessHandler(function() {
+          promptUrl = newUrl;
+          saveBtn.disabled = false;
+          panel.hidden = true;
+          var link = document.getElementById('promptLink');
+          if (link) link.href = promptUrl;
+        })
+        .withFailureHandler(function(err) {
+          saveBtn.disabled = false;
+          warnEl.textContent = 'Couldn\'t save: ' + (err && err.message ? err.message : err);
+        })
+        .setPromptUrl(newUrl);
+    });
+  }
+
+  function loadPromptUrl() {
+    google.script.run
+      .withSuccessHandler(function(url) {
+        if (url) {
+          promptUrl = url;
+          var link = document.getElementById('promptLink');
+          if (link) link.href = promptUrl;
+          var input = document.getElementById('promptInput');
+          if (input) input.value = promptUrl;
+        }
+      })
+      .withFailureHandler(function() { /* keep default prompt link silently */ })
+      .getPromptUrl();
+  }
+
+  // ── Download ──────────────────────────────────────────────────────────
+  function downloadDocx() {
+    google.script.run
+      .withSuccessHandler(function(b64) {
+        if (!b64) { alert('Could not generate the download.'); return; }
+        var binary = atob(b64);
+        var bytes  = new Uint8Array(binary.length);
+        for (var i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
+        var blob = new Blob([bytes], {type:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
+        var url  = URL.createObjectURL(blob);
+        var a    = document.createElement('a');
+        a.href=url; a.download='ai-suggestions.docx'; a.click();
+        setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+      })
+      .withFailureHandler(function(e) {
+        alert('Download failed: '+(e&&e.message?e.message:e));
+      })
+      .generateReviewDocx();
+  }
+
+  // ── Highlight-availability check (on load) ──────────────────────────────
+  function markUnhighlightableItems(onComplete) {
+    google.script.run
+      .withSuccessHandler(function(docText) {
+        if (!docText) { if (onComplete) onComplete(); return; }
+        var english = (docText.english || '').normalize('NFC');
+        var spanish = (docText.spanish || '').normalize('NFC');
+        NO_HL = {};
+
+        function checkList(items) {
+          items.forEach(function(it) {
+            var origPhrase  = String(pickVal(it.data, it.f.original)).trim();
+            var transPhrase = String(pickVal(it.data, it.f.current)).trim();
+            var origOk  = !origPhrase  || english.indexOf(origPhrase.normalize('NFC'))  !== -1;
+            var transOk = !transPhrase || spanish.indexOf(transPhrase.normalize('NFC')) !== -1;
+            if (!origOk || !transOk) NO_HL[it.id] = true;
+          });
+        }
+        checkList(REVIEW_ITEMS);
+        checkList(referenceItems());
+
+        if (onComplete) onComplete();
+      })
+      .withFailureHandler(function() { if (onComplete) onComplete(); })
+      .getDocTextForHighlightCheck();
+  }
+
+  // ── Load / reload ─────────────────────────────────────────────────────
+  function onData(res) {
+    if (!res || !res.data) { DATA = null; renderEmpty(); return; }
+    DATA = res.data;
+
+    // Only honor the current { status, flagged } shape. Older checked-item
+    // data from the previous checkbox-based sidebar (a flat { id: true }
+    // map) is a different resolution model and isn't a reliable signal
+    // that an item was actually reviewed under this flow — ignore it
+    // rather than silently marking items as already reviewed.
+    var checks = res.checks || {};
+    STATUS  = checks.status  || {};
+    FLAGGED = checks.flagged || {};
+
+    NO_HL = {};
+    REVIEW_ITEMS = buildReviewItems();
+    reviewPos = 0;
+    showingAltId = null;
+    expandedReviewedId = null;
+
+    render();
+    loadPromptUrl();
+    markUnhighlightableItems(function() {
+      render();
+    });
+  }
+
+  function onErr(err) {
+    document.getElementById('root').innerHTML =
+      '<div class="stage"><strong>Couldn\'t load suggestions</strong>'+esc(err&&err.message?err.message:err)+'</div>';
+  }
+
+  function reload() {
+    releaseHighlight();
+    document.getElementById('root').innerHTML='<div class="stage">Loading suggestions…</div>';
+    google.script.run.withSuccessHandler(onData).withFailureHandler(onErr).getSidebarData();
+  }
+
+  google.script.run.withSuccessHandler(onData).withFailureHandler(onErr).getSidebarData();
+
+  function unhighlightOnClose() {
+    if (_activeEl) {
+      _activeEl.classList.remove('highlighting');
+      _activeEl = null; _activeOriginal = ''; _activeTranslation = '';
+    }
+    google.script.run
+      .withFailureHandler(function() { /* silent — sidebar is closing anyway */ })
+      .clearAllHighlights();
+  }
+
+  
+
+
+  // ── Regenerate confirmation modal ────────────────────────────────────
+  function showRegenerateConfirm() {
+    if (document.getElementById('regenOverlay')) return; // already showing
+
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.id = 'regenOverlay';
+    overlay.innerHTML =
+      '<div class="modal-box">' +
+        '<div class="modal-msg">Regenerating suggestions will reset review items &amp; statuses.</div>' +
+        '<div class="modal-actions">' +
+          '<button class="modal-btn primary" id="regenProceedBtn">Proceed</button>' +
+          '<button class="modal-btn" id="regenCancelBtn">Do not proceed</button>' +
+        '</div>' +
+      '</div>';
+    document.getElementById('root').appendChild(overlay);
+
+    document.getElementById('regenCancelBtn').onclick = function() {
+      overlay.remove();
+    };
+    document.getElementById('regenProceedBtn').onclick = function() {
+      var box = overlay.querySelector('.modal-box');
+      box.innerHTML = '<div class="modal-msg">Regenerating suggestions…</div>';
+      runRegeneration(overlay);
+    };
+  }
+
+  function runRegeneration(overlay) {
+    releaseHighlight();
+    google.script.run
+      .withSuccessHandler(function(res) {
+        if (overlay && overlay.parentNode) overlay.remove();
+        if (res && res.problem) {
+          showErrorBar('Refresh failed. Try again');
+          return;
+        }
+        reload();
+      })
+      .withFailureHandler(function() {
+        if (overlay && overlay.parentNode) overlay.remove();
+        showErrorBar('Refresh failed. Try again');
+      })
+      .regenerateSuggestions();
+  }
+
+  var errorBarTimer = null;
+  function showErrorBar(message) {
+    var existing = document.getElementById('errorBar');
+    if (existing) existing.remove();
+    if (errorBarTimer) clearTimeout(errorBarTimer);
+
+    var bar = document.createElement('div');
+    bar.className = 'error-bar';
+    bar.id = 'errorBar';
+    bar.innerHTML = '<span>' + esc(message) + '</span>'
+      + '<button class="error-bar-dismiss" id="errorBarDismiss" aria-label="Dismiss">&times;</button>';
+    document.getElementById('root').appendChild(bar);
+
+    document.getElementById('errorBarDismiss').onclick = function() { bar.remove(); };
+    errorBarTimer = setTimeout(function() {
+      var el = document.getElementById('errorBar');
+      if (el) el.remove();
+    }, 4000);
+  }
+
+
+
+
+
+
+  // pagehide fires more reliably than beforeunload when a sidebar iframe
+  // is torn down; beforeunload is kept as a fallback for older behavior.
+  window.addEventListener('pagehide', unhighlightOnClose);
+  window.addEventListener('beforeunload', unhighlightOnClose);
 </script>
 </body>
 </html>
