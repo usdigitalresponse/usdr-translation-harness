@@ -553,6 +553,16 @@ describe("classifyBlockSignal", () => {
     const keyToBlock = { "alt_translations::0": "b1", "terms_flagged_for_clarification::0": "b1" };
     expect(classifyBlockSignal("b1", checks, orphans, keyToBlock)).toBe("fixed_manually");
   });
+
+  test("returns no_sidebar_interaction when keyToBlock exists but block has no mapped keys", () => {
+    const checks = {
+      status: { "alt_translations::0": "alternative" },
+      flagged: {},
+    };
+    const orphans = { "alt_translations::0": true };
+    const keyToBlock = { "alt_translations::0": "b1" };
+    expect(classifyBlockSignal("b99", checks, orphans, keyToBlock)).toBe("no_sidebar_interaction");
+  });
 });
 
 describe("captureFeedback HTTP handler", () => {

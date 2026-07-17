@@ -274,7 +274,7 @@ The editor add-on is published via Google Workspace Marketplace. Updating it is 
    ```sh
    clasp deploy -i <DEPLOYMENT_ID>
    ```
-   The deployment ID for the editor add-on is `AKfycbyVWctiSN5yvxouWgC3fPIvAu4ALpdmhAccT6wtUKhaBQ2sCRRttxAEFtjuxSV4pl6k`. This increments the version number (e.g., `@6` → `@7`). Use `clasp deployments` to list current deployments and find the ID.
+   Run `clasp deployments` to find the deployment ID, then pass it with `-i`. This increments the version number (e.g., `@6` → `@7`).
 
 4. **Swap the placeholder back** in `appsscript.json` before committing:
    Replace the real project number back to `<GCP_PROJECT_NUMBER>`.
