@@ -321,21 +321,45 @@ function submitReview() {
 
   if (confirm !== ui.Button.YES) return;
 
+  var rawChecks = PropertiesService.getDocumentProperties().getProperty(SIDEBAR_CHECKS_KEY);
+  var sidebarChecks = rawChecks ? JSON.parse(rawChecks) : {};
+  var sidebarOrphans = checkItemsExist();
+
   var captureFeedbackUrl = PropertiesService.getScriptProperties().getProperty("CAPTURE_FEEDBACK_FUNCTION_URL");
+  if (!captureFeedbackUrl) {
+    ui.alert("Configuration Error", "Capture feedback URL is not configured.", ui.ButtonSet.OK);
+    return;
+  }
+
   var token = ScriptApp.getIdentityToken();
   var options = {
     method: "post",
     contentType: "application/json",
     headers: { Authorization: "Bearer " + token },
-    payload: JSON.stringify({ documentId: doc.getId() }),
+    payload: JSON.stringify({
+      documentId: doc.getId(),
+      sidebarChecks: sidebarChecks,
+      sidebarOrphans: sidebarOrphans,
+    }),
     muteHttpExceptions: true,
   };
 
-  var response = UrlFetchApp.fetch(captureFeedbackUrl, options);
+  var response;
+  try {
+    response = UrlFetchApp.fetch(captureFeedbackUrl, options);
+  } catch (e) {
+    ui.alert("Network Error", "Could not reach the feedback service: " + e.message, ui.ButtonSet.OK);
+    return;
+  }
+
   var result = JSON.parse(response.getContentText());
 
   if (response.getResponseCode() === HTTP_OK) {
-    ui.alert("Review submitted successfully. " + (result.decisions || []).length + " terminology decisions captured.");
+    var msg = "Review submitted successfully. " + (result.decisions || []).length + " terminology decisions captured.";
+    if (result.warnings && result.warnings.length) {
+      msg += "\n\nWarnings:\n" + result.warnings.join("\n");
+    }
+    ui.alert(msg);
   } else {
     ui.alert("Error submitting review: " + response.getContentText());
   }

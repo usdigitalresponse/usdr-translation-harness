@@ -9,9 +9,10 @@
   },
   "dependencies": {
     "@google-cloud/functions-framework": "^3.4.0",
-    "googleapis": "^146.0.0",
     "diff": "^7.0.0",
-    "dotenv": "^16.4.0"
+    "dotenv": "^16.4.0",
+    "googleapis": "^146.0.0",
+    "http-status-codes": "^2.3.0"
   },
   "devDependencies": {
     "jest": "^29.7.0"
