@@ -8,6 +8,7 @@
 var HTTP_OK = 200;
 var DOC_PROPERTY_KEY = "usdr_translation_review";
 var SIDEBAR_CHECKS_KEY = "SIDEBAR_CHECKS";
+var SIDEBAR_OPENED_AT_KEY = "SIDEBAR_OPENED_AT";
 var HIGHLIGHT_COLOR = "#FFD700";
 
 // ── Drive property access ────────────────────────────────────────────────
@@ -75,6 +76,7 @@ function getSidebarData() {
           item[keys[k]] = items[j][keys[k]];
         }
         item.block_id = blockId;
+        item.block_index = i;
         sections[key].push(item);
       }
     }
@@ -102,14 +104,22 @@ function saveSidebarChecks(checks) {
 
 // ── Highlighting ─────────────────────────────────────────────────────────
 
-function getFirstTable_() {
-  var body = DocumentApp.getActiveDocument().getBody();
+function getFirstTable_(body) {
+  body = body || DocumentApp.getActiveDocument().getBody();
   for (var i = 0; i < body.getNumChildren(); i++) {
     if (body.getChild(i).getType() === DocumentApp.ElementType.TABLE) {
       return body.getChild(i).asTable();
     }
   }
   return null;
+}
+
+function escapeRegex_(str) {
+  return str.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+}
+
+function escapeReplacement_(str) {
+  return str.replace(/\$/g, '$$$$');
 }
 
 function paintInCell_(cell, needle, color) {
@@ -257,7 +267,7 @@ function checkItemsExist() {
     for (var i = 0; i < items.length; i++) {
       var item = items[i];
       var origPhrase = (item.original_phrase || item.original_text || "").trim();
-      var transPhrase = (item.translation || item.glossary_usage_or_deviation || "").trim();
+      var transPhrase = (item.primary_translation || item.translation || "").trim();
 
       var origMissing = origPhrase && english.indexOf(origPhrase.normalize("NFC")) === -1;
       var transMissing = transPhrase && spanish.indexOf(transPhrase.normalize("NFC")) === -1;
@@ -269,6 +279,104 @@ function checkItemsExist() {
   }
 
   return orphans;
+}
+
+// ── Prompt URL persistence ──────────────────────────────────────────────
+
+var PROMPT_URL_KEY = "PROMPT_URL";
+var RUBRIC_URL_KEY = "RUBRIC_URL";
+
+function setPromptUrl(url) {
+  PropertiesService.getDocumentProperties().setProperty(PROMPT_URL_KEY, url);
+}
+
+function getPromptUrl() {
+  return PropertiesService.getDocumentProperties().getProperty(PROMPT_URL_KEY) || "";
+}
+
+function setRubricUrl(url) {
+  PropertiesService.getDocumentProperties().setProperty(RUBRIC_URL_KEY, url);
+}
+
+function getRubricUrl() {
+  return PropertiesService.getDocumentProperties().getProperty(RUBRIC_URL_KEY) || "";
+}
+
+// ── Sidebar actions (stubs) ─────────────────────────────────────────────
+
+function replaceInCell_(cell, currentText, pattern, replacement) {
+  var cellText = cell.getText();
+  var count = cellText.split(currentText).length - 1;
+  if (count > 0) {
+    cell.replaceText(pattern, replacement);
+  }
+  return count;
+}
+
+function replaceTranslationInDoc(currentText, altText, blockIndex) {
+  var result = { replaced: false, count: 0 };
+
+  currentText = (currentText || '').trim();
+  altText     = (altText || '').trim();
+  if (!currentText || !altText || currentText === altText) return result;
+
+  var doc   = DocumentApp.getActiveDocument();
+  var body  = doc.getBody();
+  var table = getFirstTable_(body);
+
+  var pattern     = escapeRegex_(currentText);
+  var replacement = escapeReplacement_(altText);
+
+  if (table && table.getNumRows() >= 2) {
+    var targetRow = (typeof blockIndex === 'number') ? blockIndex + 1 : -1;
+    if (targetRow >= 1 && targetRow < table.getNumRows()) {
+      var count = replaceInCell_(table.getRow(targetRow).getCell(1), currentText, pattern, replacement);
+      if (count > 0) {
+        result.replaced = true;
+        result.count = count;
+      }
+    }
+
+    if (!result.replaced) {
+      for (var row = 1; row < table.getNumRows(); row++) {
+        var count = replaceInCell_(table.getRow(row).getCell(1), currentText, pattern, replacement);
+        if (count > 0) {
+          result.replaced = true;
+          result.count += count;
+        }
+      }
+    }
+  } else {
+    var bodyText = body.getText();
+    var count = bodyText.split(currentText).length - 1;
+    if (count > 0) {
+      body.replaceText(pattern, replacement);
+      result.replaced = true;
+      result.count = count;
+    }
+  }
+
+  if (result.replaced) {
+    try { clearHighlight('', currentText); } catch (e) { /* non-fatal */ }
+  }
+
+  return result;
+}
+
+function regenerateSuggestions() {
+  return { problem: "not_implemented", message: "Regeneration is not yet available." };
+}
+
+function generateReviewDocx() {
+  return null;
+}
+
+function getEvalData() {
+  return null;
+}
+
+function evaluateTranslationFromSidebar() {
+  return { problem: "not_implemented", message: "Evaluation is not yet available." };
 }
 
 // ── Menu and sidebar ─────────────────────────────────────────────────────
@@ -292,11 +400,35 @@ function showReviewPanel() {
     return;
   }
 
+  var props = PropertiesService.getDocumentProperties();
+  if (!props.getProperty(SIDEBAR_OPENED_AT_KEY)) {
+    props.setProperty(SIDEBAR_OPENED_AT_KEY, new Date().toISOString());
+  }
+
   clearAllHighlights();
   var html = HtmlService.createHtmlOutputFromFile("Sidebar")
     .setTitle("AI Suggestions")
     .setWidth(340);
   DocumentApp.getUi().showSidebar(html);
+}
+
+// Temporary — returns the submit payload as a string for sidebar debug button.
+// Remove before release.
+function debugGetSubmitPayload() {
+  var doc = DocumentApp.getActiveDocument();
+  var props = PropertiesService.getDocumentProperties();
+
+  var rawChecks = props.getProperty(SIDEBAR_CHECKS_KEY);
+  var sidebarChecks = rawChecks ? JSON.parse(rawChecks) : {};
+  var sidebarOrphans = checkItemsExist();
+  var sidebarOpenedAt = props.getProperty(SIDEBAR_OPENED_AT_KEY) || null;
+
+  return JSON.stringify({
+    documentId: doc.getId(),
+    sidebarChecks: sidebarChecks,
+    sidebarOrphans: sidebarOrphans,
+    sidebarOpenedAt: sidebarOpenedAt,
+  }, null, 2);
 }
 
 function submitReview() {
@@ -321,21 +453,54 @@ function submitReview() {
 
   if (confirm !== ui.Button.YES) return;
 
+  var props = PropertiesService.getDocumentProperties();
+  var rawChecks = props.getProperty(SIDEBAR_CHECKS_KEY);
+  var sidebarChecks = rawChecks ? JSON.parse(rawChecks) : {};
+  var sidebarOrphans = checkItemsExist();
+  var sidebarOpenedAt = props.getProperty(SIDEBAR_OPENED_AT_KEY) || null;
+
   var captureFeedbackUrl = PropertiesService.getScriptProperties().getProperty("CAPTURE_FEEDBACK_FUNCTION_URL");
+  if (!captureFeedbackUrl) {
+    ui.alert("Configuration Error", "Capture feedback URL is not configured.", ui.ButtonSet.OK);
+    return;
+  }
+
   var token = ScriptApp.getIdentityToken();
   var options = {
     method: "post",
     contentType: "application/json",
     headers: { Authorization: "Bearer " + token },
-    payload: JSON.stringify({ documentId: doc.getId() }),
+    payload: JSON.stringify({
+      documentId: doc.getId(),
+      sidebarChecks: sidebarChecks,
+      sidebarOrphans: sidebarOrphans,
+      sidebarOpenedAt: sidebarOpenedAt,
+    }),
     muteHttpExceptions: true,
   };
 
-  var response = UrlFetchApp.fetch(captureFeedbackUrl, options);
-  var result = JSON.parse(response.getContentText());
+  var response;
+  try {
+    response = UrlFetchApp.fetch(captureFeedbackUrl, options);
+  } catch (e) {
+    ui.alert("Network Error", "Could not reach the feedback service: " + e.message, ui.ButtonSet.OK);
+    return;
+  }
+
+  var result;
+  try {
+    result = JSON.parse(response.getContentText());
+  } catch (e) {
+    ui.alert("Error", "Unexpected response from feedback service:\n" + response.getContentText().substring(0, 500), ui.ButtonSet.OK);
+    return;
+  }
 
   if (response.getResponseCode() === HTTP_OK) {
-    ui.alert("Review submitted successfully. " + (result.decisions || []).length + " terminology decisions captured.");
+    var msg = "Review submitted successfully. " + (result.decisions || []).length + " terminology decisions captured.";
+    if (result.warnings && result.warnings.length) {
+      msg += "\n\nWarnings:\n" + result.warnings.join("\n");
+    }
+    ui.alert(msg);
   } else {
     ui.alert("Error submitting review: " + response.getContentText());
   }

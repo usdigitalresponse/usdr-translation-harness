@@ -263,13 +263,13 @@
   // ── Data shape ──────────────────────────────────────────────────────────
   var REVIEWABLE_SECTIONS = [
     { key: 'alt_translations', type: 'translation',
-      f: { original: 'original_text', current: 'translation', alt: 'alt_translation', rationale: 'alt_translation_rationale' } },
+      f: { original: 'original_phrase', current: 'primary_translation', alt: 'alt_translation', rationale: 'rationale' } },
     { key: 'terms_flagged_for_clarification', type: 'clarification',
-      f: { original: 'original_text', current: 'translation', note: 'needed_clarification' } }
+      f: { original: 'original_phrase', current: 'translation', note: 'needed_clarification' } }
   ];
   var REFERENCE_SECTION = {
     key: 'glossary_cross_check',
-    f: { original: 'original_text', current: 'translation', note: 'glossary_usage_or_deviation' }
+    f: { original: 'term', current: 'translation', note: 'note' }
   };
 
   var DATA         = null;
@@ -413,6 +413,10 @@
     html += '<div id="referenceBody" style="display:' + (referenceOpen ? 'block' : 'none') + ';">';
     html += renderReferenceList(refItems);
     html += '</div>';
+
+    // Temporary debug button — remove when capture feedback is deployed
+    html += '<div class="divider"></div>';
+    html += '<button class="btn" id="debugPayloadBtn" style="width:100%;border-color:var(--warn-bdr);color:var(--warn-ink);">Debug: Show submit payload</button>';
 
     html += '</div>'; // .scroll
 
@@ -607,7 +611,7 @@
         render();
         alert('Replace failed: ' + (err && err.message ? err.message : err));
       })
-      .replaceTranslationInDoc(current, alt);
+      .replaceTranslationInDoc(current, alt, pickVal(it.data, 'block_index'));
   }
 
   function markNeedsWork(it) {
@@ -786,6 +790,15 @@
         toggleHighlight(row, original, translation, id);
       });
     });
+
+    // Temporary debug button
+    var debugBtn = document.getElementById('debugPayloadBtn');
+    if (debugBtn) debugBtn.onclick = function() {
+      google.script.run
+        .withSuccessHandler(function(json) { alert(json); })
+        .withFailureHandler(function(err) { alert('Error: ' + (err.message || err)); })
+        .debugGetSubmitPayload();
+    };
   }
 
   function wirePromptEditEvents() {
