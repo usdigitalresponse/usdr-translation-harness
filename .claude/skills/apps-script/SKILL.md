@@ -1,6 +1,6 @@
 ---
 name: apps-script
-description: Develop, push, and configure Google Apps Script projects (orchestrator + editor add-on) using clasp. Covers push/pull, Script Properties setup, trigger management, and testing. Use when asked to work on Apps Script code, push to Google, configure triggers or script properties. This skill does NOT deploy or publish — it only pushes code.
+description: Develop, push, deploy, and configure Google Apps Script projects (orchestrator + editor add-on) using clasp. Covers push/pull, versioned deployments, Marketplace publishing workflow, Script Properties setup, trigger management, and testing. Use when asked to work on Apps Script code, push to Google, deploy the add-on, configure triggers or script properties.
 ---
 
 # Apps Script
@@ -183,7 +183,7 @@ cd apps-script/editor-addon && clasp push
 
 If `clasp push` prints "Skipping push." with no error, use `clasp push --force`. This happens because clasp prompts interactively when it detects the local `appsscript.json` differs from the remote manifest ("Do you want to push and overwrite?"), and in a non-interactive terminal the prompt defaults to "no". The `--force` flag skips this confirmation — it is safe and only affects the manifest overwrite prompt.
 
-After pushing, tell the user the code is live in the Apps Script editor. **Do not publish the add-on or change deployment settings.**
+After pushing, tell the user the code is live in the Apps Script editor but **not yet deployed**. If they want to deploy, see "Task: Deploy and publish the editor add-on" below.
 
 ## Task: Pull code from Google
 
@@ -252,6 +252,45 @@ cd apps-script/orchestrator && clasp open-script
 # Open the editor add-on
 cd apps-script/editor-addon && clasp open-script
 ```
+
+## Task: Deploy and publish the editor add-on
+
+The editor add-on is published via Google Workspace Marketplace. Updating it is a multi-step process — some steps are CLI, some require the GCP Console.
+
+**Prerequisites:**
+- `appsscript.json` has a `urlFetchWhitelist` entry with a `<GCP_PROJECT_NUMBER>` placeholder. This must be swapped to the real project number before pushing (clasp rejects the placeholder as an invalid URL). Swap it back before committing to avoid leaking the project number.
+
+**Full deploy workflow:**
+
+1. **Swap the placeholder in `appsscript.json`:**
+   Replace `<GCP_PROJECT_NUMBER>` in the `urlFetchWhitelist` URL with the real GCP project number.
+
+2. **Push the code:**
+   ```sh
+   cd apps-script/editor-addon && clasp push --force
+   ```
+
+3. **Create a versioned deployment:**
+   ```sh
+   clasp deploy -i <DEPLOYMENT_ID>
+   ```
+   Run `clasp deployments` to find the deployment ID, then pass it with `-i`. This increments the version number (e.g., `@6` → `@7`).
+
+4. **Swap the placeholder back** in `appsscript.json` before committing:
+   Replace the real project number back to `<GCP_PROJECT_NUMBER>`.
+
+5. **Update the version in GCP Console** (user must do this manually):
+   - Go to GCP Console → APIs & Services → Google Workspace Marketplace SDK → App Configuration
+   - Update the Apps Script version number to match the new deployment version (e.g., `7`)
+   - Save
+
+6. **Republish from Store Listing** (user must do this manually):
+   - In the Marketplace SDK, go to Store Listing
+   - Click Publish (saving the draft is not enough — it must be explicitly published)
+
+**Important:** Steps 5-6 must be done by the user in the browser. Claude can do steps 1-4 via CLI. Always remind the user about the remaining manual steps after deploying.
+
+The orchestrator does not go through Marketplace — it's a standalone script. Only `clasp push` is needed for the orchestrator.
 
 ## OAuth scopes reference
 
