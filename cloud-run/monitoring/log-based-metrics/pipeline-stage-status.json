@@ -1,0 +1,21 @@
+{
+  "name": "pipeline_stage_status",
+  "description": "Count of pipeline stage executions by stage, status, provider, and model",
+  "filter": "resource.type=\"cloud_run_revision\" jsonPayload.pipeline_stage:*",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "INT64",
+    "labels": [
+      { "key": "pipeline_stage", "valueType": "STRING" },
+      { "key": "status", "valueType": "STRING" },
+      { "key": "provider", "valueType": "STRING" },
+      { "key": "model", "valueType": "STRING" }
+    ]
+  },
+  "labelExtractors": {
+    "pipeline_stage": "EXTRACT(jsonPayload.pipeline_stage)",
+    "status": "EXTRACT(jsonPayload.status)",
+    "provider": "EXTRACT(jsonPayload.provider)",
+    "model": "EXTRACT(jsonPayload.model)"
+  }
+}
