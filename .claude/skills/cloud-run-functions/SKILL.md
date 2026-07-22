@@ -7,6 +7,8 @@ description: Set up, run, test, and deploy Cloud Run functions for local develop
 
 Skill for working with the Cloud Run functions in this repo. Covers local setup, running functions, and testing. **This skill must never run `gcloud` commands or deploy anything to Cloud Run — only the user does that.**
 
+**Documentation rule:** When changing function logic in a Cloud Run function, update the corresponding README (e.g. `cloud-run/capture-feedback/README.md`) and keep JSDoc on changed methods accurate. READMEs document the high-level flow; JSDoc documents individual method contracts (parameters, return values, side effects).
+
 ## What you can ask
 
 Here are things you can say to use this skill. You don't need exact phrasing — these are just examples.

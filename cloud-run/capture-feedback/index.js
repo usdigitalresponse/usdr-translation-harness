@@ -37,6 +37,14 @@ const AUTH_SCOPES = [
   "https://www.googleapis.com/auth/spreadsheets",
 ];
 
+/**
+ * HTTP handler for the capture-feedback endpoint.
+ * Accepts a reviewed document ID, diffs reviewer edits against the AI
+ * translation, classifies changes into terminology decisions, writes
+ * them to the derived glossary, and stores full feedback JSON in Drive.
+ *
+ * Called by the editor add-on's submitReview() via UrlFetchApp.
+ */
 async function captureFeedback(req, res) {
   const { documentId, sidebarChecks, sidebarOrphans, sidebarOpenedAt } = req.body;
 
