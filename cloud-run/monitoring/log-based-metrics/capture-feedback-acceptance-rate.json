@@ -1,0 +1,25 @@
+{
+  "name": "capture_feedback_acceptance_rate",
+  "description": "Acceptance rate from reviewer feedback (0.0 to 1.0)",
+  "filter": "resource.type=\"cloud_run_revision\" jsonPayload.pipeline_stage=\"capture_feedback\" jsonPayload.acceptanceRate:*",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "DISTRIBUTION",
+    "labels": [
+      { "key": "provider", "valueType": "STRING" },
+      { "key": "model", "valueType": "STRING" }
+    ]
+  },
+  "valueExtractor": "EXTRACT(jsonPayload.acceptanceRate)",
+  "bucketOptions": {
+    "linearBuckets": {
+      "numFiniteBuckets": 10,
+      "width": 0.1,
+      "offset": 0.0
+    }
+  },
+  "labelExtractors": {
+    "provider": "EXTRACT(jsonPayload.provider)",
+    "model": "EXTRACT(jsonPayload.model)"
+  }
+}

@@ -341,6 +341,19 @@ Example prompts:
 - "Run both Claude and Gemini for translate"
 - "What model is active for eval?"
 
+## Monitoring dashboards
+
+Dashboard configs and log-based metric definitions live in `cloud-run/monitoring/`. See `cloud-run/monitoring/README.md` for deploy commands and gotchas.
+
+**Key gotchas learned the hard way:**
+
+- **Distribution metrics**: The filter-based aggregation API cannot extract scalar values (mean, percentile) from distribution-valued log-based metrics. Use MQL (`timeSeriesQueryLanguage`) instead.
+- **Dashboard names**: Avoid em dashes or non-ASCII in `displayName` — causes intermittent Console UI loading failures.
+- **Updating dashboards**: Use `gcloud monitoring dashboards update` to preserve the dashboard ID and URL. Delete/recreate changes the ID and breaks bookmarks.
+- **Legend templates**: MQL queries ignore `legendTemplate` with `${metric.labels.X}` syntax. MQL auto-generates legends from `group_by` fields.
+- **Log-based metrics**: Only capture data from creation time onward — no backfill. Creating a metric and expecting historical data will show empty charts.
+- **Rapid churn**: The Console UI caches dashboard IDs aggressively. After changes, use direct URLs (`/monitoring/dashboards/builder/<id>?project=<project>`).
+
 ## Task: Test prompt quality
 
 Make sure `.env` has API keys filled in, then from `cloud-run/`:
