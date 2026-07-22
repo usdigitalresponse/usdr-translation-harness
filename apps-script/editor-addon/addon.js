@@ -13,6 +13,12 @@ var HIGHLIGHT_COLOR = "#FFD700";
 
 // ── Drive property access ────────────────────────────────────────────────
 
+/**
+ * Look up the translation JSON file ID from the active document's Drive
+ * file properties. The Translate function sets this when creating the doc.
+ * Uses the Drive API v3 Advanced Service (not PropertiesService).
+ * @returns {string|null} Drive file ID of the translation JSON, or null
+ */
 function getTranslationFileId_() {
   var docId = DocumentApp.getActiveDocument().getId();
   try {
@@ -26,6 +32,10 @@ function getTranslationFileId_() {
 
 // ── Translation JSON from Drive ──────────────────────────────────────────
 
+/**
+ * Fetch and parse the translation JSON from Drive.
+ * @returns {Object|null} Parsed translation JSON with blocks, metadata, etc.
+ */
 function getTranslationJson_() {
   var fileId = getTranslationFileId_();
   if (!fileId) return null;
@@ -43,6 +53,18 @@ function getTranslationJson_() {
 
 // ── Sidebar data ─────────────────────────────────────────────────────────
 
+/**
+ * Build the data payload for the sidebar UI. Flattens per-block metadata
+ * items (alt_translations, terms_flagged, etc.) into flat arrays with a
+ * sequential index per section. Each item gets a block_id and block_index
+ * appended so the sidebar can map back to the document table.
+ *
+ * The flattening order must match buildSidebarKeyToBlockMap() in the
+ * Capture Feedback function — both produce "section::flatIndex" keys.
+ *
+ * @returns {{ data: Object|null, checks: Object }} Sidebar payload and
+ *   persisted review state ({ status, flagged })
+ */
 function getSidebarData() {
   var json = getTranslationJson_();
   if (!json) return { data: null, checks: {} };
@@ -96,6 +118,11 @@ function getSidebarData() {
   };
 }
 
+/**
+ * Persist the sidebar's review state to document properties.
+ * Called by the sidebar on a debounced timer after each status change.
+ * @param {Object} checks - { status: { key: status }, flagged: { key: true } }
+ */
 function saveSidebarChecks(checks) {
   PropertiesService.getDocumentProperties()
     .setProperty(SIDEBAR_CHECKS_KEY, JSON.stringify(checks || {}));
@@ -104,6 +131,12 @@ function saveSidebarChecks(checks) {
 
 // ── Highlighting ─────────────────────────────────────────────────────────
 
+/**
+ * Find the first table element in the document body.
+ * Translation output docs have a single two-column table (English | Spanish).
+ * @param {GoogleAppsScript.Document.Body} [body] - Document body, defaults to active doc
+ * @returns {GoogleAppsScript.Document.Table|null}
+ */
 function getFirstTable_(body) {
   body = body || DocumentApp.getActiveDocument().getBody();
   for (var i = 0; i < body.getNumChildren(); i++) {
@@ -122,6 +155,14 @@ function escapeReplacement_(str) {
   return str.replace(/\$/g, '$$$$');
 }
 
+/**
+ * Set background color on all occurrences of needle within a table cell.
+ * Pass null for color to clear highlighting.
+ * @param {GoogleAppsScript.Document.TableCell} cell
+ * @param {string} needle - Text to find and highlight
+ * @param {string|null} color - Hex color or null to clear
+ * @returns {boolean} Whether any occurrence was found
+ */
 function paintInCell_(cell, needle, color) {
   var found = false;
   for (var p = 0; p < cell.getNumChildren(); p++) {
@@ -154,6 +195,15 @@ function findInCell_(cell, needle) {
   return null;
 }
 
+/**
+ * Highlight an original phrase and its translation in the document table.
+ * Called by the sidebar when the reviewer clicks a review card or reference row.
+ * Searches all content rows (skipping the header) and sets the cursor to
+ * the first match in the English column.
+ * @param {string} originalText - English phrase to highlight
+ * @param {string} translationText - Spanish phrase to highlight
+ * @returns {{ original: string, translation: string }} "found" or "not_found" per column
+ */
 function paintHighlight(originalText, translationText) {
   var table = getFirstTable_();
   var result = { original: "not_found", translation: "not_found" };
@@ -190,6 +240,11 @@ function paintHighlight(originalText, translationText) {
   return result;
 }
 
+/**
+ * Remove highlighting for a specific phrase pair across all table rows.
+ * @param {string} originalText - English phrase to un-highlight
+ * @param {string} translationText - Spanish phrase to un-highlight
+ */
 function clearHighlight(originalText, translationText) {
   var table = getFirstTable_();
   if (!table || table.getNumRows() < 2) return;
@@ -203,6 +258,10 @@ function clearHighlight(originalText, translationText) {
   }
 }
 
+/**
+ * Remove all gold highlighting from every cell in the translation table.
+ * Called when the sidebar opens and when it closes.
+ */
 function clearAllHighlights() {
   var table = getFirstTable_();
   if (!table) return;
@@ -223,6 +282,12 @@ function clearAllHighlights() {
 
 // ── Orphan / highlight availability checks ───────────────────────────────
 
+/**
+ * Extract all text from the translation table, separated by column.
+ * Used by the sidebar to check which items can be highlighted, and by
+ * checkItemsExist() to detect orphans.
+ * @returns {{ english: string, spanish: string }}
+ */
 function getDocTextForHighlightCheck() {
   var table = getFirstTable_();
   if (!table || table.getNumRows() < 2) return { english: "", spanish: "" };
@@ -236,6 +301,11 @@ function getDocTextForHighlightCheck() {
   return { english: english.join("\n"), spanish: spanish.join("\n") };
 }
 
+/**
+ * Generate a lightweight hash of the document text to detect edits.
+ * Returns "hash:length" so the sidebar can tell if the doc changed.
+ * @returns {string}
+ */
 function getDocEditToken() {
   var text = DocumentApp.getActiveDocument().getBody().getText();
   var hash = 0;
@@ -246,6 +316,13 @@ function getDocEditToken() {
   return hash + ":" + text.length;
 }
 
+/**
+ * Check which reviewable items are "orphans" — their original or translated
+ * text no longer appears in the document, meaning the reviewer edited it.
+ * Orphan status is sent to Capture Feedback and used to distinguish signals
+ * like "accepted_then_changed" vs. "accepted".
+ * @returns {Object} Map of "section::index" -> true for orphaned items
+ */
 function checkItemsExist() {
   var res = getSidebarData();
   if (!res || !res.data) return {};
@@ -302,8 +379,18 @@ function getRubricUrl() {
   return PropertiesService.getDocumentProperties().getProperty(RUBRIC_URL_KEY) || "";
 }
 
-// ── Sidebar actions (stubs) ─────────────────────────────────────────────
+// ── Sidebar actions ─────────────────────────────────────────────────────
 
+/**
+ * Replace text in a single table cell using Apps Script's replaceText().
+ * Only calls replaceText if the cell actually contains currentText
+ * (avoids silent no-ops from regex mismatches).
+ * @param {GoogleAppsScript.Document.TableCell} cell
+ * @param {string} currentText - Literal text to look for
+ * @param {string} pattern - Regex-escaped version of currentText
+ * @param {string} replacement - Replacement string (with $ escaped)
+ * @returns {number} Number of occurrences found
+ */
 function replaceInCell_(cell, currentText, pattern, replacement) {
   var cellText = cell.getText();
   var count = cellText.split(currentText).length - 1;
@@ -313,6 +400,19 @@ function replaceInCell_(cell, currentText, pattern, replacement) {
   return count;
 }
 
+/**
+ * Replace a translation phrase in the document with an alternative.
+ * Called by the sidebar's "Use alternative" button.
+ *
+ * Strategy: tries the exact table row first (blockIndex + 1, since row 0
+ * is the header), then falls back to searching all rows. Falls back to a
+ * full-body search if no table is found.
+ *
+ * @param {string} currentText - The current translation text to replace
+ * @param {string} altText - The alternative translation to insert
+ * @param {number} blockIndex - Zero-based block index from getSidebarData()
+ * @returns {{ replaced: boolean, count: number }}
+ */
 function replaceTranslationInDoc(currentText, altText, blockIndex) {
   var result = { replaced: false, count: 0 };
 
@@ -381,6 +481,10 @@ function evaluateTranslationFromSidebar() {
 
 // ── Menu and sidebar ─────────────────────────────────────────────────────
 
+/**
+ * Simple trigger — runs in AuthMode.NONE for published add-ons,
+ * so it can only build menus (no Drive/Docs API calls).
+ */
 function onOpen(e) {
   DocumentApp.getUi()
     .createAddonMenu()
@@ -389,6 +493,11 @@ function onOpen(e) {
     .addToUi();
 }
 
+/**
+ * Open the AI Suggestions sidebar. Records the first-open timestamp
+ * for time-to-approve tracking (only set once per document — persists
+ * across reopens to measure total engagement time).
+ */
 function showReviewPanel() {
   var translationFileId = getTranslationFileId_();
   if (!translationFileId) {
@@ -431,6 +540,15 @@ function debugGetSubmitPayload() {
   }, null, 2);
 }
 
+/**
+ * Submit the reviewer's edits to the Capture Feedback Cloud Run function.
+ * Gathers sidebar state (status, flagged, orphans) and the sidebar-open
+ * timestamp, sends them along with the document ID, and displays the
+ * result (number of terminology decisions captured).
+ *
+ * Authenticates with Cloud Run using an identity token from
+ * ScriptApp.getIdentityToken().
+ */
 function submitReview() {
   var doc = DocumentApp.getActiveDocument();
   var ui = DocumentApp.getUi();

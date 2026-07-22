@@ -16,6 +16,15 @@ const SECTION_KEYS = [
   "glossary_cross_check",
 ];
 
+/**
+ * Replay the sidebar's flattening logic to map "section::flatIndex" keys
+ * back to block IDs. This must stay in sync with getSidebarData() in the
+ * editor add-on — both iterate blocks in order, accumulating a running
+ * index per section key.
+ *
+ * @param {Object} translationJson - Full translation JSON with blocks array
+ * @returns {Object} Map of "section::index" -> blockId
+ */
 function buildSidebarKeyToBlockMap(translationJson) {
   const blocks = translationJson.blocks || [];
   const map = {};
