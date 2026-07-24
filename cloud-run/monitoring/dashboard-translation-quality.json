@@ -1,0 +1,331 @@
+{
+  "displayName": "Translation Quality - Reviewer Feedback",
+  "mosaicLayout": {
+    "columns": 12,
+    "tiles": [
+      {
+        "xPos": 0,
+        "yPos": 0,
+        "width": 12,
+        "height": 2,
+        "widget": {
+          "title": "",
+          "text": {
+            "content": "# Translation Quality Metrics\nReviewer feedback signals from the capture-feedback pipeline stage.",
+            "format": "MARKDOWN"
+          }
+        }
+      },
+
+      {
+        "xPos": 0,
+        "yPos": 2,
+        "width": 3,
+        "height": 4,
+        "widget": {
+          "title": "Acceptance Rate (mean)",
+          "scorecard": {
+            "timeSeriesQuery": {
+              "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/capture_feedback_acceptance_rate' | align delta(30d) | every 30d | group_by [], [value: mean(value.capture_feedback_acceptance_rate)]"
+            }
+          }
+        }
+      },
+      {
+        "xPos": 3,
+        "yPos": 2,
+        "width": 3,
+        "height": 4,
+        "widget": {
+          "title": "Edit Distance (mean)",
+          "scorecard": {
+            "timeSeriesQuery": {
+              "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/capture_feedback_word_edit_distance' | align delta(30d) | every 30d | group_by [], [value: mean(value.capture_feedback_word_edit_distance)]"
+            }
+          }
+        }
+      },
+      {
+        "xPos": 6,
+        "yPos": 2,
+        "width": 3,
+        "height": 4,
+        "widget": {
+          "title": "Terminology Decisions (total)",
+          "scorecard": {
+            "timeSeriesQuery": {
+              "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/capture_feedback_terminology_decisions' | align delta(30d) | every 30d | group_by [], [value: sum(value.capture_feedback_terminology_decisions)]"
+            }
+          }
+        }
+      },
+      {
+        "xPos": 9,
+        "yPos": 2,
+        "width": 3,
+        "height": 4,
+        "widget": {
+          "title": "Time to Approve (mean, seconds)",
+          "scorecard": {
+            "timeSeriesQuery": {
+              "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/capture_feedback_time_to_approve' | align delta(30d) | every 30d | group_by [], [value: mean(value.capture_feedback_time_to_approve)]"
+            }
+          }
+        }
+      },
+
+      {
+        "xPos": 0,
+        "yPos": 6,
+        "width": 12,
+        "height": 12,
+        "widget": {
+          "title": "By Model",
+          "collapsibleGroup": {
+            "collapsed": true
+          }
+        }
+      },
+      {
+        "xPos": 0,
+        "yPos": 6,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "title": "Acceptance Rate by Model",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/capture_feedback_acceptance_rate' | align delta(30d) | every 30d | group_by [metric.model], [value: mean(value.capture_feedback_acceptance_rate)]"
+                },
+                "plotType": "STACKED_BAR"
+              }
+            ],
+            "yAxis": { "label": "acceptance rate" }
+          }
+        }
+      },
+      {
+        "xPos": 6,
+        "yPos": 6,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "title": "Edit Distance by Model",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/capture_feedback_word_edit_distance' | align delta(30d) | every 30d | group_by [metric.model], [value: mean(value.capture_feedback_word_edit_distance)]"
+                },
+                "plotType": "STACKED_BAR"
+              }
+            ],
+            "yAxis": { "label": "normalized edit distance" }
+          }
+        }
+      },
+      {
+        "xPos": 0,
+        "yPos": 10,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "title": "Acceptance Rate by Provider",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/capture_feedback_acceptance_rate' | align delta(30d) | every 30d | group_by [metric.provider], [value: mean(value.capture_feedback_acceptance_rate)]"
+                },
+                "plotType": "STACKED_BAR"
+              }
+            ],
+            "yAxis": { "label": "acceptance rate" }
+          }
+        }
+      },
+      {
+        "xPos": 6,
+        "yPos": 10,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "title": "Edit Distance by Provider",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/capture_feedback_word_edit_distance' | align delta(30d) | every 30d | group_by [metric.provider], [value: mean(value.capture_feedback_word_edit_distance)]"
+                },
+                "plotType": "STACKED_BAR"
+              }
+            ],
+            "yAxis": { "label": "normalized edit distance" }
+          }
+        }
+      },
+      {
+        "xPos": 0,
+        "yPos": 14,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "title": "Time to Approve by Model (mean)",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/capture_feedback_time_to_approve' | align delta(30d) | every 30d | group_by [metric.model], [value: mean(value.capture_feedback_time_to_approve)]"
+                },
+                "plotType": "STACKED_BAR"
+              }
+            ],
+            "yAxis": { "label": "seconds" }
+          }
+        }
+      },
+      {
+        "xPos": 6,
+        "yPos": 14,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "title": "Terminology Decisions by Model",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/capture_feedback_terminology_decisions' | align delta(30d) | every 30d | group_by [metric.model], [value: sum(value.capture_feedback_terminology_decisions)]"
+                },
+                "plotType": "STACKED_BAR"
+              }
+            ],
+            "yAxis": { "label": "decisions" }
+          }
+        }
+      },
+
+      {
+        "xPos": 0,
+        "yPos": 18,
+        "width": 12,
+        "height": 12,
+        "widget": {
+          "title": "Daily Trends",
+          "collapsibleGroup": {
+            "collapsed": true
+          }
+        }
+      },
+      {
+        "xPos": 0,
+        "yPos": 18,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "title": "Acceptance Rate per Day",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/capture_feedback_acceptance_rate' | align delta(1d) | every 1d | group_by [metric.model], [value: mean(value.capture_feedback_acceptance_rate)]"
+                },
+                "plotType": "STACKED_BAR"
+              }
+            ],
+            "yAxis": { "label": "acceptance rate" }
+          }
+        }
+      },
+      {
+        "xPos": 6,
+        "yPos": 18,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "title": "Edit Distance per Day",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/capture_feedback_word_edit_distance' | align delta(1d) | every 1d | group_by [metric.model], [value: mean(value.capture_feedback_word_edit_distance)]"
+                },
+                "plotType": "STACKED_BAR"
+              }
+            ],
+            "yAxis": { "label": "normalized edit distance" }
+          }
+        }
+      },
+      {
+        "xPos": 0,
+        "yPos": 22,
+        "width": 4,
+        "height": 4,
+        "widget": {
+          "title": "Terminology Decisions per Day",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/capture_feedback_terminology_decisions' | align delta(1d) | every 1d | group_by [metric.model], [value: sum(value.capture_feedback_terminology_decisions)]"
+                },
+                "plotType": "STACKED_BAR"
+              }
+            ],
+            "yAxis": { "label": "decisions" }
+          }
+        }
+      },
+      {
+        "xPos": 4,
+        "yPos": 22,
+        "width": 4,
+        "height": 4,
+        "widget": {
+          "title": "Time to Approve per Day (mean)",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesQueryLanguage": "fetch cloud_run_revision | metric 'logging.googleapis.com/user/capture_feedback_time_to_approve' | align delta(1d) | every 1d | group_by [metric.model], [value: mean(value.capture_feedback_time_to_approve)]"
+                },
+                "plotType": "STACKED_BAR"
+              }
+            ],
+            "yAxis": { "label": "seconds" }
+          }
+        }
+      },
+      {
+        "xPos": 8,
+        "yPos": 22,
+        "width": 4,
+        "height": 4,
+        "widget": {
+          "title": "Reviews Completed per Day",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesFilter": {
+                    "filter": "resource.type=\"cloud_run_revision\" AND metric.type=\"run.googleapis.com/request_count\" AND resource.label.\"service_name\"=\"capture-feedback\" AND metric.label.\"response_code_class\"=\"2xx\"",
+                    "aggregation": {
+                      "alignmentPeriod": "86400s",
+                      "perSeriesAligner": "ALIGN_SUM",
+                      "crossSeriesReducer": "REDUCE_SUM"
+                    }
+                  }
+                },
+                "plotType": "STACKED_BAR"
+              }
+            ],
+            "yAxis": { "label": "reviews" }
+          }
+        }
+      }
+    ]
+  }
+}

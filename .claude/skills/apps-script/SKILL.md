@@ -9,6 +9,8 @@ Skill for working with the two Apps Script projects in this repo: the **orchestr
 
 **This skill must never publish add-ons or change Workspace admin settings — only the user does that.**
 
+**Documentation rule:** When changing function logic in an Apps Script project, update the corresponding README (e.g. `apps-script/editor-addon/README.md`) and keep JSDoc on changed methods accurate. READMEs document the high-level flow; JSDoc documents individual method contracts (parameters, return values, side effects).
+
 ## What you can ask
 
 **Getting started:**

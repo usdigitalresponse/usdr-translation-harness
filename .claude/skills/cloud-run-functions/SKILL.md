@@ -7,6 +7,8 @@ description: Set up, run, test, and deploy Cloud Run functions for local develop
 
 Skill for working with the Cloud Run functions in this repo. Covers local setup, running functions, and testing. **This skill must never run `gcloud` commands or deploy anything to Cloud Run — only the user does that.**
 
+**Documentation rule:** When changing function logic in a Cloud Run function, update the corresponding README (e.g. `cloud-run/capture-feedback/README.md`) and keep JSDoc on changed methods accurate. READMEs document the high-level flow; JSDoc documents individual method contracts (parameters, return values, side effects).
+
 ## What you can ask
 
 Here are things you can say to use this skill. You don't need exact phrasing — these are just examples.
@@ -338,6 +340,19 @@ Example prompts:
 - "Use claude-opus-4-8 for translate"
 - "Run both Claude and Gemini for translate"
 - "What model is active for eval?"
+
+## Monitoring dashboards
+
+Dashboard configs and log-based metric definitions live in `cloud-run/monitoring/`. See `cloud-run/monitoring/README.md` for deploy commands and gotchas.
+
+**Key gotchas learned the hard way:**
+
+- **Distribution metrics**: The filter-based aggregation API cannot extract scalar values (mean, percentile) from distribution-valued log-based metrics. Use MQL (`timeSeriesQueryLanguage`) instead.
+- **Dashboard names**: Avoid em dashes or non-ASCII in `displayName` — causes intermittent Console UI loading failures.
+- **Updating dashboards**: Use `gcloud monitoring dashboards update` to preserve the dashboard ID and URL. Delete/recreate changes the ID and breaks bookmarks.
+- **Legend templates**: MQL queries ignore `legendTemplate` with `${metric.labels.X}` syntax. MQL auto-generates legends from `group_by` fields.
+- **Log-based metrics**: Only capture data from creation time onward — no backfill. Creating a metric and expecting historical data will show empty charts.
+- **Rapid churn**: The Console UI caches dashboard IDs aggressively. After changes, use direct URLs (`/monitoring/dashboards/builder/<id>?project=<project>`).
 
 ## Task: Test prompt quality
 

@@ -1,0 +1,25 @@
+{
+  "name": "capture_feedback_terminology_decisions",
+  "description": "Count of terminology decisions per feedback submission",
+  "filter": "resource.type=\"cloud_run_revision\" jsonPayload.pipeline_stage=\"capture_feedback\" jsonPayload.terminologyDecisions:*",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "DISTRIBUTION",
+    "labels": [
+      { "key": "provider", "valueType": "STRING" },
+      { "key": "model", "valueType": "STRING" }
+    ]
+  },
+  "valueExtractor": "EXTRACT(jsonPayload.terminologyDecisions)",
+  "bucketOptions": {
+    "linearBuckets": {
+      "numFiniteBuckets": 10,
+      "width": 1.0,
+      "offset": 0.0
+    }
+  },
+  "labelExtractors": {
+    "provider": "EXTRACT(jsonPayload.provider)",
+    "model": "EXTRACT(jsonPayload.model)"
+  }
+}

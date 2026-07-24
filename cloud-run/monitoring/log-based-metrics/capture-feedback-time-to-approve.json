@@ -1,0 +1,25 @@
+{
+  "name": "capture_feedback_time_to_approve",
+  "description": "Time from sidebar open to review submission in seconds",
+  "filter": "resource.type=\"cloud_run_revision\" jsonPayload.pipeline_stage=\"capture_feedback\" jsonPayload.timeToApproveSeconds:*",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "DISTRIBUTION",
+    "labels": [
+      { "key": "provider", "valueType": "STRING" },
+      { "key": "model", "valueType": "STRING" }
+    ]
+  },
+  "valueExtractor": "EXTRACT(jsonPayload.timeToApproveSeconds)",
+  "bucketOptions": {
+    "exponentialBuckets": {
+      "numFiniteBuckets": 12,
+      "growthFactor": 2.0,
+      "scale": 30.0
+    }
+  },
+  "labelExtractors": {
+    "provider": "EXTRACT(jsonPayload.provider)",
+    "model": "EXTRACT(jsonPayload.model)"
+  }
+}
