@@ -1,4 +1,5 @@
 import json
+import os
 from http import HTTPStatus
 from unittest.mock import MagicMock, patch
 
@@ -7,14 +8,17 @@ import pytest
 
 from eval.quality.main import (
     build_eval_prompt, build_result_row, eval_quality, evaluate_with_model,
-    format_translation_for_review, get_active_models, parse_eval_response,
-    run_quality_eval, validate_eval,
+    format_translation_for_review, get_active_models, normalize_inline_blocks,
+    parse_eval_response, run_quality_eval, validate_eval,
     CRITERIA, EVAL_ROLE,
 )
 from eval.quality.quality_llm import (
     call_llm, load_eval_schema, PROVIDER_ANTHROPIC, PROVIDER_GOOGLE,
 )
-from eval.quality.quality_loaders import parse_drive_file_id
+from eval.quality.quality_loaders import (
+    append_result_row, parse_drive_file_id,
+    EVAL_RESULTS_HEADERS, EVAL_RESULTS_SHEET_NAME,
+)
 
 
 def make_request(body=None):
@@ -71,7 +75,7 @@ class TestEvalQualityEndpoint:
         assert result["status"] == "ok"
         assert result["translationFileId"] == "abc123"
         assert len(result["evaluations"]) == 1
-        mock_run.assert_called_once_with("abc123")
+        mock_run.assert_called_once_with("abc123", None)
 
     @patch("eval.quality.main.run_quality_eval")
     def test_parses_file_id_out_of_drive_url(self, mock_run):
@@ -81,7 +85,7 @@ class TestEvalQualityEndpoint:
 
         assert status == HTTPStatus.OK
         assert json.loads(body)["translationFileId"] == "FILE_ID_123"
-        mock_run.assert_called_once_with("FILE_ID_123")
+        mock_run.assert_called_once_with("FILE_ID_123", None)
 
     @patch("eval.quality.main.run_quality_eval")
     def test_returns_partial_when_some_models_fail(self, mock_run):
@@ -110,6 +114,103 @@ class TestEvalQualityEndpoint:
         assert json.loads(body)["error"] == "no active models"
 
 
+class TestNormalizeInlineBlocks:
+    def test_assigns_ids_and_trims(self):
+        result = normalize_inline_blocks([
+            {"original_text": "Hello", "translated_text": "Hola"},
+            {"id": "x9", "original_text": " Bye ", "translated_text": " Adios "},
+        ])
+        assert [b["id"] for b in result["blocks"]] == ["b01", "x9"]
+        assert result["blocks"][1]["translated_text"] == "Adios"
+
+    def test_drops_fully_empty_blocks(self):
+        result = normalize_inline_blocks([
+            {"original_text": "Hello", "translated_text": "Hola"},
+            {"original_text": "", "translated_text": "   "},
+        ])
+        assert len(result["blocks"]) == 1
+
+    def test_keeps_block_with_only_one_side(self):
+        result = normalize_inline_blocks([{"original_text": "Hello", "translated_text": ""}])
+        assert len(result["blocks"]) == 1
+
+    def test_raises_when_all_blocks_empty(self):
+        with pytest.raises(ValueError, match="No non-empty blocks"):
+            normalize_inline_blocks([{"original_text": "", "translated_text": ""}])
+
+    def test_carries_metadata_through(self):
+        meta = {"source_language": "English", "target_language": "Spanish"}
+        result = normalize_inline_blocks([{"original_text": "a", "translated_text": "b"}], meta)
+        assert result["metadata"] == meta
+
+    def test_defaults_metadata_to_empty_dict(self):
+        result = normalize_inline_blocks([{"original_text": "a", "translated_text": "b"}])
+        assert result["metadata"] == {}
+
+
+class TestInlineBlocksEndpoint:
+    @patch("eval.quality.main.run_quality_eval")
+    def test_accepts_blocks_without_translation_url(self, mock_run):
+        mock_run.return_value = [{"provider": "google", "model": "m", "weightedOverallScore": 4}]
+        body, status = eval_quality(make_request({
+            "documentId": "doc-1",
+            "blocks": [{"original_text": "Hello", "translated_text": "Hola"}],
+        }))
+
+        assert status == HTTPStatus.OK
+        assert json.loads(body)["translationFileId"] == "doc-1"
+
+        # blocks path must bypass the Drive fetch entirely
+        file_id, translation_json = mock_run.call_args[0]
+        assert file_id == "doc-1"
+        assert translation_json["blocks"][0]["translated_text"] == "Hola"
+
+    @patch("eval.quality.main.run_quality_eval")
+    def test_labels_inline_when_no_document_id(self, mock_run):
+        mock_run.return_value = [{"provider": "google", "model": "m", "weightedOverallScore": 4}]
+        body, status = eval_quality(make_request({
+            "blocks": [{"original_text": "Hello", "translated_text": "Hola"}],
+        }))
+        assert json.loads(body)["translationFileId"] == "inline"
+
+    def test_returns_400_when_blocks_all_empty(self):
+        body, status = eval_quality(make_request({
+            "blocks": [{"original_text": "", "translated_text": ""}],
+        }))
+        assert status == HTTPStatus.BAD_REQUEST
+        assert "Invalid blocks" in json.loads(body)["error"]
+
+    def test_returns_400_when_blocks_malformed(self):
+        body, status = eval_quality(make_request({"blocks": ["not-an-object"]}))
+        assert status == HTTPStatus.BAD_REQUEST
+
+    @patch("eval.quality.main.run_quality_eval")
+    def test_blocks_take_precedence_over_url(self, mock_run):
+        mock_run.return_value = [{"provider": "google", "model": "m", "weightedOverallScore": 4}]
+        eval_quality(make_request({
+            "translationJsonUrl": "abc123",
+            "documentId": "doc-1",
+            "blocks": [{"original_text": "Hello", "translated_text": "Hola"}],
+        }))
+        assert mock_run.call_args[0][1] is not None
+
+
+class TestRunQualityEvalInlineJson:
+    @patch("eval.quality.main.evaluate_with_model")
+    @patch("eval.quality.main.load_doc", return_value="RUBRIC")
+    @patch("eval.quality.main.load_translation_json")
+    @patch("eval.quality.main.load_config")
+    def test_skips_drive_fetch_when_json_supplied(self, mock_config, mock_load, mock_doc, mock_eval):
+        mock_config.return_value = {"models": [
+            {"role": "eval", "provider": "google", "model": "m", "active": True},
+        ]}
+        mock_eval.return_value = {"provider": "google", "model": "m"}
+
+        run_quality_eval("doc-1", SAMPLE_TRANSLATION)
+
+        mock_load.assert_not_called()
+
+
 class TestParseDriveFileId:
     @pytest.mark.parametrize("value,expected", [
         ("abc123", "abc123"),
@@ -124,6 +225,77 @@ class TestParseDriveFileId:
     def test_raises_on_empty(self):
         with pytest.raises(ValueError):
             parse_drive_file_id("")
+
+
+class TestAppendResultRow:
+    """The results sheet provisions itself, so an empty spreadsheet works."""
+
+    def _service(self, existing_tabs, existing_header):
+        service = MagicMock()
+        service.spreadsheets.return_value.get.return_value.execute.return_value = {
+            "sheets": [{"properties": {"title": t}} for t in existing_tabs]
+        }
+        values = service.spreadsheets.return_value.values.return_value
+        values.get.return_value.execute.return_value = (
+            {"values": [existing_header]} if existing_header else {}
+        )
+        return service
+
+    def _run(self, service, row=None):
+        with patch("eval.quality.quality_loaders.google.auth.default",
+                   return_value=(MagicMock(), "proj")):
+            with patch("eval.quality.quality_loaders.build", return_value=service):
+                with patch.dict("os.environ", {"EVAL_QUALITY_RESULTS_SHEET_ID": "sheet-1"}):
+                    append_result_row(row or ["ts", "file-1", "google", "m", 4.2, "Medium",
+                                              4, 4, 4, 4, 4, "res-1"])
+
+    def test_creates_tab_when_missing(self):
+        service = self._service(["Sheet1"], None)
+        self._run(service)
+
+        batch = service.spreadsheets.return_value.batchUpdate
+        batch.assert_called_once()
+        request = batch.call_args[1]["body"]["requests"][0]
+        assert request["addSheet"]["properties"]["title"] == EVAL_RESULTS_SHEET_NAME
+
+    def test_does_not_recreate_existing_tab(self):
+        service = self._service([EVAL_RESULTS_SHEET_NAME], EVAL_RESULTS_HEADERS)
+        self._run(service)
+        service.spreadsheets.return_value.batchUpdate.assert_not_called()
+
+    def test_writes_header_when_sheet_is_empty(self):
+        service = self._service(["Sheet1"], None)
+        self._run(service)
+
+        update = service.spreadsheets.return_value.values.return_value.update
+        update.assert_called_once()
+        assert update.call_args[1]["body"]["values"][0] == EVAL_RESULTS_HEADERS
+
+    def test_does_not_rewrite_existing_header(self):
+        service = self._service([EVAL_RESULTS_SHEET_NAME], EVAL_RESULTS_HEADERS)
+        self._run(service)
+        service.spreadsheets.return_value.values.return_value.update.assert_not_called()
+
+    def test_appends_the_row(self):
+        service = self._service([EVAL_RESULTS_SHEET_NAME], EVAL_RESULTS_HEADERS)
+        row = ["ts", "file-1", "google", "m", 4.2, "Medium", 4, 3, 5, 4, 4, "res-1"]
+        self._run(service, row)
+
+        append = service.spreadsheets.return_value.values.return_value.append
+        append.assert_called_once()
+        assert append.call_args[1]["body"]["values"] == [row]
+        assert append.call_args[1]["range"].startswith(EVAL_RESULTS_SHEET_NAME)
+
+    def test_header_count_matches_row_width(self):
+        row = build_result_row("file-1", "google", "m", make_scores(), "res-1")
+        assert len(EVAL_RESULTS_HEADERS) == len(row)
+
+    def test_skips_entirely_when_sheet_id_unset(self):
+        with patch("eval.quality.quality_loaders.build") as mock_build:
+            with patch.dict("os.environ", {}, clear=False):
+                os.environ.pop("EVAL_QUALITY_RESULTS_SHEET_ID", None)
+                append_result_row(["ts"])
+        mock_build.assert_not_called()
 
 
 class TestGetActiveModels:

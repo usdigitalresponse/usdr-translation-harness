@@ -13,6 +13,11 @@ var HIGHLIGHT_COLOR = "#FFD700";
 
 // ── Drive property access ────────────────────────────────────────────────
 
+// Sandbox override: set this script property to a translation JSON file ID (or
+// any placeholder) to work on a doc that has no usdr_translation_review Drive
+// property. Unset in production, where the property comes from Translate.
+var SANDBOX_FILE_ID_KEY = "SANDBOX_TRANSLATION_FILE_ID";
+
 /**
  * Look up the translation JSON file ID from the active document's Drive
  * file properties. The Translate function sets this when creating the doc.
@@ -20,6 +25,9 @@ var HIGHLIGHT_COLOR = "#FFD700";
  * @returns {string|null} Drive file ID of the translation JSON, or null
  */
 function getTranslationFileId_() {
+  var override = PropertiesService.getScriptProperties().getProperty(SANDBOX_FILE_ID_KEY);
+  if (override) return override;
+
   var docId = DocumentApp.getActiveDocument().getId();
   try {
     var file = Drive.Files.get(docId, { fields: "properties", supportsAllDrives: true });
@@ -471,12 +479,176 @@ function generateReviewDocx() {
   return null;
 }
 
+// ── Evaluation ───────────────────────────────────────────────────────────
+//
+// The reviewer's current doc content is what gets scored, not the stored
+// translation JSON — so re-running after edits reflects those edits. Results
+// are cached in document properties so reopening the sidebar doesn't re-call
+// the model.
+
+var EVAL_RESULT_KEY = "EVAL_RESULT";
+var EVAL_FUNCTION_URL_KEY = "EVAL_QUALITY_FUNCTION_URL";
+
+// Document properties cap values at 9KB; a long evaluation is dropped rather
+// than silently truncated into unparseable JSON.
+var EVAL_PROPERTY_MAX_BYTES = 9000;
+
+/**
+ * Read the English/Spanish table into blocks for the eval function.
+ * Mirrors the layout the highlighting helpers assume: column 0 English,
+ * column 1 Spanish, row 0 a header.
+ */
+function extractDocBlocks_() {
+  var table = getFirstTable_();
+  if (!table || table.getNumRows() < 2) return [];
+
+  var blocks = [];
+  for (var row = 1; row < table.getNumRows(); row++) {
+    var original = table.getRow(row).getCell(0).getText().trim();
+    var translated = table.getRow(row).getCell(1).getText().trim();
+    if (!original && !translated) continue;
+    blocks.push({
+      id: "b" + (row < 10 ? "0" : "") + row,
+      original_text: original,
+      translated_text: translated,
+    });
+  }
+  return blocks;
+}
+
+function buildEvalPayload_(blocks) {
+  var json = getTranslationJson_();
+  var metadata = (json && json.metadata) || {};
+  return {
+    documentId: DocumentApp.getActiveDocument().getId(),
+    blocks: blocks,
+    metadata: {
+      source_language: metadata.source_language || "English",
+      target_language: metadata.target_language || "Spanish",
+      overall_notes: metadata.overall_notes || "",
+    },
+  };
+}
+
+/**
+ * Flatten the eval function's response into the shape Evaluationsidebar.html
+ * renders. Keys here must match DIMENSIONS[].key in that file.
+ */
+function toSidebarEvalData_(evaluation, blocks) {
+  var scores = evaluation.scores || {};
+  function dim(key) {
+    var node = scores[key];
+    return node && node.score !== undefined && node.score !== null ? node.score : "";
+  }
+
+  var sourceText = [];
+  var translatedText = [];
+  for (var i = 0; i < blocks.length; i++) {
+    sourceText.push(blocks[i].original_text);
+    translatedText.push(blocks[i].translated_text);
+  }
+
+  return {
+    timestamp: new Date().toISOString(),
+    scores: {
+      accuracy: dim("accuracy_and_relevance"),
+      clarity: dim("clarity_and_simplicity"),
+      cultural: dim("cultural_sensitivity"),
+      voice: dim("active_voice_and_tone"),
+      consistency: dim("consistency_and_style"),
+      weightedOverall: scores.weighted_overall_score !== undefined
+        ? scores.weighted_overall_score : "",
+      priorityRating: scores.overall_priority_rating || "",
+    },
+    raw_eval_text: JSON.stringify(scores),
+    source_text: sourceText.join("\n\n"),
+    translated_text: translatedText.join("\n\n"),
+    provider: evaluation.provider || "",
+    model: evaluation.model || "",
+  };
+}
+
 function getEvalData() {
-  return null;
+  var raw = PropertiesService.getDocumentProperties().getProperty(EVAL_RESULT_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    Logger.log("Stored evaluation was unparseable: " + e.message);
+    return null;
+  }
 }
 
 function evaluateTranslationFromSidebar() {
-  return { problem: "not_implemented", message: "Evaluation is not yet available." };
+  var evalUrl = PropertiesService.getScriptProperties().getProperty(EVAL_FUNCTION_URL_KEY);
+  if (!evalUrl) {
+    return {
+      problem: "config",
+      message: "Evaluation function URL is not configured. Set " +
+        EVAL_FUNCTION_URL_KEY + " in Project Settings → Script Properties.",
+    };
+  }
+
+  var blocks = extractDocBlocks_();
+  if (!blocks.length) {
+    return {
+      problem: "no_translation",
+      message: "Could not find an English/Spanish table in this document to evaluate.",
+    };
+  }
+
+  var options = {
+    method: "post",
+    contentType: "application/json",
+    headers: { Authorization: "Bearer " + ScriptApp.getIdentityToken() },
+    payload: JSON.stringify(buildEvalPayload_(blocks)),
+    muteHttpExceptions: true,
+  };
+
+  var response;
+  try {
+    response = UrlFetchApp.fetch(evalUrl, options);
+  } catch (e) {
+    return { problem: "eval_failed", message: "Could not reach the evaluation service: " + e.message };
+  }
+
+  var body = response.getContentText();
+  var result;
+  try {
+    result = JSON.parse(body);
+  } catch (e) {
+    return { problem: "eval_failed", message: "Unexpected response: " + body.substring(0, 300) };
+  }
+
+  if (response.getResponseCode() !== HTTP_OK) {
+    return { problem: "eval_failed", message: result.error || body.substring(0, 300) };
+  }
+
+  var succeeded = (result.evaluations || []).filter(function (e) { return !e.error; });
+  if (!succeeded.length) {
+    var firstError = (result.evaluations || [])[0];
+    return {
+      problem: "eval_failed",
+      message: (firstError && firstError.error) || "The evaluation model returned no result.",
+    };
+  }
+
+  var data = toSidebarEvalData_(succeeded[0], blocks);
+  var serialized = JSON.stringify(data);
+  if (serialized.length > EVAL_PROPERTY_MAX_BYTES) {
+    // Keep the scores, drop the bulky debug text rather than exceed the cap.
+    data.source_text = "";
+    data.translated_text = "";
+    serialized = JSON.stringify(data);
+  }
+
+  try {
+    PropertiesService.getDocumentProperties().setProperty(EVAL_RESULT_KEY, serialized);
+  } catch (e) {
+    Logger.log("Could not cache evaluation: " + e.message);
+  }
+
+  return { ok: true };
 }
 
 // ── Menu and sidebar ─────────────────────────────────────────────────────
@@ -489,6 +661,7 @@ function onOpen(e) {
   DocumentApp.getUi()
     .createAddonMenu()
     .addItem("Show AI Suggestions", "showReviewPanel")
+    .addItem("Evaluate Translation", "showEvaluationPanel")
     .addItem("Submit Review", "submitReview")
     .addToUi();
 }
@@ -517,6 +690,22 @@ function showReviewPanel() {
   clearAllHighlights();
   var html = HtmlService.createHtmlOutputFromFile("Sidebar")
     .setTitle("AI Suggestions")
+    .setWidth(340);
+  DocumentApp.getUi().showSidebar(html);
+}
+
+function showEvaluationPanel() {
+  if (!getTranslationFileId_()) {
+    DocumentApp.getUi().alert(
+      "Not a Translation Document",
+      "This document does not have translation data associated with it.",
+      DocumentApp.getUi().ButtonSet.OK
+    );
+    return;
+  }
+
+  var html = HtmlService.createHtmlOutputFromFile("Evaluationsidebar")
+    .setTitle("Translation Evaluation")
     .setWidth(340);
   DocumentApp.getUi().showSidebar(html);
 }

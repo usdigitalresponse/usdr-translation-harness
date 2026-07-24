@@ -25,6 +25,23 @@ ACTIVE_YES = "YES"
 
 EVAL_RESULTS_SHEET_NAME = "EvalQuality"
 EVAL_RESULTS_SHEET_RANGE = f"{EVAL_RESULTS_SHEET_NAME}!A:L"
+EVAL_RESULTS_HEADER_RANGE = f"{EVAL_RESULTS_SHEET_NAME}!A1:L1"
+
+# Column order must match build_result_row() in main.py.
+EVAL_RESULTS_HEADERS = [
+    "Timestamp",
+    "Translation File ID",
+    "Provider",
+    "Model",
+    "Weighted Overall",
+    "Priority",
+    "Accuracy & Relevance",
+    "Clarity & Simplicity",
+    "Cultural Sensitivity",
+    "Active Voice & Tone",
+    "Consistency & Style",
+    "Result File ID",
+]
 
 # https://developers.google.com/docs/api/reference/rest
 DOCS_API_VERSION = "v1"
@@ -189,6 +206,40 @@ def write_eval_result(filename, data):
     return None
 
 
+def _ensure_results_sheet(service, sheet_id):
+    """Create the results tab and header row if they aren't there yet.
+
+    Lets the function point at an empty spreadsheet and provision itself,
+    rather than requiring the tab be hand-created with the right columns.
+    """
+    metadata = service.spreadsheets().get(
+        spreadsheetId=sheet_id, fields="sheets.properties.title"
+    ).execute()
+    titles = [s["properties"]["title"] for s in metadata.get("sheets", [])]
+
+    if EVAL_RESULTS_SHEET_NAME not in titles:
+        service.spreadsheets().batchUpdate(
+            spreadsheetId=sheet_id,
+            body={"requests": [
+                {"addSheet": {"properties": {"title": EVAL_RESULTS_SHEET_NAME}}}
+            ]},
+        ).execute()
+        logger.info("Created '%s' tab in results sheet", EVAL_RESULTS_SHEET_NAME)
+
+    header = service.spreadsheets().values().get(
+        spreadsheetId=sheet_id, range=EVAL_RESULTS_HEADER_RANGE
+    ).execute().get("values", [])
+
+    if not header:
+        service.spreadsheets().values().update(
+            spreadsheetId=sheet_id,
+            range=EVAL_RESULTS_HEADER_RANGE,
+            valueInputOption="RAW",
+            body={"values": [EVAL_RESULTS_HEADERS]},
+        ).execute()
+        logger.info("Wrote header row to results sheet")
+
+
 def append_result_row(row):
     """Append one summary row to the quality eval results sheet."""
     sheet_id = os.environ.get("EVAL_QUALITY_RESULTS_SHEET_ID")
@@ -198,10 +249,14 @@ def append_result_row(row):
 
     credentials, _ = google.auth.default()
     service = build("sheets", SHEETS_API_VERSION, credentials=credentials)
+
+    _ensure_results_sheet(service, sheet_id)
+
     service.spreadsheets().values().append(
         spreadsheetId=sheet_id,
         range=EVAL_RESULTS_SHEET_RANGE,
         valueInputOption="RAW",
+        insertDataOption="INSERT_ROWS",
         body={"values": [row]},
     ).execute()
     logger.info("Appended quality eval result row to results sheet")

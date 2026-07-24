@@ -144,17 +144,48 @@ def evaluate_with_model(translation_file_id, model_config, prompt):
         "overallPriorityRating": scores["overall_priority_rating"],
         "resultFileId": result_file_id,
         "resultFileName": filename,
+        # Full per-criterion detail — the editor add-on sidebar renders
+        # strengths/issues/recommendations from this.
+        "scores": scores,
     }
 
 
-def run_quality_eval(translation_file_id):
+def normalize_inline_blocks(blocks, metadata=None):
+    """Build a translation-JSON-shaped dict from inline blocks.
+
+    Callers that already hold the text — e.g. the editor add-on sending the
+    reviewer's current doc content — skip the Drive fetch entirely.
+    """
+    normalized = []
+    for i, block in enumerate(blocks):
+        original = (block.get("original_text") or "").strip()
+        translated = (block.get("translated_text") or "").strip()
+        if not original and not translated:
+            continue
+        normalized.append({
+            "id": block.get("id") or f"b{i + 1:02d}",
+            "original_text": original,
+            "translated_text": translated,
+        })
+
+    if not normalized:
+        raise ValueError("No non-empty blocks provided")
+
+    return {"blocks": normalized, "metadata": metadata or {}}
+
+
+def run_quality_eval(translation_file_id, translation_json=None):
     config = load_config()
     active_models = get_active_models(config, EVAL_ROLE)
     if not active_models:
         raise RuntimeError(f"No active models configured for role '{EVAL_ROLE}'")
     logger.info("Active eval models: %s", [m["model"] for m in active_models])
 
-    translation_json = load_translation_json(translation_file_id)
+    if translation_json is None:
+        translation_json = load_translation_json(translation_file_id)
+    else:
+        logger.info("Evaluating %d inline blocks", len(translation_json["blocks"]))
+
     rubric = load_doc(RUBRIC_DOC_ENV_VAR, RUBRIC_LOCAL_PATH_ENV_VAR)
     prompt = build_eval_prompt(rubric, translation_json)
     logger.info("Eval prompt assembled (%d characters)", len(prompt))
@@ -179,20 +210,40 @@ def run_quality_eval(translation_file_id):
 
 @functions_framework.http
 def eval_quality(request):
-    """Evaluate translation quality using LLM-as-judge."""
+    """Evaluate translation quality using LLM-as-judge.
+
+    Accepts either:
+      - {"translationJsonUrl": <Drive URL or file ID>} — scores the stored
+        translation JSON, or
+      - {"blocks": [{"id", "original_text", "translated_text"}, ...]} — scores
+        the supplied text directly, used by the editor add-on to evaluate the
+        reviewer's current doc content. Optional "documentId" and "metadata".
+    """
     body = request.get_json(silent=True) or {}
     translation_json_url = body.get("translationJsonUrl")
+    blocks = body.get("blocks")
 
-    if not translation_json_url:
-        return json.dumps({"error": "Provide translationJsonUrl"}), HTTPStatus.BAD_REQUEST
+    if not translation_json_url and not blocks:
+        return json.dumps({
+            "error": "Provide translationJsonUrl or blocks"
+        }), HTTPStatus.BAD_REQUEST
+
+    translation_json = None
+    if blocks:
+        # Label results by the source doc when there's no translation file.
+        translation_file_id = body.get("documentId") or "inline"
+        try:
+            translation_json = normalize_inline_blocks(blocks, body.get("metadata"))
+        except (ValueError, AttributeError, TypeError) as e:
+            return json.dumps({"error": f"Invalid blocks: {e}"}), HTTPStatus.BAD_REQUEST
+    else:
+        try:
+            translation_file_id = parse_drive_file_id(translation_json_url)
+        except ValueError as e:
+            return json.dumps({"error": str(e)}), HTTPStatus.BAD_REQUEST
 
     try:
-        translation_file_id = parse_drive_file_id(translation_json_url)
-    except ValueError as e:
-        return json.dumps({"error": str(e)}), HTTPStatus.BAD_REQUEST
-
-    try:
-        evaluations = run_quality_eval(translation_file_id)
+        evaluations = run_quality_eval(translation_file_id, translation_json)
     except Exception as e:
         logger.exception("Quality eval run failed")
         return json.dumps({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR

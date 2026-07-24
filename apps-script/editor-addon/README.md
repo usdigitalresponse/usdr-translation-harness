@@ -67,6 +67,25 @@ Selecting "Submit Review" from the menu:
 | `Evaluationsidebar.html` | Evaluation sidebar (separate feature, not part of the review flow) |
 | `appsscript.json` | Manifest — scopes, add-on config, URL whitelist |
 
+## Evaluation 
+
+Evaluation is its own process: it scores a translation with an LLM-as-judge and writes nothing back to the pipeline. Submit Review is the feedback-capture step and is unrelated — evaluating does not submit anything, and submitting does not evaluate.
+
+`showEvaluationPanel` opens `Evaluationsidebar.html`, which scores **the reviewer's current doc content** rather than the stored translation JSON, so re-running after edits reflects those edits.
+
+```
+Evaluationsidebar.html
+  └─ evaluateTranslationFromSidebar()
+       ├─ extractDocBlocks_()   reads the English/Spanish table (col 0 / col 1)
+       ├─ POST { documentId, blocks, metadata } → Eval Quality Cloud Run function
+       └─ caches the result in document properties (EVAL_RESULT)
+  └─ getEvalData()              reads the cached result back on open
+```
+
+The eval function accepts either `blocks` (this path) or `translationJsonUrl` (scores the stored JSON). Results are cached because each run costs an LLM call; reopening the sidebar does not re-evaluate.
+
+Document properties cap values at 9KB. If an evaluation exceeds that, `source_text` and `translated_text` are dropped from the cache so the scores still survive.
+
 ## Configuration notes
 
 **Timezone:** Set to `America/New_York` in `appsscript.json` for Maryland deployment.
@@ -90,6 +109,7 @@ Set these in the Script Editor under Project Settings -> Script Properties:
 | Property | Description |
 |---|---|
 | `CAPTURE_FEEDBACK_FUNCTION_URL` | Deployed Capture Feedback Cloud Run function URL |
+| `EVAL_QUALITY_FUNCTION_URL` | Deployed Eval Quality Cloud Run function URL |
 
 ## Setup
 
