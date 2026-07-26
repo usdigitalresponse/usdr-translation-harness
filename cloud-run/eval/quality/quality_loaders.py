@@ -5,6 +5,7 @@ distinct from the identically-purposed modules in other function directories
 (e.g. `extract/loaders.py`), which pytest places on the same flat `pythonpath`.
 """
 
+import csv
 import io
 import json
 import logging
@@ -240,8 +241,30 @@ def _ensure_results_sheet(service, sheet_id):
         logger.info("Wrote header row to results sheet")
 
 
+def _append_to_csv(path_str, row):
+    """Append one row to a local CSV, writing the header if the file is new.
+
+    Local-dev fallback for the results sheet, so evaluations can be logged
+    without Google credentials — same idea as LOCAL_RUBRIC_PATH.
+    """
+    path = Path(path_str)
+    write_header = not path.exists() or path.stat().st_size == 0
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        if write_header:
+            writer.writerow(EVAL_RESULTS_HEADERS)
+        writer.writerow(row)
+    logger.info("Appended quality eval result row to %s", path)
+
+
 def append_result_row(row):
-    """Append one summary row to the quality eval results sheet."""
+    """Append one summary row to the results sheet, or a local CSV for dev."""
+    local_csv = os.environ.get("LOCAL_EVAL_RESULTS_CSV")
+    if local_csv:
+        _append_to_csv(local_csv, row)
+        return
+
     sheet_id = os.environ.get("EVAL_QUALITY_RESULTS_SHEET_ID")
     if not sheet_id:
         logger.info("No EVAL_QUALITY_RESULTS_SHEET_ID set — skipping results sheet update")

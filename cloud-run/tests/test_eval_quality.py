@@ -1,3 +1,4 @@
+import csv
 import json
 import os
 from http import HTTPStatus
@@ -294,8 +295,60 @@ class TestAppendResultRow:
         with patch("eval.quality.quality_loaders.build") as mock_build:
             with patch.dict("os.environ", {}, clear=False):
                 os.environ.pop("EVAL_QUALITY_RESULTS_SHEET_ID", None)
+                os.environ.pop("LOCAL_EVAL_RESULTS_CSV", None)
                 append_result_row(["ts"])
         mock_build.assert_not_called()
+
+
+class TestAppendResultRowLocalCsv:
+    """LOCAL_EVAL_RESULTS_CSV routes results to a file instead of Sheets."""
+
+    def _append(self, csv_path, row):
+        with patch("eval.quality.quality_loaders.build") as mock_build:
+            with patch.dict("os.environ", {"LOCAL_EVAL_RESULTS_CSV": str(csv_path)}):
+                append_result_row(row)
+        # Local path must never touch the Sheets client.
+        mock_build.assert_not_called()
+
+    def test_writes_header_then_row_to_new_file(self, tmp_path):
+        csv_path = tmp_path / "results.csv"
+        row = ["ts", "file-1", "google", "m", 4.2, "Medium", 4, 4, 4, 4, 4, "res-1"]
+        self._append(csv_path, row)
+
+        rows = list(csv.reader(csv_path.open(encoding="utf-8")))
+        assert rows[0] == EVAL_RESULTS_HEADERS
+        assert rows[1] == [str(c) for c in row]
+
+    def test_appends_without_repeating_header(self, tmp_path):
+        csv_path = tmp_path / "results.csv"
+        self._append(csv_path, ["ts1", "f1", "google", "m", 4.2, "Medium", 4, 4, 4, 4, 4, "r1"])
+        self._append(csv_path, ["ts2", "f2", "anthropic", "m", 3.1, "High", 3, 3, 3, 3, 3, "r2"])
+
+        rows = list(csv.reader(csv_path.open(encoding="utf-8")))
+        assert len(rows) == 3  # header + two data rows
+        assert rows.count(EVAL_RESULTS_HEADERS) == 1
+        assert rows[2][2] == "anthropic"
+
+    def test_creates_parent_directory(self, tmp_path):
+        csv_path = tmp_path / "nested" / "dir" / "results.csv"
+        self._append(csv_path, ["ts", "f", "google", "m", 5, "Low", 5, 5, 5, 5, 5, ""])
+        assert csv_path.exists()
+
+    def test_preserves_unicode(self, tmp_path):
+        csv_path = tmp_path / "results.csv"
+        self._append(csv_path, ["ts", "Licencia Médica", "google", "m", 5, "Low", 5, 5, 5, 5, 5, ""])
+        assert "Médica" in csv_path.read_text(encoding="utf-8")
+
+    def test_local_csv_takes_precedence_over_sheet_id(self, tmp_path):
+        csv_path = tmp_path / "results.csv"
+        with patch("eval.quality.quality_loaders.build") as mock_build:
+            with patch.dict("os.environ", {
+                "LOCAL_EVAL_RESULTS_CSV": str(csv_path),
+                "EVAL_QUALITY_RESULTS_SHEET_ID": "sheet-1",
+            }):
+                append_result_row(["ts", "f", "google", "m", 5, "Low", 5, 5, 5, 5, 5, ""])
+        mock_build.assert_not_called()
+        assert csv_path.exists()
 
 
 class TestGetActiveModels:

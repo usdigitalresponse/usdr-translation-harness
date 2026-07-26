@@ -530,16 +530,83 @@ function buildEvalPayload_(blocks) {
   };
 }
 
+// Maps the eval function's raw dimension keys to the short keys the sidebar
+// (DIMENSIONS[].key in Evaluationsidebar.html) renders.
+var EVAL_DIM_KEYS = [
+  { raw: "accuracy_and_relevance", key: "accuracy" },
+  { raw: "clarity_and_simplicity", key: "clarity" },
+  { raw: "cultural_sensitivity", key: "cultural" },
+  { raw: "active_voice_and_tone", key: "voice" },
+  { raw: "consistency_and_style", key: "consistency" },
+];
+
+// Fix-priority severity, most severe first, for compiling one rating from many.
+var PRIORITY_ORDER = ["Critical", "High", "Medium", "Low"];
+
+function round1_(n) {
+  return Math.round(n * 10) / 10;
+}
+
 /**
- * Flatten the eval function's response into the shape Evaluationsidebar.html
- * renders. Keys here must match DIMENSIONS[].key in that file.
+ * Pull one model's evaluation into the flat per-dimension shape the sidebar
+ * uses, keeping the full raw scores object for the strengths/issues breakdown.
  */
-function toSidebarEvalData_(evaluation, blocks) {
+function normalizeModelScores_(evaluation) {
   var scores = evaluation.scores || {};
-  function dim(key) {
-    var node = scores[key];
-    return node && node.score !== undefined && node.score !== null ? node.score : "";
+  var flat = {
+    weightedOverall: scores.weighted_overall_score !== undefined
+      ? scores.weighted_overall_score : "",
+    priorityRating: scores.overall_priority_rating || "",
+  };
+  EVAL_DIM_KEYS.forEach(function (d) {
+    var node = scores[d.raw];
+    flat[d.key] = node && node.score !== undefined && node.score !== null ? node.score : "";
+  });
+  return {
+    provider: evaluation.provider || "",
+    model: evaluation.model || "",
+    scores: flat,
+    raw: scores,
+  };
+}
+
+/** Average a numeric field across models, ignoring blanks. "" if none numeric. */
+function averageField_(models, field) {
+  var nums = models
+    .map(function (m) { return parseFloat(m.scores[field]); })
+    .filter(function (n) { return !isNaN(n); });
+  if (!nums.length) return "";
+  var sum = nums.reduce(function (a, b) { return a + b; }, 0);
+  return round1_(sum / nums.length);
+}
+
+/** Compile a single fix-priority rating from several — take the most severe. */
+function mostSeverePriority_(models) {
+  for (var i = 0; i < PRIORITY_ORDER.length; i++) {
+    for (var j = 0; j < models.length; j++) {
+      if (models[j].scores.priorityRating === PRIORITY_ORDER[i]) {
+        return PRIORITY_ORDER[i];
+      }
+    }
   }
+  return "";
+}
+
+/**
+ * Compile every succeeded model evaluation into the shape
+ * Evaluationsidebar.html renders: an averaged headline score plus a per-model
+ * breakdown. With a single active model this collapses to that model's scores.
+ */
+function compileEvalData_(evaluations, blocks) {
+  var models = evaluations.map(normalizeModelScores_);
+
+  var compiled = {
+    weightedOverall: averageField_(models, "weightedOverall"),
+    priorityRating: mostSeverePriority_(models),
+  };
+  EVAL_DIM_KEYS.forEach(function (d) {
+    compiled[d.key] = averageField_(models, d.key);
+  });
 
   var sourceText = [];
   var translatedText = [];
@@ -550,21 +617,12 @@ function toSidebarEvalData_(evaluation, blocks) {
 
   return {
     timestamp: new Date().toISOString(),
-    scores: {
-      accuracy: dim("accuracy_and_relevance"),
-      clarity: dim("clarity_and_simplicity"),
-      cultural: dim("cultural_sensitivity"),
-      voice: dim("active_voice_and_tone"),
-      consistency: dim("consistency_and_style"),
-      weightedOverall: scores.weighted_overall_score !== undefined
-        ? scores.weighted_overall_score : "",
-      priorityRating: scores.overall_priority_rating || "",
-    },
-    raw_eval_text: JSON.stringify(scores),
+    scores: compiled,
+    models: models,
+    // Kept for single-model fallback rendering / the debug panel.
+    raw_eval_text: JSON.stringify(models[0].raw),
     source_text: sourceText.join("\n\n"),
     translated_text: translatedText.join("\n\n"),
-    provider: evaluation.provider || "",
-    model: evaluation.model || "",
   };
 }
 
@@ -633,12 +691,19 @@ function evaluateTranslationFromSidebar() {
     };
   }
 
-  var data = toSidebarEvalData_(succeeded[0], blocks);
+  var data = compileEvalData_(succeeded, blocks);
   var serialized = JSON.stringify(data);
   if (serialized.length > EVAL_PROPERTY_MAX_BYTES) {
-    // Keep the scores, drop the bulky debug text rather than exceed the cap.
+    // Drop the bulky source/translated debug text first.
     data.source_text = "";
     data.translated_text = "";
+    serialized = JSON.stringify(data);
+  }
+  if (serialized.length > EVAL_PROPERTY_MAX_BYTES) {
+    // Still too big (e.g. two models' full breakdowns): keep the numeric
+    // per-model scores but drop the verbose raw strengths/issues text.
+    data.models.forEach(function (m) { m.raw = {}; });
+    data.raw_eval_text = "";
     serialized = JSON.stringify(data);
   }
 
