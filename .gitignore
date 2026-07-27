@@ -13,6 +13,7 @@ __pycache__/
 
 .DS_Store
 scratch.*
+scratch-done/
 node_modules/
 cloud-run/.venv/
 cloud-run/*/fixtures/output/

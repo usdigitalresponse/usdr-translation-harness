@@ -1,0 +1,25 @@
+{
+  "name": "extract_input_tokens",
+  "description": "Input tokens sent to the LLM during extraction",
+  "filter": "resource.type=\"cloud_run_revision\" jsonPayload.pipeline_stage=\"extract\" jsonPayload.input_tokens:*",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "DISTRIBUTION",
+    "labels": [
+      { "key": "provider", "valueType": "STRING" },
+      { "key": "model", "valueType": "STRING" }
+    ]
+  },
+  "valueExtractor": "EXTRACT(jsonPayload.input_tokens)",
+  "bucketOptions": {
+    "exponentialBuckets": {
+      "numFiniteBuckets": 12,
+      "growthFactor": 2,
+      "scale": 500
+    }
+  },
+  "labelExtractors": {
+    "provider": "EXTRACT(jsonPayload.provider)",
+    "model": "EXTRACT(jsonPayload.model)"
+  }
+}

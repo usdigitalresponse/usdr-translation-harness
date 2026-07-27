@@ -183,7 +183,7 @@ describe("translate", () => {
     loadConfig.mockResolvedValue({
       models: [{ role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
     });
-    callLlm.mockResolvedValue('{"translated_text": "Hola"}');
+    callLlm.mockResolvedValue({ text: '{"translated_text": "Hola"}', usage: { input_tokens: 100, output_tokens: 50 } });
     writeOutput.mockResolvedValue("output-file-id");
 
     const res = mockRes();
@@ -228,7 +228,7 @@ describe("translate", () => {
         { role: "translate", provider: "google", model: "gemini-3.5-flash", active: false },
       ],
     });
-    callLlm.mockResolvedValue('{"translated_text": "Hola"}');
+    callLlm.mockResolvedValue({ text: '{"translated_text": "Hola"}', usage: { input_tokens: 100, output_tokens: 50 } });
     writeOutput.mockResolvedValue("out-id");
 
     const res = mockRes();
@@ -287,7 +287,7 @@ describe("translate", () => {
       ],
     });
     callLlm
-      .mockResolvedValueOnce('{"translated_text": "Hola"}')
+      .mockResolvedValueOnce({ text: '{"translated_text": "Hola"}', usage: { input_tokens: 100, output_tokens: 50 } })
       .mockRejectedValueOnce(new Error("Gemini API key missing"));
     writeOutput.mockResolvedValue("out-id");
 
@@ -310,7 +310,7 @@ describe("translate", () => {
     loadConfig.mockResolvedValue({
       models: [{ role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
     });
-    callLlm.mockResolvedValue('{"translated_text": "Hola"}');
+    callLlm.mockResolvedValue({ text: '{"translated_text": "Hola"}', usage: { input_tokens: 100, output_tokens: 50 } });
     writeOutput.mockResolvedValue("out-id");
 
     const payload = {
@@ -482,7 +482,7 @@ describe("buildTranslationPrompt", () => {
     );
     loadSheet.mockResolvedValue([]);
 
-    const prompt = await buildTranslationPrompt("file123");
+    const { prompt, promptMetrics } = await buildTranslationPrompt("file123");
 
     expect(loadExtractionJson).toHaveBeenCalledWith("file123");
     expect(prompt).toContain("Translate this.");
@@ -491,6 +491,9 @@ describe("buildTranslationPrompt", () => {
     expect(prompt).toContain("<extraction>");
     expect(prompt).toContain('"id": "b01"');
     expect(prompt).not.toContain("<glossary>");
+    expect(promptMetrics.prompt_template_tokens).toBeGreaterThan(0);
+    expect(promptMetrics.extraction_tokens).toBeGreaterThan(0);
+    expect(promptMetrics.glossary_tokens).toBe(0);
   });
 
   test("includes glossary when sheet has data", async () => {
@@ -503,11 +506,12 @@ describe("buildTranslationPrompt", () => {
       },
     ]);
 
-    const prompt = await buildTranslationPrompt("file123");
+    const { prompt, promptMetrics } = await buildTranslationPrompt("file123");
 
     expect(prompt).toContain("<glossary>");
     expect(prompt).toContain("actual leave");
     expect(prompt).toContain("duración real de la ausencia");
+    expect(promptMetrics.glossary_tokens).toBeGreaterThan(0);
   });
 
   test("continues without glossary when sheet loading fails", async () => {
@@ -517,7 +521,7 @@ describe("buildTranslationPrompt", () => {
 
     const warnSpy = jest.spyOn(console, "warn").mockImplementation();
 
-    const prompt = await buildTranslationPrompt("file123");
+    const { prompt } = await buildTranslationPrompt("file123");
 
     expect(prompt).toContain("<extraction>");
     expect(prompt).not.toContain("<glossary>");
@@ -533,7 +537,7 @@ describe("buildTranslationPrompt", () => {
       { [GLOSSARY_COLUMNS.ENGLISH_TERM]: "term" },
     ]);
 
-    const prompt = await buildTranslationPrompt("file123");
+    const { prompt } = await buildTranslationPrompt("file123");
 
     const contextIdx = prompt.indexOf("<extraction_context>");
     const extractionIdx = prompt.indexOf("<extraction>");

@@ -1,0 +1,25 @@
+{
+  "name": "extract_source_word_count",
+  "description": "Source document word count from extraction",
+  "filter": "resource.type=\"cloud_run_revision\" jsonPayload.pipeline_stage=\"extract\" jsonPayload.source_word_count:*",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "DISTRIBUTION",
+    "labels": [
+      { "key": "provider", "valueType": "STRING" },
+      { "key": "model", "valueType": "STRING" }
+    ]
+  },
+  "valueExtractor": "EXTRACT(jsonPayload.source_word_count)",
+  "bucketOptions": {
+    "exponentialBuckets": {
+      "numFiniteBuckets": 12,
+      "growthFactor": 2,
+      "scale": 50
+    }
+  },
+  "labelExtractors": {
+    "provider": "EXTRACT(jsonPayload.provider)",
+    "model": "EXTRACT(jsonPayload.model)"
+  }
+}

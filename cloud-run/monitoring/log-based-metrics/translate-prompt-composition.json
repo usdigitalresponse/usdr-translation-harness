@@ -1,0 +1,25 @@
+{
+  "name": "translate_glossary_tokens",
+  "description": "Estimated glossary token count in translation prompts",
+  "filter": "resource.type=\"cloud_run_revision\" jsonPayload.pipeline_stage=\"translate\" jsonPayload.glossary_tokens:*",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "DISTRIBUTION",
+    "labels": [
+      { "key": "provider", "valueType": "STRING" },
+      { "key": "model", "valueType": "STRING" }
+    ]
+  },
+  "valueExtractor": "EXTRACT(jsonPayload.glossary_tokens)",
+  "bucketOptions": {
+    "exponentialBuckets": {
+      "numFiniteBuckets": 12,
+      "growthFactor": 2,
+      "scale": 500
+    }
+  },
+  "labelExtractors": {
+    "provider": "EXTRACT(jsonPayload.provider)",
+    "model": "EXTRACT(jsonPayload.model)"
+  }
+}
