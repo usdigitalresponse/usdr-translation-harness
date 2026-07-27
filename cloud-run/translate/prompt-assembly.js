@@ -4,6 +4,7 @@ const path = require("path");
 const { loadDoc, loadSheet, loadExtractionJson } = require("./loaders");
 
 const CONTENT_PLACEHOLDER = "[Paste content to be translated in the area below]";
+const CHARS_PER_TOKEN_ESTIMATE = 4;
 const PDF_EXTRACTION_CONTEXT = fs.readFileSync(
   path.join(__dirname, "extraction-context.md"),
   "utf-8"
@@ -118,22 +119,37 @@ async function buildTranslationPrompt(extractionFileId) {
     console.warn("Could not load glossary, proceeding without:", err.message);
   }
 
-  let prompt = basePrompt.replace(CONTENT_PLACEHOLDER, "").trimEnd();
+  const promptBase = basePrompt.replace(CONTENT_PLACEHOLDER, "").trimEnd();
 
   const extractionContext = extractionJson.sourceType === "text"
     ? TEXT_EXTRACTION_CONTEXT
     : PDF_EXTRACTION_CONTEXT;
-  prompt += `\n\n<extraction_context>\n${extractionContext}</extraction_context>`;
 
   const extractionStr = JSON.stringify(extractionJson, null, 2);
+
+  let prompt = promptBase;
+  prompt += `\n\n<extraction_context>\n${extractionContext}</extraction_context>`;
   prompt += `\n\n<extraction>\n${extractionStr}\n</extraction>`;
 
   if (glossaryText) {
     prompt += `\n\n<glossary>\n${glossaryText}\n</glossary>`;
   }
 
+  const promptTokenEstimate = Math.ceil(promptBase.length / CHARS_PER_TOKEN_ESTIMATE);
+  const extractionTokenEstimate = Math.ceil(extractionStr.length / CHARS_PER_TOKEN_ESTIMATE);
+  const glossaryTokenEstimate = glossaryText
+    ? Math.ceil(glossaryText.length / CHARS_PER_TOKEN_ESTIMATE)
+    : 0;
+
+  const promptMetrics = {
+    prompt_template_tokens: promptTokenEstimate,
+    extraction_tokens: extractionTokenEstimate,
+    glossary_tokens: glossaryTokenEstimate,
+    total_prompt_chars: prompt.length,
+  };
+
   console.log(`Prompt assembled (${prompt.length} chars)`);
-  return prompt;
+  return { prompt, promptMetrics };
 }
 
 module.exports = {

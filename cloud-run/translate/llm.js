@@ -44,7 +44,11 @@ async function callClaude(prompt, { model, maxTokens = DEFAULT_MAX_TOKENS, outpu
   }
 
   const response = await client.messages.create(kwargs);
-  return response.content[0].text;
+  const usage = {
+    input_tokens: response.usage.input_tokens,
+    output_tokens: response.usage.output_tokens,
+  };
+  return { text: response.content[0].text, usage };
 }
 
 async function callGemini(prompt, { model, outputSchema } = {}) {
@@ -62,7 +66,12 @@ async function callGemini(prompt, { model, outputSchema } = {}) {
   }
 
   const response = await ai.models.generateContent(kwargs);
-  return response.text;
+  const meta = response.usageMetadata;
+  const usage = {
+    input_tokens: meta.promptTokenCount,
+    output_tokens: meta.candidatesTokenCount,
+  };
+  return { text: response.text, usage };
 }
 
 async function callLlm(provider, model, prompt) {
@@ -76,6 +85,7 @@ async function callLlm(provider, model, prompt) {
   }
   throw new Error(`Unknown provider: ${provider}`);
 }
+
 
 module.exports = {
   callClaude,

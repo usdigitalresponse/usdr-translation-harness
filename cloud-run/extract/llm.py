@@ -45,7 +45,11 @@ def call_claude(prompt, *, model="claude-sonnet-4-6", max_tokens=16384, system=N
         }
 
     response = client.messages.create(**kwargs)
-    return response.content[0].text
+    usage = {
+        "input_tokens": response.usage.input_tokens,
+        "output_tokens": response.usage.output_tokens,
+    }
+    return response.content[0].text, usage
 
 
 def call_gemini(prompt, *, model="gemini-3.5-flash", pdf_base64=None, output_schema=None):
@@ -66,7 +70,12 @@ def call_gemini(prompt, *, model="gemini-3.5-flash", pdf_base64=None, output_sch
         )
 
     response = client.models.generate_content(**kwargs)
-    return response.text
+    usage_meta = response.usage_metadata
+    usage = {
+        "input_tokens": usage_meta.prompt_token_count,
+        "output_tokens": usage_meta.candidates_token_count,
+    }
+    return response.text, usage
 
 
 def load_extraction_schema(provider):
@@ -79,7 +88,9 @@ def load_extraction_schema(provider):
 def call_llm(provider, model, prompt, pdf_base64):
     output_schema = load_extraction_schema(provider)
     if provider == PROVIDER_ANTHROPIC:
-        return call_claude(prompt, model=model, pdf_base64=pdf_base64, output_schema=output_schema)
+        text, usage = call_claude(prompt, model=model, pdf_base64=pdf_base64, output_schema=output_schema)
+        return text, usage
     if provider == PROVIDER_GOOGLE:
-        return call_gemini(prompt, model=model, pdf_base64=pdf_base64, output_schema=output_schema)
+        text, usage = call_gemini(prompt, model=model, pdf_base64=pdf_base64, output_schema=output_schema)
+        return text, usage
     raise ValueError(f"Unknown provider: {provider}")
