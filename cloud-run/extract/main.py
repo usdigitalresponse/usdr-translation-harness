@@ -212,6 +212,8 @@ def log_structured(status, provider, model, source_file_id, source_file_name,
     if usage:
         entry["input_tokens"] = usage.get("input_tokens")
         entry["output_tokens"] = usage.get("output_tokens")
+        if usage.get("duration_ms") is not None:
+            entry["duration_ms"] = usage["duration_ms"]
     if content_metrics:
         entry.update(content_metrics)
     print(json.dumps(entry), flush=True)

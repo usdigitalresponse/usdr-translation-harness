@@ -19,6 +19,8 @@ Defined in `log-based-metrics/`. These extract structured fields from Cloud Run 
 | `capture_feedback_word_edit_distance` | Distribution | `jsonPayload.normalizedWordEditDistance` |
 | `capture_feedback_terminology_decisions` | Distribution | `jsonPayload.terminologyDecisions` |
 | `capture_feedback_time_to_approve` | Distribution | `jsonPayload.timeToApproveSeconds` |
+| `extract_duration_ms` | Distribution | `jsonPayload.duration_ms` (extract stage) |
+| `translate_duration_ms` | Distribution | `jsonPayload.duration_ms` (translate stage) |
 
 Log-based metrics only capture data from the moment they are created. They do not backfill historical logs.
 

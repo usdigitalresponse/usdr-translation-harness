@@ -183,7 +183,7 @@ describe("translate", () => {
     loadConfig.mockResolvedValue({
       models: [{ role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
     });
-    callLlm.mockResolvedValue({ text: '{"translated_text": "Hola"}', usage: { input_tokens: 100, output_tokens: 50 } });
+    callLlm.mockResolvedValue({ text: '{"translated_text": "Hola"}', usage: { input_tokens: 100, output_tokens: 50, duration_ms: 1500 } });
     writeOutput.mockResolvedValue("output-file-id");
 
     const res = mockRes();
@@ -228,7 +228,7 @@ describe("translate", () => {
         { role: "translate", provider: "google", model: "gemini-3.5-flash", active: false },
       ],
     });
-    callLlm.mockResolvedValue({ text: '{"translated_text": "Hola"}', usage: { input_tokens: 100, output_tokens: 50 } });
+    callLlm.mockResolvedValue({ text: '{"translated_text": "Hola"}', usage: { input_tokens: 100, output_tokens: 50, duration_ms: 1500 } });
     writeOutput.mockResolvedValue("out-id");
 
     const res = mockRes();
@@ -287,7 +287,7 @@ describe("translate", () => {
       ],
     });
     callLlm
-      .mockResolvedValueOnce({ text: '{"translated_text": "Hola"}', usage: { input_tokens: 100, output_tokens: 50 } })
+      .mockResolvedValueOnce({ text: '{"translated_text": "Hola"}', usage: { input_tokens: 100, output_tokens: 50, duration_ms: 1500 } })
       .mockRejectedValueOnce(new Error("Gemini API key missing"));
     writeOutput.mockResolvedValue("out-id");
 
@@ -310,7 +310,7 @@ describe("translate", () => {
     loadConfig.mockResolvedValue({
       models: [{ role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
     });
-    callLlm.mockResolvedValue({ text: '{"translated_text": "Hola"}', usage: { input_tokens: 100, output_tokens: 50 } });
+    callLlm.mockResolvedValue({ text: '{"translated_text": "Hola"}', usage: { input_tokens: 100, output_tokens: 50, duration_ms: 1500 } });
     writeOutput.mockResolvedValue("out-id");
 
     const payload = {

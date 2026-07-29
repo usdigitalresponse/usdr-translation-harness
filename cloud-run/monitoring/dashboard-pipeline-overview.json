@@ -1,5 +1,5 @@
 {
-  "etag": "f507ac14987b7477655c8acf575f5cf9",
+  "etag": "350e2102befb4c0e7ea2e39bdf54564c",
   "displayName": "Translation Pipeline - Overview",
   "mosaicLayout": {
     "columns": 12,
@@ -250,7 +250,7 @@
         "widget": {
           "title": "",
           "text": {
-            "content": "## LLM Token Usage\nInput and output tokens per pipeline stage, by model.",
+            "content": "## LLM Call Duration & Throughput\nApplication-level LLM call timing and derived throughput, by model.",
             "format": "MARKDOWN"
           }
         }
@@ -258,6 +258,97 @@
       {
         "xPos": 0,
         "yPos": 16,
+        "width": 4,
+        "height": 4,
+        "widget": {
+          "title": "Extract — LLM Duration p50 (ms)",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesFilter": {
+                    "filter": "resource.type=\"cloud_run_revision\" AND metric.type=\"logging.googleapis.com/user/extract_duration_ms\"",
+                    "aggregation": {
+                      "alignmentPeriod": "3600s",
+                      "perSeriesAligner": "ALIGN_PERCENTILE_50",
+                      "crossSeriesReducer": "REDUCE_MEAN",
+                      "groupByFields": ["metric.label.\"model\""]
+                    }
+                  }
+                },
+                "plotType": "LINE",
+                "legendTemplate": "${metric.labels.model}"
+              }
+            ],
+            "yAxis": { "label": "ms" }
+          }
+        }
+      },
+      {
+        "xPos": 4,
+        "yPos": 16,
+        "width": 4,
+        "height": 4,
+        "widget": {
+          "title": "Translate — LLM Duration p50 (ms)",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesFilter": {
+                    "filter": "resource.type=\"cloud_run_revision\" AND metric.type=\"logging.googleapis.com/user/translate_duration_ms\"",
+                    "aggregation": {
+                      "alignmentPeriod": "3600s",
+                      "perSeriesAligner": "ALIGN_PERCENTILE_50",
+                      "crossSeriesReducer": "REDUCE_MEAN",
+                      "groupByFields": ["metric.label.\"model\""]
+                    }
+                  }
+                },
+                "plotType": "LINE",
+                "legendTemplate": "${metric.labels.model}"
+              }
+            ],
+            "yAxis": { "label": "ms" }
+          }
+        }
+      },
+      {
+        "xPos": 8,
+        "yPos": 16,
+        "width": 4,
+        "height": 4,
+        "widget": {
+          "title": "Translate — Output Tokens/sec (throughput)",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "timeSeriesQueryLanguage": "{ t0: fetch cloud_run_revision | metric 'logging.googleapis.com/user/translate_output_tokens' | align delta(1h) | group_by [metric.model], mean(val()) ; t1: fetch cloud_run_revision | metric 'logging.googleapis.com/user/translate_duration_ms' | align delta(1h) | group_by [metric.model], mean(val()) } | join | div | mul 1000"
+                },
+                "plotType": "LINE"
+              }
+            ],
+            "yAxis": { "label": "tokens/sec" }
+          }
+        }
+      },
+      {
+        "xPos": 0,
+        "yPos": 20,
+        "width": 12,
+        "height": 2,
+        "widget": {
+          "title": "",
+          "text": {
+            "content": "## LLM Token Usage\nInput and output tokens per pipeline stage, by model.",
+            "format": "MARKDOWN"
+          }
+        }
+      },
+      {
+        "xPos": 0,
+        "yPos": 22,
         "width": 6,
         "height": 4,
         "widget": {
@@ -286,7 +377,7 @@
       },
       {
         "xPos": 6,
-        "yPos": 16,
+        "yPos": 22,
         "width": 6,
         "height": 4,
         "widget": {
@@ -315,7 +406,7 @@
       },
       {
         "xPos": 0,
-        "yPos": 20,
+        "yPos": 26,
         "width": 6,
         "height": 4,
         "widget": {
@@ -344,7 +435,7 @@
       },
       {
         "xPos": 6,
-        "yPos": 20,
+        "yPos": 26,
         "width": 6,
         "height": 4,
         "widget": {
@@ -373,7 +464,7 @@
       },
       {
         "xPos": 0,
-        "yPos": 24,
+        "yPos": 30,
         "width": 6,
         "height": 4,
         "widget": {
@@ -401,7 +492,7 @@
       },
       {
         "xPos": 6,
-        "yPos": 24,
+        "yPos": 30,
         "width": 6,
         "height": 4,
         "widget": {

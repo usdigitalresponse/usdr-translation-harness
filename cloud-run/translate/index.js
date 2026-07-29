@@ -153,7 +153,7 @@ async function translate(req, res) {
       ? { error: t.error }
       : {
           driveFileId: t.outputFileId,
-          ...(t.usage && { input_tokens: t.usage.input_tokens, output_tokens: t.usage.output_tokens }),
+          ...(t.usage && { input_tokens: t.usage.input_tokens, output_tokens: t.usage.output_tokens, duration_ms: t.usage.duration_ms }),
           ...promptMetrics,
         };
     logStructured(t.status, t.provider, t.model, sourceFileId, sourceFileName, extra);
