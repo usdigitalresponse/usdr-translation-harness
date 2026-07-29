@@ -76,14 +76,18 @@ async function callGemini(prompt, { model, outputSchema } = {}) {
 
 async function callLlm(provider, model, prompt) {
   const outputSchema = loadTranslationSchema(provider);
+  const start = Date.now();
 
+  let result;
   if (provider === PROVIDER_ANTHROPIC) {
-    return callClaude(prompt, { model, outputSchema });
+    result = await callClaude(prompt, { model, outputSchema });
+  } else if (provider === PROVIDER_GOOGLE) {
+    result = await callGemini(prompt, { model, outputSchema });
+  } else {
+    throw new Error(`Unknown provider: ${provider}`);
   }
-  if (provider === PROVIDER_GOOGLE) {
-    return callGemini(prompt, { model, outputSchema });
-  }
-  throw new Error(`Unknown provider: ${provider}`);
+  result.usage.duration_ms = Date.now() - start;
+  return result;
 }
 
 

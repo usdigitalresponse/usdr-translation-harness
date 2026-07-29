@@ -1,6 +1,7 @@
 import base64
 import json
 import os
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -87,10 +88,13 @@ def load_extraction_schema(provider):
 
 def call_llm(provider, model, prompt, pdf_base64):
     output_schema = load_extraction_schema(provider)
+    start = time.monotonic()
     if provider == PROVIDER_ANTHROPIC:
         text, usage = call_claude(prompt, model=model, pdf_base64=pdf_base64, output_schema=output_schema)
+        usage["duration_ms"] = round((time.monotonic() - start) * 1000)
         return text, usage
     if provider == PROVIDER_GOOGLE:
         text, usage = call_gemini(prompt, model=model, pdf_base64=pdf_base64, output_schema=output_schema)
+        usage["duration_ms"] = round((time.monotonic() - start) * 1000)
         return text, usage
     raise ValueError(f"Unknown provider: {provider}")

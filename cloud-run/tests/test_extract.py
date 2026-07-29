@@ -136,6 +136,8 @@ class TestCallLlm:
         assert text == '{"blocks": []}'
         assert usage["input_tokens"] == 100
         assert usage["output_tokens"] == 50
+        assert isinstance(usage["duration_ms"], int)
+        assert usage["duration_ms"] >= 0
 
     @patch("extract.llm.load_extraction_schema", return_value={"type": "object"})
     @patch("extract.llm.call_gemini", return_value=('{"blocks": []}', {"input_tokens": 200, "output_tokens": 75}))
@@ -146,6 +148,8 @@ class TestCallLlm:
         assert text == '{"blocks": []}'
         assert usage["input_tokens"] == 200
         assert usage["output_tokens"] == 75
+        assert isinstance(usage["duration_ms"], int)
+        assert usage["duration_ms"] >= 0
 
     def test_raises_on_unknown_provider(self):
         with pytest.raises(ValueError, match="No extraction schema"):
