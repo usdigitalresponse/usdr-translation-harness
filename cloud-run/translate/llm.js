@@ -44,7 +44,11 @@ async function callClaude(prompt, { model, maxTokens = DEFAULT_MAX_TOKENS, outpu
   }
 
   const response = await client.messages.create(kwargs);
-  return response.content[0].text;
+  const usage = {
+    input_tokens: response.usage.input_tokens,
+    output_tokens: response.usage.output_tokens,
+  };
+  return { text: response.content[0].text, usage };
 }
 
 async function callGemini(prompt, { model, outputSchema } = {}) {
@@ -62,20 +66,30 @@ async function callGemini(prompt, { model, outputSchema } = {}) {
   }
 
   const response = await ai.models.generateContent(kwargs);
-  return response.text;
+  const meta = response.usageMetadata;
+  const usage = {
+    input_tokens: meta.promptTokenCount,
+    output_tokens: meta.candidatesTokenCount,
+  };
+  return { text: response.text, usage };
 }
 
 async function callLlm(provider, model, prompt) {
   const outputSchema = loadTranslationSchema(provider);
+  const start = Date.now();
 
+  let result;
   if (provider === PROVIDER_ANTHROPIC) {
-    return callClaude(prompt, { model, outputSchema });
+    result = await callClaude(prompt, { model, outputSchema });
+  } else if (provider === PROVIDER_GOOGLE) {
+    result = await callGemini(prompt, { model, outputSchema });
+  } else {
+    throw new Error(`Unknown provider: ${provider}`);
   }
-  if (provider === PROVIDER_GOOGLE) {
-    return callGemini(prompt, { model, outputSchema });
-  }
-  throw new Error(`Unknown provider: ${provider}`);
+  result.usage.duration_ms = Date.now() - start;
+  return result;
 }
+
 
 module.exports = {
   callClaude,

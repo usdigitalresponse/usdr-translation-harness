@@ -128,20 +128,28 @@ class TestBuildExtractionPrompt:
 
 class TestCallLlm:
     @patch("extract.llm.load_extraction_schema", return_value={"type": "object"})
-    @patch("extract.llm.call_claude", return_value='{"blocks": []}')
+    @patch("extract.llm.call_claude", return_value=('{"blocks": []}', {"input_tokens": 100, "output_tokens": 50}))
     def test_dispatches_to_claude(self, mock_claude, mock_schema):
-        result = call_llm(PROVIDER_ANTHROPIC, "claude-sonnet-4-6", "prompt", "base64pdf")
+        text, usage = call_llm(PROVIDER_ANTHROPIC, "claude-sonnet-4-6", "prompt", "base64pdf")
         mock_schema.assert_called_once_with(PROVIDER_ANTHROPIC)
         mock_claude.assert_called_once_with("prompt", model="claude-sonnet-4-6", pdf_base64="base64pdf", output_schema={"type": "object"})
-        assert result == '{"blocks": []}'
+        assert text == '{"blocks": []}'
+        assert usage["input_tokens"] == 100
+        assert usage["output_tokens"] == 50
+        assert isinstance(usage["duration_ms"], int)
+        assert usage["duration_ms"] >= 0
 
     @patch("extract.llm.load_extraction_schema", return_value={"type": "object"})
-    @patch("extract.llm.call_gemini", return_value='{"blocks": []}')
+    @patch("extract.llm.call_gemini", return_value=('{"blocks": []}', {"input_tokens": 200, "output_tokens": 75}))
     def test_dispatches_to_gemini(self, mock_gemini, mock_schema):
-        result = call_llm(PROVIDER_GOOGLE, "gemini-3.5-flash", "prompt", "base64pdf")
+        text, usage = call_llm(PROVIDER_GOOGLE, "gemini-3.5-flash", "prompt", "base64pdf")
         mock_schema.assert_called_once_with(PROVIDER_GOOGLE)
         mock_gemini.assert_called_once_with("prompt", model="gemini-3.5-flash", pdf_base64="base64pdf", output_schema={"type": "object"})
-        assert result == '{"blocks": []}'
+        assert text == '{"blocks": []}'
+        assert usage["input_tokens"] == 200
+        assert usage["output_tokens"] == 75
+        assert isinstance(usage["duration_ms"], int)
+        assert usage["duration_ms"] >= 0
 
     def test_raises_on_unknown_provider(self):
         with pytest.raises(ValueError, match="No extraction schema"):

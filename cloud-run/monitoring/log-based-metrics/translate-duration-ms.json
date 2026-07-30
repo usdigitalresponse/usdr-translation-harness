@@ -1,0 +1,25 @@
+{
+  "name": "translate_duration_ms",
+  "description": "LLM call duration in milliseconds during translation",
+  "filter": "resource.type=\"cloud_run_revision\" jsonPayload.pipeline_stage=\"translate\" jsonPayload.duration_ms:*",
+  "metricDescriptor": {
+    "metricKind": "DELTA",
+    "valueType": "DISTRIBUTION",
+    "labels": [
+      { "key": "provider", "valueType": "STRING" },
+      { "key": "model", "valueType": "STRING" }
+    ]
+  },
+  "valueExtractor": "EXTRACT(jsonPayload.duration_ms)",
+  "bucketOptions": {
+    "exponentialBuckets": {
+      "numFiniteBuckets": 12,
+      "growthFactor": 2,
+      "scale": 1000
+    }
+  },
+  "labelExtractors": {
+    "provider": "EXTRACT(jsonPayload.provider)",
+    "model": "EXTRACT(jsonPayload.model)"
+  }
+}

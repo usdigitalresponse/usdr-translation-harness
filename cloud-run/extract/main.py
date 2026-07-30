@@ -149,6 +149,17 @@ def validate_extraction(data):
     jsonschema.validate(instance=data, schema=schema)
 
 
+def compute_content_metrics(parsed, extraction_method):
+    blocks = parsed.get("blocks", [])
+    source_text = " ".join(b.get("text", "") for b in blocks)
+    return {
+        "extraction_method": extraction_method,
+        "block_count": len(blocks),
+        "source_word_count": len(source_text.split()),
+        "source_char_count": len(source_text),
+    }
+
+
 def build_output_filename(file_name, model, suffix):
     stem = Path(file_name or "unknown").stem
     safe_model = model.replace("/", "_")
@@ -183,7 +194,7 @@ def save_extraction_results(file_name, model, raw_response, source_file_id):
 
 
 def log_structured(status, provider, model, source_file_id, source_file_name,
-                    drive_file_id="", error=""):
+                    drive_file_id="", error="", usage=None, content_metrics=None):
     entry = {
         "severity": "ERROR" if status == STATUS_FAILED else "INFO",
         "message": f"extraction {status} for {provider}/{model}",
@@ -198,6 +209,13 @@ def log_structured(status, provider, model, source_file_id, source_file_name,
         entry["driveFileId"] = drive_file_id
     if error:
         entry["error"] = error
+    if usage:
+        entry["input_tokens"] = usage.get("input_tokens")
+        entry["output_tokens"] = usage.get("output_tokens")
+        if usage.get("duration_ms") is not None:
+            entry["duration_ms"] = usage["duration_ms"]
+    if content_metrics:
+        entry.update(content_metrics)
     print(json.dumps(entry), flush=True)
 
 
@@ -303,8 +321,10 @@ def run_text_extraction(file_id, file_name, mime_type):
         "provider": PASSTHROUGH_PROVIDER,
     }
 
+    metrics = compute_content_metrics(parsed, "text_passthrough")
     log_structured(STATUS_EXTRACTED, PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
-                   file_id, file_name, drive_file_id=drive_file_id)
+                   file_id, file_name, drive_file_id=drive_file_id,
+                   content_metrics=metrics)
     try:
         log_extraction_result(file_id, file_name, enriched)
     except Exception:
@@ -328,8 +348,10 @@ def run_pdf_extraction(file_id, file_name):
     pdf_base64 = base64.b64encode(pdf_bytes).decode()
     extracted_text = extract_text_with_pdfplumber(io.BytesIO(pdf_bytes))
     if extracted_text:
+        extraction_method = "pdfplumber_plus_vision"
         logger.info("pdfplumber extracted %d characters of text", len(extracted_text))
     else:
+        extraction_method = "vision_only"
         logger.info("No embedded text layer found (image-based/scanned PDF)")
 
     base_prompt = load_doc("EXTRACTION_PROMPT_DOC_ID")
@@ -342,8 +364,10 @@ def run_pdf_extraction(file_id, file_name):
         model = model_config["model"]
         logger.info("Calling %s/%s for extraction", provider, model)
         try:
-            raw_response = call_llm(provider, model, prompt, pdf_base64)
-            logger.info("Received response from %s/%s (%d characters)", provider, model, len(raw_response))
+            raw_response, usage = call_llm(provider, model, prompt, pdf_base64)
+            logger.info("Received response from %s/%s (%d characters, %d in / %d out tokens)",
+                        provider, model, len(raw_response),
+                        usage.get("input_tokens", 0), usage.get("output_tokens", 0))
         except Exception:
             logger.exception("LLM call failed for %s/%s", provider, model)
             log_structured(STATUS_FAILED, provider, model, file_id, file_name,
@@ -354,8 +378,10 @@ def run_pdf_extraction(file_id, file_name):
         if result:
             enriched = {**result, "model": model, "provider": provider}
             extraction_results.append(enriched)
+            metrics = compute_content_metrics(result["parsed"], extraction_method)
             log_structured(STATUS_EXTRACTED, provider, model, file_id, file_name,
-                           drive_file_id=result["driveFileId"])
+                           drive_file_id=result["driveFileId"], usage=usage,
+                           content_metrics=metrics)
             try:
                 log_extraction_result(file_id, file_name, enriched)
             except Exception:

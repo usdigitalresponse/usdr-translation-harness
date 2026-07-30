@@ -73,9 +73,9 @@ async function translate(req, res) {
   const { extractionFileId, sourceFileId, sourceFileName, model, provider } =
     input;
 
-  let prompt;
+  let prompt, promptMetrics;
   try {
-    prompt = await buildTranslationPrompt(extractionFileId);
+    ({ prompt, promptMetrics } = await buildTranslationPrompt(extractionFileId));
   } catch (err) {
     res
       .status(StatusCodes.INTERNAL_SERVER_ERROR)
@@ -109,8 +109,9 @@ async function translate(req, res) {
   const results = await Promise.allSettled(
     activeModels.map(async ({ provider, model }) => {
       console.log(`Calling ${provider} (${model})...`);
-      const translationJson = await callLlm(provider, model, prompt);
-      console.log(`${provider} (${model}) complete, writing output...`);
+      const { text: translationJson, usage } = await callLlm(provider, model, prompt);
+      console.log(`${provider} (${model}) complete (%d in / %d out tokens), writing output...`,
+        usage.input_tokens, usage.output_tokens);
       const outputFileName = `${baseName}_${provider}_${model}.json`;
       let parsed;
       try {
@@ -130,7 +131,7 @@ async function translate(req, res) {
         model,
       };
       const fileId = await writeOutput(outputFileName, outputData);
-      return { provider, model, outputFileId: fileId, outputFileName, translationJson: outputData };
+      return { provider, model, outputFileId: fileId, outputFileName, translationJson: outputData, usage };
     })
   );
 
@@ -148,8 +149,14 @@ async function translate(req, res) {
   });
 
   for (const t of translations) {
-    logStructured(t.status, t.provider, t.model, sourceFileId, sourceFileName,
-      t.error ? { error: t.error } : { driveFileId: t.outputFileId });
+    const extra = t.error
+      ? { error: t.error }
+      : {
+          driveFileId: t.outputFileId,
+          ...(t.usage && { input_tokens: t.usage.input_tokens, output_tokens: t.usage.output_tokens, duration_ms: t.usage.duration_ms }),
+          ...promptMetrics,
+        };
+    logStructured(t.status, t.provider, t.model, sourceFileId, sourceFileName, extra);
     try {
       await logTranslationResult(sourceFileId, sourceFileName, t);
     } catch (err) {
