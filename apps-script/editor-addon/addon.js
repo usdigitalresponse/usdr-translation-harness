@@ -486,12 +486,7 @@ function generateReviewDocx() {
 // are cached in document properties so reopening the sidebar doesn't re-call
 // the model.
 
-var EVAL_RESULT_KEY = "EVAL_RESULT";
 var EVAL_FUNCTION_URL_KEY = "EVAL_QUALITY_FUNCTION_URL";
-
-// Document properties cap values at 9KB; a long evaluation is dropped rather
-// than silently truncated into unparseable JSON.
-var EVAL_PROPERTY_MAX_BYTES = 9000;
 
 /**
  * Read the English/Spanish table into blocks for the eval function.
@@ -521,6 +516,9 @@ function buildEvalPayload_(blocks) {
   var metadata = (json && json.metadata) || {};
   return {
     documentId: DocumentApp.getActiveDocument().getId(),
+    // Fingerprint of what we're evaluating; the function stores it so a later
+    // open can detect the doc changed, without keeping the whole translation.
+    contentHash: hashBlocks_(blocks),
     blocks: blocks,
     metadata: {
       source_language: metadata.source_language || "English",
@@ -626,15 +624,100 @@ function compileEvalData_(evaluations, blocks) {
   };
 }
 
-function getEvalData() {
-  var raw = PropertiesService.getDocumentProperties().getProperty(EVAL_RESULT_KEY);
-  if (!raw) return null;
+/**
+ * Stable fingerprint of the evaluated content, so a cached result can be
+ * told apart from a doc that has since been edited. Order-sensitive over the
+ * English/Spanish pairs; whitespace already trimmed by extractDocBlocks_.
+ */
+function hashBlocks_(blocks) {
+  var joined = blocks
+    .map(function (b) { return b.original_text + "" + b.translated_text; })
+    .join("");
+  var digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.MD5, joined, Utilities.Charset.UTF_8
+  );
+  return digest
+    .map(function (byte) { return ("0" + (byte & 0xff).toString(16)).slice(-2); })
+    .join("");
+}
+
+/**
+ * Find the active doc's most recent eval result. The eval function tags each
+ * combined result file with a public Drive property documentId; query for the
+ * newest and return its file id, or null if the doc has none yet.
+ */
+function findLatestResultFileId_(documentId) {
   try {
-    return JSON.parse(raw);
+    var res = Drive.Files.list({
+      q: "properties has { key='documentId' and value='" + documentId + "' } and trashed = false",
+      orderBy: "createdTime desc",
+      pageSize: 1,
+      fields: "files(id)",
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    var files = (res && res.files) || [];
+    return files.length ? files[0].id : null;
   } catch (e) {
-    Logger.log("Stored evaluation was unparseable: " + e.message);
+    Logger.log("Could not query Drive for latest result: " + e.message);
     return null;
   }
+}
+
+/**
+ * Load and compile a full evaluation from its Drive JSON file. Returns the
+ * sidebar-shaped DATA (with contentHash/timestamp from the file), or null if
+ * the file can't be read.
+ */
+function loadEvalFromLocation_(fileId) {
+  var content;
+  try {
+    content = DriveApp.getFileById(fileId).getBlob().getDataAsString("UTF-8");
+  } catch (e) {
+    Logger.log("Could not read evaluation file " + fileId + ": " + e.message);
+    return null;
+  }
+
+  var parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch (e) {
+    Logger.log("Evaluation file " + fileId + " was unparseable: " + e.message);
+    return null;
+  }
+
+  var succeeded = (parsed.evaluations || []).filter(function (e) { return !e.error; });
+  if (!succeeded.length) return null;
+
+  // The stored file carries a contentHash (for staleness) but not the
+  // translation itself, so the debug panel's source/translated text is empty
+  // on a reload — it's populated only on a fresh in-session run.
+  var data = compileEvalData_(succeeded, []);
+  data.contentHash = parsed.contentHash || "";
+  if (parsed.evaluatedAt) data.timestamp = parsed.evaluatedAt;
+  return data;
+}
+
+/**
+ * Read the active doc's latest evaluation straight from its Drive JSON file —
+ * the single source of truth. No Document Properties involved. Staleness comes
+ * from the blocks recorded in the file vs the doc's current content.
+ */
+function getEvalData() {
+  var documentId = DocumentApp.getActiveDocument().getId();
+  var fileId = findLatestResultFileId_(documentId);
+  if (!fileId) return null;
+
+  var data = loadEvalFromLocation_(fileId);
+  if (!data) return null;
+
+  try {
+    var currentHash = hashBlocks_(extractDocBlocks_());
+    data.stale = data.contentHash ? data.contentHash !== currentHash : false;
+  } catch (e) {
+    data.stale = false;
+  }
+  return data;
 }
 
 function evaluateTranslationFromSidebar() {
@@ -691,29 +774,13 @@ function evaluateTranslationFromSidebar() {
     };
   }
 
+  // The eval function persisted the full result to Drive (tagged with this
+  // doc's id). Return it for immediate rendering; the sidebar reads it back
+  // from Drive on later opens. Nothing is stored in Document Properties.
   var data = compileEvalData_(succeeded, blocks);
-  var serialized = JSON.stringify(data);
-  if (serialized.length > EVAL_PROPERTY_MAX_BYTES) {
-    // Drop the bulky source/translated debug text first.
-    data.source_text = "";
-    data.translated_text = "";
-    serialized = JSON.stringify(data);
-  }
-  if (serialized.length > EVAL_PROPERTY_MAX_BYTES) {
-    // Still too big (e.g. two models' full breakdowns): keep the numeric
-    // per-model scores but drop the verbose raw strengths/issues text.
-    data.models.forEach(function (m) { m.raw = {}; });
-    data.raw_eval_text = "";
-    serialized = JSON.stringify(data);
-  }
-
-  try {
-    PropertiesService.getDocumentProperties().setProperty(EVAL_RESULT_KEY, serialized);
-  } catch (e) {
-    Logger.log("Could not cache evaluation: " + e.message);
-  }
-
-  return { ok: true };
+  data.contentHash = hashBlocks_(blocks);
+  data.stale = false;
+  return data;
 }
 
 // ── Menu and sidebar ─────────────────────────────────────────────────────

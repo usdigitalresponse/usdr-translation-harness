@@ -85,11 +85,41 @@ function loadAddon(globals = {}) {
         get: jest.fn().mockReturnValue({
           properties: { usdr_translation_review: "translation-file-1" },
         }),
+        // Query by documentId property → newest result file id, from a
+        // { documentId: fileId } map. Emulates the eval function's tagging.
+        list: jest.fn((params) => {
+          const byDoc = globals._driveResultsByDoc || {};
+          const m = (params.q || "").match(/value='([^']+)'/);
+          const docId = m ? m[1] : null;
+          const fileId = docId ? byDoc[docId] : null;
+          return { files: fileId ? [{ id: fileId }] : [] };
+        }),
       },
+    },
+    // Map of fileId -> string content, read by DriveApp.getFileById.
+    DriveApp: {
+      getFileById: jest.fn((id) => {
+        const files = globals._driveFiles || {};
+        if (!(id in files)) throw new Error("File not found: " + id);
+        return { getBlob: () => ({ getDataAsString: () => files[id] }) };
+      }),
     },
     UrlFetchApp: { fetch: jest.fn() },
     ScriptApp: { getIdentityToken: jest.fn().mockReturnValue("fake-token") },
     HtmlService: { createHtmlOutputFromFile: jest.fn() },
+    Utilities: {
+      DigestAlgorithm: { MD5: "MD5" },
+      Charset: { UTF_8: "UTF_8" },
+      // Deterministic, content-sensitive stand-in for computeDigest: same text
+      // yields the same bytes, edited text yields different bytes.
+      computeDigest: (_alg, str) => {
+        const out = new Array(16).fill(0);
+        for (let i = 0; i < str.length; i++) {
+          out[i % 16] = (out[i % 16] + str.charCodeAt(i)) & 0xff;
+        }
+        return out;
+      },
+    },
     JSON,
     Date,
     ...globals,
@@ -241,7 +271,7 @@ describe("compileEvalData_ (multiple models)", () => {
     expect(data.models[1].raw.accuracy_and_relevance.score).toBe(2);
   });
 
-  test("caches both models end-to-end through the sidebar entry point", () => {
+  test("returns both models' full detail from the sidebar entry point", () => {
     const s = loadAddon({
       _scriptProps: { EVAL_QUALITY_FUNCTION_URL: "https://eval.example/" },
       UrlFetchApp: {
@@ -249,34 +279,10 @@ describe("compileEvalData_ (multiple models)", () => {
       },
     });
 
-    expect(s.evaluateTranslationFromSidebar().ok).toBe(true);
-    const cached = s.getEvalData();
-    expect(cached.models).toHaveLength(2);
-    expect(cached.scores.weightedOverall).toBe(3.7);
-  });
-
-  test("staged trim keeps per-model numeric scores when breakdown is too large", () => {
-    const big1 = makeScores(4, 4.4, "Low");
-    const big2 = makeScores(2, 3.0, "High");
-    big1.accuracy_and_relevance.issues = "x".repeat(6000);
-    big2.accuracy_and_relevance.issues = "y".repeat(6000);
-    const s = loadAddon({
-      _scriptProps: { EVAL_QUALITY_FUNCTION_URL: "https://eval.example/" },
-      UrlFetchApp: {
-        fetch: jest.fn().mockReturnValue(mockResponse(200, {
-          evaluations: [evaluation("a", "m1", big1), evaluation("b", "m2", big2)],
-        })),
-      },
-    });
-
-    s.evaluateTranslationFromSidebar();
-    const cached = s.getEvalData();
-
-    expect(JSON.stringify(cached).length).toBeLessThanOrEqual(9000);
-    expect(cached.models).toHaveLength(2);
-    expect(cached.scores.weightedOverall).toBe(3.7);       // compiled score survives
-    expect(cached.models[1].scores.weightedOverall).toBe(3.0); // per-model number survives
-    expect(cached.models[0].raw).toEqual({});              // verbose text dropped
+    const returned = s.evaluateTranslationFromSidebar();
+    expect(returned.models).toHaveLength(2);
+    expect(returned.scores.weightedOverall).toBe(3.7);
+    expect(returned.models[0].raw.accuracy_and_relevance.score).toBe(4); // full, untrimmed
   });
 });
 
@@ -286,14 +292,16 @@ describe("evaluateTranslationFromSidebar", () => {
     evaluations: [{ provider: "google", model: "gemini-3.5-flash", scores: makeScores() }],
   };
 
-  test("posts doc blocks and caches the result", () => {
+  test("posts doc blocks and returns the full result (no doc-property storage)", () => {
+    const documentProps = {};
     const s = loadAddon({
+      _documentProps: documentProps,
       _scriptProps: { EVAL_QUALITY_FUNCTION_URL: "https://eval.example/" },
       UrlFetchApp: { fetch: jest.fn().mockReturnValue(mockResponse(200, OK_BODY)) },
     });
 
     const result = s.evaluateTranslationFromSidebar();
-    expect(result.ok).toBe(true);
+    expect(result.scores.weightedOverall).toBe(4.2); // full result returned for render
 
     const [url, options] = s.UrlFetchApp.fetch.mock.calls[0];
     expect(url).toBe("https://eval.example/");
@@ -304,8 +312,8 @@ describe("evaluateTranslationFromSidebar", () => {
     expect(payload.blocks).toHaveLength(2);
     expect(payload.blocks[0].translated_text).toBe("Hola");
 
-    // cached result is what getEvalData reads back
-    expect(s.getEvalData().scores.weightedOverall).toBe(4.2);
+    // Result is persisted to Drive by the function, not to Document Properties.
+    expect(documentProps.EVAL_RESULT).toBeUndefined();
   });
 
   test("reports a config problem when the URL is unset", () => {
@@ -376,33 +384,107 @@ describe("evaluateTranslationFromSidebar", () => {
     expect(result.message).toContain("DNS failure");
   });
 
-  test("drops debug text when the payload would exceed the property cap", () => {
-    const huge = makeScores();
-    huge.accuracy_and_relevance.issues = "x".repeat(9500);
-    const s = loadAddon({
-      _scriptProps: { EVAL_QUALITY_FUNCTION_URL: "https://eval.example/" },
-      UrlFetchApp: {
-        fetch: jest.fn().mockReturnValue(
-          mockResponse(200, { evaluations: [{ provider: "google", scores: huge }] })
-        ),
-      },
-    });
-
-    s.evaluateTranslationFromSidebar();
-    const cached = s.getEvalData();
-
-    expect(cached.source_text).toBe("");
-    expect(cached.scores.weightedOverall).toBe(4.2);
-  });
 });
 
-describe("getEvalData", () => {
-  test("returns null when nothing is cached", () => {
+// Build the combined-file JSON the eval function writes to Drive. It carries a
+// contentHash (for staleness), not the translation itself.
+function combinedFile(evaluations, contentHash) {
+  return JSON.stringify({
+    documentId: "doc-123",
+    evaluatedAt: "2026-07-29T00:00:00Z",
+    contentHash: contentHash || "",
+    evaluations,
+  });
+}
+
+describe("getEvalData (reads latest result from Drive)", () => {
+  test("returns null when the doc has no result file yet", () => {
     expect(loadAddon().getEvalData()).toBeNull();
   });
 
-  test("returns null on unparseable cached JSON", () => {
-    const s = loadAddon({ _documentProps: { EVAL_RESULT: "{not json" } });
-    expect(s.getEvalData()).toBeNull();
+  test("queries Drive by the active doc id", () => {
+    const s = loadAddon({
+      _driveResultsByDoc: { "doc-123": "file-1" },
+      _driveFiles: { "file-1": combinedFile([evaluation("google", "gemini", makeScores())]) },
+    });
+    s.getEvalData();
+
+    const q = s.Drive.Files.list.mock.calls[0][0].q;
+    expect(q).toContain("documentId");
+    expect(q).toContain("doc-123");
+  });
+
+  test("loads and compiles the latest file for the doc", () => {
+    const s = loadAddon({
+      _driveResultsByDoc: { "doc-123": "file-1" },
+      _driveFiles: {
+        "file-1": combinedFile([
+          evaluation("anthropic", "claude-opus-4-8", makeScores(4, 4.4, "Low")),
+          evaluation("google", "gemini-3.5-flash", makeScores(2, 3.0, "High")),
+        ]),
+      },
+    });
+
+    const data = s.getEvalData();
+    expect(data.models).toHaveLength(2);
+    expect(data.scores.weightedOverall).toBe(3.7); // compiled from the Drive file
+    expect(data.timestamp).toBe("2026-07-29T00:00:00Z");
+  });
+
+  test("returns null when the query finds a file that can't be read", () => {
+    const s = loadAddon({
+      _driveResultsByDoc: { "doc-123": "missing" },
+      _driveFiles: {}, // getFileById throws
+    });
+    expect(s.getEvalData()).toBeNull(); // caller re-runs
+  });
+
+  test("nothing is written to Document Properties", () => {
+    const documentProps = {};
+    const s = loadAddon({
+      _documentProps: documentProps,
+      _driveResultsByDoc: { "doc-123": "file-1" },
+      _driveFiles: { "file-1": combinedFile([evaluation("google", "gemini", makeScores())]) },
+    });
+    s.getEvalData();
+    expect(documentProps.EVAL_RESULT).toBeUndefined();
+  });
+});
+
+describe("staleness (stored contentHash vs current doc)", () => {
+  // The hash of the default mock table, as the add-on itself computes it.
+  function hashOfCurrentDoc() {
+    const probe = loadAddon();
+    return probe.hashBlocks_(probe.extractDocBlocks_());
+  }
+
+  test("not stale when the stored hash matches the current doc", () => {
+    const s = loadAddon({
+      _driveResultsByDoc: { "doc-123": "file-1" },
+      _driveFiles: { "file-1": combinedFile([evaluation("google", "gemini", makeScores())], hashOfCurrentDoc()) },
+    });
+    expect(s.getEvalData().stale).toBe(false);
+  });
+
+  test("stale when the stored hash differs from the current doc", () => {
+    const s = loadAddon({
+      _driveResultsByDoc: { "doc-123": "file-1" },
+      _driveFiles: { "file-1": combinedFile([evaluation("google", "gemini", makeScores())], "some-old-hash") },
+    });
+    expect(s.getEvalData().stale).toBe(true);
+  });
+
+  test("sends a contentHash in the eval request", () => {
+    const s = loadAddon({
+      _scriptProps: { EVAL_QUALITY_FUNCTION_URL: "https://eval.example/" },
+      UrlFetchApp: {
+        fetch: jest.fn().mockReturnValue(mockResponse(200, {
+          evaluations: [evaluation("google", "gemini", makeScores())],
+        })),
+      },
+    });
+    s.evaluateTranslationFromSidebar();
+    const payload = JSON.parse(s.UrlFetchApp.fetch.mock.calls[0][1].payload);
+    expect(payload.contentHash).toBeTruthy();
   });
 });

@@ -9,15 +9,15 @@ import pytest
 
 from eval.quality.main import (
     build_eval_prompt, build_result_row, eval_quality, evaluate_with_model,
-    format_translation_for_review, get_active_models, normalize_inline_blocks,
-    parse_eval_response, run_quality_eval, validate_eval,
-    CRITERIA, EVAL_ROLE,
+    format_translation_for_review, get_active_models, log_structured,
+    normalize_inline_blocks, parse_eval_response, run_quality_eval, validate_eval,
+    write_combined_result, CRITERIA, EVAL_ROLE, PIPELINE_STAGE, STATUS_FAILED, STATUS_OK,
 )
 from eval.quality.quality_llm import (
     call_llm, load_eval_schema, PROVIDER_ANTHROPIC, PROVIDER_GOOGLE,
 )
 from eval.quality.quality_loaders import (
-    append_result_row, parse_drive_file_id,
+    append_result_row, parse_drive_file_id, _extract_structural_text,
     EVAL_RESULTS_HEADERS, EVAL_RESULTS_SHEET_NAME,
 )
 
@@ -65,8 +65,10 @@ class TestEvalQualityEndpoint:
         body, status = eval_quality(make_request(None))
         assert status == HTTPStatus.BAD_REQUEST
 
+    @patch("eval.quality.main.append_result_rows")
+    @patch("eval.quality.main.write_combined_result", return_value="loc-xyz")
     @patch("eval.quality.main.run_quality_eval")
-    def test_returns_200_with_evaluations(self, mock_run):
+    def test_returns_200_with_evaluations(self, mock_run, mock_write, mock_rows):
         mock_run.return_value = [{"provider": "anthropic", "model": "claude-opus-4-8",
                                   "weightedOverallScore": 4.2}]
         body, status = eval_quality(make_request({"translationJsonUrl": "abc123"}))
@@ -75,21 +77,26 @@ class TestEvalQualityEndpoint:
         assert status == HTTPStatus.OK
         assert result["status"] == "ok"
         assert result["translationFileId"] == "abc123"
+        assert result["resultLocationId"] == "loc-xyz"
         assert len(result["evaluations"]) == 1
-        mock_run.assert_called_once_with("abc123", None)
+        mock_run.assert_called_once_with("abc123", None, None)
 
+    @patch("eval.quality.main.append_result_rows")
+    @patch("eval.quality.main.write_combined_result", return_value=None)
     @patch("eval.quality.main.run_quality_eval")
-    def test_parses_file_id_out_of_drive_url(self, mock_run):
+    def test_parses_file_id_out_of_drive_url(self, mock_run, mock_write, mock_rows):
         mock_run.return_value = [{"provider": "anthropic", "model": "m", "weightedOverallScore": 1}]
         url = "https://drive.google.com/file/d/FILE_ID_123/view?usp=sharing"
         body, status = eval_quality(make_request({"translationJsonUrl": url}))
 
         assert status == HTTPStatus.OK
         assert json.loads(body)["translationFileId"] == "FILE_ID_123"
-        mock_run.assert_called_once_with("FILE_ID_123", None)
+        mock_run.assert_called_once_with("FILE_ID_123", None, None)
 
+    @patch("eval.quality.main.append_result_rows")
+    @patch("eval.quality.main.write_combined_result", return_value=None)
     @patch("eval.quality.main.run_quality_eval")
-    def test_returns_partial_when_some_models_fail(self, mock_run):
+    def test_returns_partial_when_some_models_fail(self, mock_run, mock_write, mock_rows):
         mock_run.return_value = [
             {"provider": "anthropic", "model": "claude-opus-4-8", "weightedOverallScore": 4.2},
             {"provider": "google", "model": "gemini-3.5-flash", "error": "boom"},
@@ -98,6 +105,14 @@ class TestEvalQualityEndpoint:
 
         assert status == HTTPStatus.OK
         assert json.loads(body)["status"] == "partial"
+
+    @patch("eval.quality.main.append_result_rows")
+    @patch("eval.quality.main.write_combined_result", return_value=None)
+    @patch("eval.quality.main.run_quality_eval")
+    def test_result_location_null_when_written_locally(self, mock_run, mock_write, mock_rows):
+        mock_run.return_value = [{"provider": "google", "model": "m", "weightedOverallScore": 4}]
+        body, _ = eval_quality(make_request({"blocks": [{"original_text": "a", "translated_text": "b"}]}))
+        assert json.loads(body)["resultLocationId"] is None
 
     @patch("eval.quality.main.run_quality_eval")
     def test_returns_500_when_all_models_fail(self, mock_run):
@@ -162,8 +177,9 @@ class TestInlineBlocksEndpoint:
         assert json.loads(body)["translationFileId"] == "doc-1"
 
         # blocks path must bypass the Drive fetch entirely
-        file_id, translation_json = mock_run.call_args[0]
+        file_id, translation_json, document_id = mock_run.call_args[0]
         assert file_id == "doc-1"
+        assert document_id == "doc-1"
         assert translation_json["blocks"][0]["translated_text"] == "Hola"
 
     @patch("eval.quality.main.run_quality_eval")
@@ -210,6 +226,60 @@ class TestRunQualityEvalInlineJson:
         run_quality_eval("doc-1", SAMPLE_TRANSLATION)
 
         mock_load.assert_not_called()
+
+
+class TestWriteCombinedResult:
+    EVALS = [
+        {"provider": "anthropic", "model": "claude-opus-4-8", "scores": {"weighted_overall_score": 4.1}},
+        {"provider": "google", "model": "gemini-3.5-flash", "scores": {"weighted_overall_score": 4.3}},
+    ]
+
+    @patch("eval.quality.main.write_eval_result", return_value="drive-file-1")
+    def test_stores_hash_and_evaluations_not_the_translation(self, mock_write):
+        location = write_combined_result("doc-1", "doc-1", "hash-abc", self.EVALS)
+
+        assert location == "drive-file-1"
+        filename, payload, properties = mock_write.call_args[0]
+        assert filename.endswith("_combined_eval.json")
+        assert payload["evaluations"] == self.EVALS
+        assert payload["contentHash"] == "hash-abc"
+        assert "blocks" not in payload  # translation is not duplicated into the result
+        assert payload["documentId"] == "doc-1"
+        # Tagged so the add-on can query Drive for this doc's latest result.
+        assert properties["documentId"] == "doc-1"
+
+    @patch("eval.quality.main.write_eval_result", return_value=None)
+    def test_returns_none_when_written_locally(self, mock_write):
+        assert write_combined_result("doc-1", None, "h", self.EVALS) is None
+
+    @patch("eval.quality.main.write_eval_result", return_value=None)
+    def test_no_properties_tag_without_a_document_id(self, mock_write):
+        write_combined_result("inline", None, "h", self.EVALS)
+        assert mock_write.call_args[0][2] is None  # properties
+
+
+class TestExtractStructuralText:
+    def _para(self, s):
+        return {"paragraph": {"elements": [{"textRun": {"content": s}}]}}
+
+    def test_reads_paragraph_text(self):
+        assert _extract_structural_text([self._para("Hello "), self._para("world")]) == "Hello world"
+
+    def test_reads_table_cell_text_that_paragraphs_only_would_drop(self):
+        table = {"table": {"tableRows": [
+            {"tableCells": [
+                {"content": [self._para("Score 5")]},
+                {"content": [self._para("Excellent")]},
+            ]},
+        ]}}
+        out = _extract_structural_text([self._para("Rubric\n"), table])
+        assert "Rubric" in out
+        assert "Score 5" in out and "Excellent" in out  # table content preserved
+
+    def test_recurses_into_nested_tables(self):
+        inner = {"table": {"tableRows": [{"tableCells": [{"content": [self._para("deep")]}]}]}}
+        outer = {"table": {"tableRows": [{"tableCells": [{"content": [inner]}]}]}}
+        assert "deep" in _extract_structural_text([outer])
 
 
 class TestParseDriveFileId:
@@ -450,32 +520,52 @@ class TestBuildResultRow:
 class TestEvaluateWithModel:
     MODEL_CONFIG = {"role": "eval", "provider": "anthropic", "model": "claude-opus-4-8", "active": True}
 
-    @patch("eval.quality.main.append_result_row")
-    @patch("eval.quality.main.write_eval_result", return_value="result-file-id")
     @patch("eval.quality.main.call_llm")
-    def test_returns_summary_and_persists_result(self, mock_llm, mock_write, mock_append):
-        mock_llm.return_value = json.dumps(make_scores())
+    def test_returns_summary_with_full_scores(self, mock_llm):
+        mock_llm.return_value = (json.dumps(make_scores()), {"input_tokens": 10, "output_tokens": 20})
 
-        result = evaluate_with_model("translation-file-id", self.MODEL_CONFIG, "PROMPT")
+        result = evaluate_with_model(self.MODEL_CONFIG, "PROMPT")
 
         mock_llm.assert_called_once_with("anthropic", "claude-opus-4-8", "PROMPT")
         assert result["provider"] == "anthropic"
         assert result["weightedOverallScore"] == 4.2
         assert result["overallPriorityRating"] == "Medium"
-        assert result["resultFileId"] == "result-file-id"
+        # Full per-criterion detail is carried for the combined file / sidebar.
+        assert result["scores"]["accuracy_and_relevance"]["score"] == 4
 
-        written = mock_write.call_args[0][1]
-        assert written["translationFileId"] == "translation-file-id"
-        assert written["scores"]["weighted_overall_score"] == 4.2
-        mock_append.assert_called_once()
+    @patch("eval.quality.main.write_eval_result")
+    @patch("eval.quality.main.append_result_row")
+    @patch("eval.quality.main.call_llm")
+    def test_does_not_write_a_per_model_file_or_row(self, mock_llm, mock_append, mock_write):
+        mock_llm.return_value = (json.dumps(make_scores()), {"input_tokens": 10, "output_tokens": 20})
+
+        evaluate_with_model(self.MODEL_CONFIG, "PROMPT")
+
+        # Per-model persistence moved out; the combined file + rows happen later.
+        mock_write.assert_not_called()
+        mock_append.assert_not_called()
+
+
+class TestAppendResultRows:
+    EVALS = [
+        {"provider": "anthropic", "model": "claude-opus-4-8", "scores": make_scores(4, 4.1, "Low")},
+        {"provider": "google", "model": "gemini-3.5-flash", "scores": make_scores(3, 3.2, "High")},
+    ]
+
+    @patch("eval.quality.main.append_result_row")
+    def test_appends_one_row_per_model_linking_the_combined_file(self, mock_append):
+        from eval.quality.main import append_result_rows
+        append_result_rows("doc-1", self.EVALS, "combined-loc")
+
+        assert mock_append.call_count == 2
+        rows = [c.args[0] for c in mock_append.call_args_list]
+        assert rows[0][3] == "claude-opus-4-8"
+        assert all(r[11] == "combined-loc" for r in rows)  # all point at combined
 
     @patch("eval.quality.main.append_result_row", side_effect=RuntimeError("sheet down"))
-    @patch("eval.quality.main.write_eval_result", return_value=None)
-    @patch("eval.quality.main.call_llm")
-    def test_sheet_failure_does_not_fail_the_eval(self, mock_llm, mock_write, mock_append):
-        mock_llm.return_value = json.dumps(make_scores())
-        result = evaluate_with_model("translation-file-id", self.MODEL_CONFIG, "PROMPT")
-        assert result["weightedOverallScore"] == 4.2
+    def test_row_failure_does_not_raise(self, mock_append):
+        from eval.quality.main import append_result_rows
+        append_result_rows("doc-1", self.EVALS, None)  # must not propagate
 
 
 class TestRunQualityEval:
@@ -490,13 +580,33 @@ class TestRunQualityEval:
     @patch("eval.quality.main.load_config")
     def test_runs_every_active_model(self, mock_config, mock_translation, mock_doc, mock_eval):
         mock_config.return_value = self.CONFIG
-        mock_eval.side_effect = lambda file_id, m, prompt: {"provider": m["provider"], "model": m["model"]}
+        mock_eval.side_effect = lambda m, prompt: {"provider": m["provider"], "model": m["model"]}
 
         results = run_quality_eval("file-1")
 
         assert len(results) == 2
         assert mock_eval.call_count == 2
         assert mock_doc.call_args[0][0] == "EVALUATION_RUBRIC_DOC_ID"
+
+    @patch("eval.quality.main.evaluate_with_model")
+    @patch("eval.quality.main.load_doc", return_value="RUBRIC")
+    @patch("eval.quality.main.load_translation_json", return_value=SAMPLE_TRANSLATION)
+    @patch("eval.quality.main.load_config")
+    def test_preserves_model_order_despite_completion_order(self, mock_config, mock_translation, mock_doc, mock_eval):
+        import time
+        mock_config.return_value = self.CONFIG
+
+        def slow_first(m, prompt):
+            # Force the first model (claude) to finish AFTER the second, so a
+            # naive append would reorder — the indexed placement must not.
+            if m["provider"] == "anthropic":
+                time.sleep(0.15)
+            return {"provider": m["provider"], "model": m["model"]}
+
+        mock_eval.side_effect = slow_first
+        results = run_quality_eval("file-1")
+
+        assert [r["provider"] for r in results] == ["anthropic", "google"]
 
     @patch("eval.quality.main.evaluate_with_model", side_effect=RuntimeError("api down"))
     @patch("eval.quality.main.load_doc", return_value="RUBRIC")
@@ -516,26 +626,61 @@ class TestRunQualityEval:
 
 
 class TestCallLlm:
-    @patch("eval.quality.quality_llm.call_claude", return_value="{}")
+    @patch("eval.quality.quality_llm.call_claude", return_value=("{}", {"input_tokens": 1}))
     def test_dispatches_to_claude_with_claude_schema(self, mock_claude):
-        result = call_llm(PROVIDER_ANTHROPIC, "claude-opus-4-8", "prompt")
+        text, usage = call_llm(PROVIDER_ANTHROPIC, "claude-opus-4-8", "prompt")
         schema = mock_claude.call_args[1]["output_schema"]
 
-        assert result == "{}"
+        assert text == "{}"
+        assert usage == {"input_tokens": 1}
         assert mock_claude.call_args[1]["model"] == "claude-opus-4-8"
         assert schema["additionalProperties"] is False
 
-    @patch("eval.quality.quality_llm.call_gemini", return_value="{}")
+    @patch("eval.quality.quality_llm.call_gemini", return_value=("{}", {"output_tokens": 2}))
     def test_dispatches_to_gemini_with_gemini_schema(self, mock_gemini):
-        result = call_llm(PROVIDER_GOOGLE, "gemini-3.5-flash", "prompt")
+        text, usage = call_llm(PROVIDER_GOOGLE, "gemini-3.5-flash", "prompt")
         schema = mock_gemini.call_args[1]["output_schema"]
 
-        assert result == "{}"
+        assert text == "{}"
+        assert usage == {"output_tokens": 2}
         assert "additionalProperties" not in schema
 
     def test_raises_on_unknown_provider(self):
         with pytest.raises(ValueError, match="No eval schema"):
             call_llm("openai", "gpt-4", "prompt")
+
+
+class TestLogStructured:
+    def _emit(self, capsys, *args, **kwargs):
+        log_structured(*args, **kwargs)
+        return json.loads(capsys.readouterr().out.strip())
+
+    def test_success_line_carries_metrics_for_dashboards(self, capsys):
+        entry = self._emit(
+            capsys, STATUS_OK, "anthropic", "claude-opus-4-8", "file-1",
+            document_id="doc-1", scores=make_scores(4.2, "Medium"),
+            usage={"input_tokens": 100, "output_tokens": 50}, duration_ms=1234,
+        )
+        assert entry["severity"] == "INFO"
+        assert entry["pipeline_stage"] == PIPELINE_STAGE
+        assert entry["status"] == STATUS_OK
+        assert entry["provider"] == "anthropic"
+        assert entry["translationFileId"] == "file-1"
+        assert entry["documentId"] == "doc-1"
+        assert entry["weightedOverallScore"] == 4.2
+        assert entry["overallPriorityRating"] == "Medium"
+        assert entry["input_tokens"] == 100
+        assert entry["output_tokens"] == 50
+        assert entry["duration_ms"] == 1234
+
+    def test_failure_line_is_error_severity_with_error_text(self, capsys):
+        entry = self._emit(capsys, STATUS_FAILED, "google", "gemini-3.5-flash", "file-1",
+                           error="api down")
+        assert entry["severity"] == "ERROR"
+        assert entry["error"] == "api down"
+        # Absent optional fields are omitted rather than logged as null.
+        assert "weightedOverallScore" not in entry
+        assert "duration_ms" not in entry
 
 
 class TestLoadEvalSchema:

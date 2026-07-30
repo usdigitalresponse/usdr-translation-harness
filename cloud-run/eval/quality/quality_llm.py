@@ -20,6 +20,9 @@ PROVIDER_ANTHROPIC = "anthropic"
 PROVIDER_GOOGLE = "google"
 
 DEFAULT_MAX_TOKENS = 16384
+# Cap each request so a stalled LLM call surfaces as an error the eval run can
+# record, rather than hanging the (add-on-blocking) pipeline indefinitely.
+LLM_TIMEOUT_SECONDS = 240
 
 SCHEMA_DIR = Path(__file__).resolve().parent
 SCHEMA_PATHS = {
@@ -28,8 +31,28 @@ SCHEMA_PATHS = {
 }
 
 
+def _claude_usage(response):
+    usage = getattr(response, "usage", None)
+    if not usage:
+        return {}
+    return {
+        "input_tokens": getattr(usage, "input_tokens", None),
+        "output_tokens": getattr(usage, "output_tokens", None),
+    }
+
+
+def _gemini_usage(response):
+    meta = getattr(response, "usage_metadata", None)
+    if not meta:
+        return {}
+    return {
+        "input_tokens": getattr(meta, "prompt_token_count", None),
+        "output_tokens": getattr(meta, "candidates_token_count", None),
+    }
+
+
 def call_claude(prompt, *, model="claude-opus-4-8", max_tokens=DEFAULT_MAX_TOKENS, output_schema=None):
-    client = anthropic.Anthropic()
+    client = anthropic.Anthropic(timeout=LLM_TIMEOUT_SECONDS)
 
     kwargs = {
         "model": model,
@@ -45,11 +68,15 @@ def call_claude(prompt, *, model="claude-opus-4-8", max_tokens=DEFAULT_MAX_TOKEN
         }
 
     response = client.messages.create(**kwargs)
-    return response.content[0].text
+    return response.content[0].text, _claude_usage(response)
 
 
 def call_gemini(prompt, *, model="gemini-3.5-flash", output_schema=None):
-    client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+    # google-genai HttpOptions.timeout is in milliseconds.
+    client = genai.Client(
+        api_key=os.environ.get("GEMINI_API_KEY"),
+        http_options=genai.types.HttpOptions(timeout=LLM_TIMEOUT_SECONDS * 1000),
+    )
 
     kwargs = {
         "model": model,
@@ -62,7 +89,7 @@ def call_gemini(prompt, *, model="gemini-3.5-flash", output_schema=None):
         )
 
     response = client.models.generate_content(**kwargs)
-    return response.text
+    return response.text, _gemini_usage(response)
 
 
 def load_eval_schema(provider):
@@ -73,6 +100,11 @@ def load_eval_schema(provider):
 
 
 def call_llm(provider, model, prompt):
+    """Dispatch to the provider client, returning (text, usage).
+
+    usage is a dict with input_tokens/output_tokens (or empty when the
+    provider response carries no token counts).
+    """
     output_schema = load_eval_schema(provider)
     if provider == PROVIDER_ANTHROPIC:
         return call_claude(prompt, model=model, output_schema=output_schema)

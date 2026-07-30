@@ -102,15 +102,29 @@ def load_doc(env_var, local_path_env_var=None):
     credentials, _ = google.auth.default()
     service = build("docs", DOCS_API_VERSION, credentials=credentials)
     doc = service.documents().get(documentId=doc_id).execute()
+    return _extract_structural_text(doc.get("body", {}).get("content", []))
+
+
+def _extract_structural_text(elements):
+    """Concatenate text from a Docs API structural-element list.
+
+    Handles paragraphs and tables (recursing into cells), so rubric scales and
+    other content authored in tables aren't silently dropped.
+    """
     text = ""
-    for element in doc.get("body", {}).get("content", []):
+    for element in elements:
         paragraph = element.get("paragraph")
-        if not paragraph:
+        if paragraph:
+            for run in paragraph.get("elements", []):
+                text_run = run.get("textRun")
+                if text_run:
+                    text += text_run["content"]
             continue
-        for run in paragraph.get("elements", []):
-            text_run = run.get("textRun")
-            if text_run:
-                text += text_run["content"]
+        table = element.get("table")
+        if table:
+            for row in table.get("tableRows", []):
+                for cell in row.get("tableCells", []):
+                    text += _extract_structural_text(cell.get("content", []))
     return text
 
 
@@ -174,15 +188,20 @@ def load_translation_json(file_id):
     return json.loads(content)
 
 
-def _write_to_drive(folder_id, filename, data):
+def _write_to_drive(folder_id, filename, data, properties=None):
     credentials, _ = google.auth.default()
     service = build("drive", DRIVE_API_VERSION, credentials=credentials)
     content = data if isinstance(data, str) else json.dumps(data, indent=2, ensure_ascii=False)
     media = MediaIoBaseUpload(
         io.BytesIO(content.encode("utf-8")), mimetype="application/json"
     )
+    body = {"name": filename, "parents": [folder_id]}
+    if properties:
+        # Public Drive properties (not appProperties) so the editor add-on — a
+        # different OAuth client — can query them to find a doc's latest result.
+        body["properties"] = properties
     created = service.files().create(
-        body={"name": filename, "parents": [folder_id]},
+        body=body,
         media_body=media,
         fields="id",
         supportsAllDrives=True,
@@ -199,10 +218,10 @@ def _write_to_local(filename, data):
     logger.info("Wrote %s to %s", filename, out_dir)
 
 
-def write_eval_result(filename, data):
+def write_eval_result(filename, data, properties=None):
     folder_id = os.environ.get("DRIVE_EVAL_RESULTS_FOLDER_ID")
     if folder_id:
-        return _write_to_drive(folder_id, filename, data)
+        return _write_to_drive(folder_id, filename, data, properties)
     _write_to_local(filename, data)
     return None
 

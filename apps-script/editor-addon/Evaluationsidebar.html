@@ -32,6 +32,8 @@
     }
     .refresh-icon-btn:hover { background:var(--line-soft); color:var(--ink); }
     .meta { margin-top:6px; font-size:11px; color:var(--ink-faint); }
+    .stale-note { margin:0 0 12px; padding:8px 10px; font-size:12px; line-height:1.4; border-radius:6px;
+      color:var(--yellow-ink); background:var(--yellow-bg); border:1px solid var(--yellow-bdr); }
 
     /* Rubric link row + manage menu */
     .rubric-row { margin-top:8px; display:flex; align-items:center; gap:10px; position:relative; }
@@ -471,6 +473,9 @@
       var recs      = extractList_(node, ['recommendations','recommendation','suggestions','fixes']);
       var comment   = rawComment(node);
       var hasLists  = strengths.length || issues.length || recs.length;
+      var emptyMsg = DATA.detailTrimmed
+        ? 'Detail too large to cache — click &#8635; to re-run and view.'
+        : 'No additional detail provided.';
       var inner = hasLists
         ? '<div class="subdim-toggles">'
             + subdimToggle('Strengths', strengths)
@@ -478,7 +483,7 @@
             + subdimToggle('Recommendations', recs)
           + '</div>'
         : (comment ? '<div class="dim-comment">' + esc(comment) + '</div>'
-                   : '<div class="dim-comment empty-val">No additional detail provided.</div>');
+                   : '<div class="dim-comment empty-val">' + emptyMsg + '</div>');
       var mScore = m.scores[d.key];
       var head = multi
         ? '<div class="model-detail-head"><span class="bd-name">' + esc(modelLabel(m)) + '</span>'
@@ -523,7 +528,12 @@
     document.getElementById('topBar').innerHTML = topHtml;
     attachTopBarListeners();
 
-    var html = '<section>';
+    var html = '';
+    if (DATA.stale) {
+      html += '<div class="stale-note">This document has changed since it was last evaluated. '
+        + 'Click the &#8635; refresh button above to re-evaluate.</div>';
+    }
+    html += '<section>';
     if (fallback) {
       html += '<div class="empty-sec">The model didn\'t return parseable JSON for this evaluation — see the full response below.</div>';
     } else {
@@ -601,7 +611,8 @@
             + esc(problemLabel(res.problem)) + '</strong>' + esc(res.message || '') + '</div>';
           return;
         }
-        reload();
+        // Render the freshly returned result directly — full detail, no trim.
+        onData(res);
       })
       .withFailureHandler(function(err) {
         document.getElementById('content').innerHTML = '<div class="stage"><strong>Evaluation failed</strong>'
@@ -625,9 +636,18 @@
       })
       .withFailureHandler(function () { /* keep default rubric link silently */ })
       .getRubricUrl();
-    // Opening the panel (menu → Evaluate Translation) kicks off a fresh
-    // evaluation. The ↻ button re-runs it while the panel stays open.
-    runRefreshEvaluation();
+
+    // Show the previous evaluation if one exists; only run automatically the
+    // first time (nothing cached). The ↻ button re-runs on demand, and a
+    // stale banner appears when the doc changed since the cached result.
+    document.getElementById('content').innerHTML = '<div class="stage">Loading evaluation…</div>';
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res) { onData(res); }
+        else { runRefreshEvaluation(); }
+      })
+      .withFailureHandler(onErr)
+      .getEvalData();
   }
 
   boot();

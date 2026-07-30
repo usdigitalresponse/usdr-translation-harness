@@ -67,12 +67,6 @@ function testEvaluate() {
   var result = evaluateTranslationFromSidebar();
   Logger.log("Result: %s", JSON.stringify(result));
   if (result && result.ok) {
-    Logger.log("Cached eval data: %s", JSON.stringify(getEvalData(), null, 2));
+    Logger.log("Eval data: %s", JSON.stringify(getEvalData(), null, 2));
   }
-}
-
-/** Clear the cached evaluation so the sidebar shows its empty state again. */
-function clearCachedEval() {
-  PropertiesService.getDocumentProperties().deleteProperty(EVAL_RESULT_KEY);
-  Logger.log("Cached evaluation cleared.");
 }
