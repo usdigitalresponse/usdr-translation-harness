@@ -32,6 +32,11 @@ jest.mock("../translate/doc-writer.js", () => ({
   createTranslationDoc: jest.fn().mockResolvedValue("mock-doc-id"),
 }));
 
+jest.mock("../translate/notifier.js", () => ({
+  notifyDocCreated: jest.fn().mockResolvedValue(),
+  notifyDocFailed: jest.fn().mockResolvedValue(),
+}));
+
 const { createTranslationDoc } = require("../translate/doc-writer.js");
 
 const {
