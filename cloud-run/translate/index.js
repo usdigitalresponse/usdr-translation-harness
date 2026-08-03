@@ -5,6 +5,8 @@ const { buildTranslationPrompt } = require("./prompt-assembly");
 const { callLlm } = require("./llm");
 const { loadConfig, writeOutput, logTranslationResult, stripExtension } = require("./loaders");
 const { createTranslationDoc } = require("./doc-writer");
+const { withRetry } = require("./retry");
+const { notifyDocCreated, notifyDocFailed } = require("./notifier");
 
 const REQUIRED_FIELDS = ["extractionFileId", "sourceFileName"];
 const TRANSLATE_ROLE = "translate";
@@ -181,20 +183,24 @@ async function translate(req, res) {
   const outputFolderId = process.env.DRIVE_TRANSLATION_DOC_FOLDER_ID;
   for (const t of succeeded) {
     try {
-      const docId = await createTranslationDoc({
-        translationJson: t.translationJson,
-        translationFileId: t.outputFileId,
-        sourceFileName,
-        provider: t.provider,
-        model: t.model,
-        stagingFolderId,
-        outputFolderId,
-      });
+      const docId = await withRetry(() =>
+        createTranslationDoc({
+          translationJson: t.translationJson,
+          translationFileId: t.outputFileId,
+          sourceFileName,
+          provider: t.provider,
+          model: t.model,
+          stagingFolderId,
+          outputFolderId,
+        })
+      );
       t.docId = docId;
       console.log(`Created translation doc ${docId} for ${t.provider}/${t.model}`);
+      await notifyDocCreated({ sourceFileName, provider: t.provider, model: t.model, docId });
     } catch (err) {
       console.error(`Failed to create doc for ${t.provider}/${t.model}:`, err.message);
       t.docError = err.message;
+      await notifyDocFailed({ sourceFileName, provider: t.provider, model: t.model, error: err.message });
     }
   }
 
