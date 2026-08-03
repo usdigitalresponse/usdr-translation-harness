@@ -46,7 +46,7 @@ const AUTH_SCOPES = [
  * Called by the editor add-on's submitReview() via UrlFetchApp.
  */
 async function captureFeedback(req, res) {
-  const { documentId, sidebarChecks, sidebarOrphans, sidebarOpenedAt } = req.body;
+  const { documentId, reviewerEmail, sidebarChecks, sidebarOrphans, sidebarOpenedAt } = req.body;
 
   if (!documentId) {
     res.status(StatusCodes.BAD_REQUEST).json({ error: "Provide documentId" });
@@ -111,6 +111,7 @@ async function captureFeedback(req, res) {
   }, {
     documentId,
     translationFileId,
+    reviewerEmail: reviewerEmail || "",
   });
 
   // Step 6: Compute quality metrics
