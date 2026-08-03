@@ -89,6 +89,8 @@ function extractDecisions(diffs, translationJson, sidebar = {}, docIds = {}) {
             tab,
             documentId: docIds.documentId || "document ID not available",
             translationFileId: docIds.translationFileId || "translation file ID not available",
+            reviewerEmail: docIds.reviewerEmail || "",
+            sourceText: aiBlock.translated_text || "",
           });
           i += 2;
           continue;

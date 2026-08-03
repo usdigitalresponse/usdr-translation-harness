@@ -589,6 +589,7 @@ function submitReview() {
     headers: { Authorization: "Bearer " + token },
     payload: JSON.stringify({
       documentId: doc.getId(),
+      reviewerEmail: Session.getActiveUser().getEmail(),
       sidebarChecks: sidebarChecks,
       sidebarOrphans: sidebarOrphans,
       sidebarOpenedAt: sidebarOpenedAt,
