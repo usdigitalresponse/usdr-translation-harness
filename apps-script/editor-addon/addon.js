@@ -113,6 +113,7 @@ function getSidebarData() {
       back_translation_of_key_phrases: sections.back_translation_of_key_phrases,
       glossary_cross_check: sections.glossary_cross_check,
       metadata: json.metadata || null,
+      sourceFileId: json.sourceFileId || null,
     },
     checks: rawChecks ? JSON.parse(rawChecks) : {},
   };
@@ -521,23 +522,21 @@ function showReviewPanel() {
   DocumentApp.getUi().showSidebar(html);
 }
 
-// Temporary — returns the submit payload as a string for sidebar debug button.
-// Remove before release.
-function debugGetSubmitPayload() {
-  var doc = DocumentApp.getActiveDocument();
-  var props = PropertiesService.getDocumentProperties();
-
-  var rawChecks = props.getProperty(SIDEBAR_CHECKS_KEY);
-  var sidebarChecks = rawChecks ? JSON.parse(rawChecks) : {};
-  var sidebarOrphans = checkItemsExist();
-  var sidebarOpenedAt = props.getProperty(SIDEBAR_OPENED_AT_KEY) || null;
-
-  return JSON.stringify({
-    documentId: doc.getId(),
-    sidebarChecks: sidebarChecks,
-    sidebarOrphans: sidebarOrphans,
-    sidebarOpenedAt: sidebarOpenedAt,
-  }, null, 2);
+/**
+ * Open a modal dialog showing a Google Drive preview of the source file.
+ * @param {string} fileId - Drive file ID of the source document
+ */
+function showSourcePreview(fileId) {
+  var file = Drive.Files.get(fileId, { fields: "name", supportsAllDrives: true });
+  var title = file.name || "Source Document";
+  var previewUrl = "https://drive.google.com/file/d/" + fileId + "/preview";
+  var html = HtmlService.createHtmlOutput(
+    '<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}</style>'
+    + '<iframe src="' + previewUrl + '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;"></iframe>'
+  )
+    .setWidth(600)
+    .setHeight(500);
+  DocumentApp.getUi().showModelessDialog(html, title);
 }
 
 /**
