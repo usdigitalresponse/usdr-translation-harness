@@ -12,15 +12,16 @@
   "exceptionLogging": "STACKDRIVER",
   "runtimeVersion": "V8",
   "oauthScopes": [
-    "https://www.googleapis.com/auth/documents.currentonly",
+    "https://www.googleapis.com/auth/documents",
     "https://www.googleapis.com/auth/script.container.ui",
-    "https://www.googleapis.com/auth/drive.readonly",
+    "https://www.googleapis.com/auth/drive",
     "https://www.googleapis.com/auth/script.external_request",
     "openid",
     "https://www.googleapis.com/auth/userinfo.email"
   ],
   "urlFetchWhitelist": [
-    "https://capture-feedback-<GCP_PROJECT_NUMBER>.us-central1.run.app/"
+    "https://capture-feedback-<GCP_PROJECT_NUMBER>.us-central1.run.app/",
+    "https://www.googleapis.com/drive/v3/files/"
   ],
   "addOns": {
     "common": {

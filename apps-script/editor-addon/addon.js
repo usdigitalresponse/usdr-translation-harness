@@ -10,6 +10,7 @@ var DOC_PROPERTY_KEY = "usdr_translation_review";
 var SIDEBAR_CHECKS_KEY = "SIDEBAR_CHECKS";
 var SIDEBAR_OPENED_AT_KEY = "SIDEBAR_OPENED_AT";
 var HIGHLIGHT_COLOR = "#FFD700";
+var DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 // ── Drive property access ────────────────────────────────────────────────
 
@@ -469,7 +470,80 @@ function regenerateSuggestions() {
 }
 
 function generateReviewDocx() {
-  return null;
+  var result = getSidebarData();
+  if (!result || !result.data) return null;
+  var data = result.data;
+
+  var docName = DocumentApp.getActiveDocument().getName();
+  var tempDoc = DocumentApp.create("AI Suggestions — " + docName);
+  var body = tempDoc.getBody();
+
+  var meta = data.metadata || {};
+  if (meta.source_language || meta.target_language) {
+    body.appendParagraph(
+      (meta.source_language || "?") + " → " + (meta.target_language || "?")
+    ).setHeading(DocumentApp.ParagraphHeading.SUBTITLE);
+  }
+  if (meta.overall_notes) {
+    body.appendParagraph(meta.overall_notes);
+  }
+
+  appendSection_(body, "Alternative Translations", data.alt_translations,
+    ["Original Phrase", "Primary Translation", "Alternative", "Rationale"],
+    ["original_phrase", "primary_translation", "alt_translation", "rationale"]);
+
+  appendSection_(body, "Terms Flagged for Clarification", data.terms_flagged_for_clarification,
+    ["Original Phrase", "Translation", "Clarification Needed"],
+    ["original_phrase", "translation", "needed_clarification"]);
+
+  appendSection_(body, "Back Translation of Key Phrases", data.back_translation_of_key_phrases,
+    ["Original Phrase", "Translation", "Back Translation"],
+    ["original_phrase", "translation", "back_translation"]);
+
+  appendSection_(body, "Glossary Cross-Check", data.glossary_cross_check,
+    ["Term", "Translation", "Status", "Note"],
+    ["term", "translation", "status", "note"]);
+
+  tempDoc.saveAndClose();
+
+  var tempId = tempDoc.getId();
+  try {
+    var exportUrl = "https://www.googleapis.com/drive/v3/files/" +
+      tempId + "/export?mimeType=" + encodeURIComponent(DOCX_MIME);
+    var response = UrlFetchApp.fetch(exportUrl, {
+      headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() },
+    });
+    var base64 = Utilities.base64Encode(response.getBlob().getBytes());
+    Drive.Files.update({trashed: true}, tempId);
+    return base64;
+  } catch (e) {
+    Logger.log("DOCX export failed: " + e.message);
+    try { Drive.Files.update({trashed: true}, tempId); } catch (ignored) {}
+    return null;
+  }
+}
+
+function appendSection_(body, title, items, headers, fields) {
+  if (!items || items.length === 0) return;
+
+  body.appendParagraph(title)
+    .setHeading(DocumentApp.ParagraphHeading.HEADING2);
+
+  var rows = [headers];
+  for (var i = 0; i < items.length; i++) {
+    var row = [];
+    for (var f = 0; f < fields.length; f++) {
+      var val = items[i][fields[f]];
+      row.push(val != null ? String(val) : "");
+    }
+    rows.push(row);
+  }
+  var table = body.appendTable(rows);
+
+  var headerRow = table.getRow(0);
+  for (var h = 0; h < headerRow.getNumCells(); h++) {
+    headerRow.getCell(h).editAsText().setBold(true);
+  }
 }
 
 function getEvalData() {

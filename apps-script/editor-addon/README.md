@@ -74,9 +74,9 @@ Selecting "Submit Review" from the menu:
 **Exception logging:** `STACKDRIVER` routes Apps Script errors to Cloud Logging in the linked GCP project (viewable in GCP Console -> Logging -> Log Explorer). This requires the Apps Script project to be linked to a GCP project under Project Settings -> Google Cloud Platform Project.
 
 **OAuth scopes:**
-- `auth/documents.currentonly` — read the currently open doc and its body/table
+- `auth/documents` — read the currently open doc; create temp docs for DOCX export
 - `auth/script.container.ui` — add menus and show the sidebar
-- `auth/drive.readonly` — read Drive file properties and fetch translation JSON
+- `auth/drive` — read Drive file properties, fetch translation JSON, export and trash temp docs
 - `auth/script.external_request` — call the Capture Feedback Cloud Run function
 - `openid` + `auth/userinfo.email` — generate an identity token for Cloud Run IAM authentication
 
