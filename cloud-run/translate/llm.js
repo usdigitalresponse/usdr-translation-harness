@@ -15,7 +15,7 @@ const SCHEMA_PATHS = {
   [PROVIDER_GOOGLE]: path.join(SCHEMA_DIR, "translation-schema-gemini.json"),
 };
 
-const DEFAULT_MAX_TOKENS = 16384;
+const DEFAULT_MAX_TOKENS = 65536;
 const LLM_TIMEOUT_MS = 240_000;
 
 function loadTranslationSchema(provider) {
@@ -48,7 +48,7 @@ async function callClaude(prompt, { model, maxTokens = DEFAULT_MAX_TOKENS, outpu
     input_tokens: response.usage.input_tokens,
     output_tokens: response.usage.output_tokens,
   };
-  return { text: response.content[0].text, usage };
+  return { text: response.content[0].text, usage, stop_reason: response.stop_reason };
 }
 
 async function callGemini(prompt, { model, outputSchema } = {}) {
@@ -71,7 +71,8 @@ async function callGemini(prompt, { model, outputSchema } = {}) {
     input_tokens: meta.promptTokenCount,
     output_tokens: meta.candidatesTokenCount,
   };
-  return { text: response.text, usage };
+  const finishReason = response.candidates?.[0]?.finishReason;
+  return { text: response.text, usage, stop_reason: finishReason };
 }
 
 async function callLlm(provider, model, prompt) {
