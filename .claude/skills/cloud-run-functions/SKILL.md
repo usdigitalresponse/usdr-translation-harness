@@ -1,9 +1,9 @@
 ---
 name: cloud-run-functions
-description: Set up, run, test, and deploy Cloud Run functions for local development. Handles dependency installation and Functions Framework serving. Use when asked to run, test, or set up Cloud Run functions.
+description: Set up, run, test, and deploy Cloud Run services for local development and production. Handles dependency installation, Functions Framework serving, and gcloud run deploy. Use when asked to run, test, deploy, or set up Cloud Run services.
 ---
 
-# Cloud Run Functions
+# Cloud Run Services
 
 Skill for working with the Cloud Run functions in this repo. Covers local setup, running functions, and testing. **This skill must never run `gcloud` commands or deploy anything to Cloud Run — only the user does that.**
 
@@ -306,6 +306,32 @@ cd cloud-run
 source .venv/bin/activate
 make eval-quality    # or eval-drift
 ```
+
+## Task: Deploy to Cloud Run
+
+All services are deployed as **Cloud Run services** (not Cloud Functions) in **us-central1** on project **usdr-md-translate-proto**. Deploy with `gcloud run deploy --source`, which preserves existing service config (env vars, memory, scaling, secrets).
+
+```sh
+# From the repo root:
+gcloud run deploy extract --source cloud-run/extract --region us-central1 --project usdr-md-translate-proto
+gcloud run deploy translate --source cloud-run/translate --region us-central1 --project usdr-md-translate-proto
+gcloud run deploy capture-feedback --source cloud-run/capture-feedback --region us-central1 --project usdr-md-translate-proto
+```
+
+After deploying, verify traffic is routing to the new revision (past deploys have silently stopped routing):
+```sh
+gcloud run revisions list --service <service-name> --region us-central1 --project usdr-md-translate-proto
+```
+
+### Current service configs
+
+| Service | Memory | CPU | Min instances | Max instances |
+|---|---|---|---|---|
+| extract | 1Gi | 1 | 1 | 20 |
+| translate | 512Mi | 1 | 0 | 20 |
+| capture-feedback | 512Mi | 1 | 1 | 20 |
+
+All services have CPU throttling disabled and startup CPU boost enabled.
 
 ## Task: Run tests
 

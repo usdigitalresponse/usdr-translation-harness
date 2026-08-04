@@ -111,9 +111,9 @@ async function translate(req, res) {
   const results = await Promise.allSettled(
     activeModels.map(async ({ provider, model }) => {
       console.log(`Calling ${provider} (${model})...`);
-      const { text: translationJson, usage } = await callLlm(provider, model, prompt);
-      console.log(`${provider} (${model}) complete (%d in / %d out tokens), writing output...`,
-        usage.input_tokens, usage.output_tokens);
+      const { text: translationJson, usage, stop_reason } = await callLlm(provider, model, prompt);
+      console.log(`${provider} (${model}) complete (%d in / %d out tokens, stop_reason=%s), writing output...`,
+        usage.input_tokens, usage.output_tokens, stop_reason);
       const outputFileName = `${baseName}_${provider}_${model}.json`;
       let parsed;
       try {

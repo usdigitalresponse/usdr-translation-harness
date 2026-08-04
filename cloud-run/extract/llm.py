@@ -22,7 +22,7 @@ SCHEMA_PATHS = {
 }
 
 
-def call_claude(prompt, *, model="claude-sonnet-4-6", max_tokens=16384, system=None, pdf_base64=None, output_schema=None):
+def call_claude(prompt, *, model="claude-sonnet-4-6", max_tokens=65536, system=None, pdf_base64=None, output_schema=None):
     client = anthropic.Anthropic(timeout=LLM_TIMEOUT_SECONDS)
     content = []
 

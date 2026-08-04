@@ -2,14 +2,18 @@
   "type": "object",
   "properties": {
     "page_metadata": {
-      "type": "object",
-      "properties": {
-        "page_number": { "type": "integer" },
-        "dimensions_description": { "type": "string", "description": "e.g. '8.5x11in portrait'" },
-        "layout_type": { "type": "string", "enum": ["single-column", "two-column", "three-column", "tri-fold", "mixed"] },
-        "layout_description": { "type": "string", "description": "Brief description of the page layout" }
-      },
-      "required": ["page_number", "dimensions_description", "layout_type", "layout_description"]
+      "type": "array",
+      "description": "One entry per page in the document, in page order",
+      "items": {
+        "type": "object",
+        "properties": {
+          "page_number": { "type": "integer" },
+          "dimensions_description": { "type": "string", "description": "e.g. '8.5x11in portrait'" },
+          "layout_type": { "type": "string", "enum": ["single-column", "two-column", "three-column", "tri-fold", "mixed"] },
+          "layout_description": { "type": "string", "description": "Brief description of the page layout" }
+        },
+        "required": ["page_number", "dimensions_description", "layout_type", "layout_description"]
+      }
     },
     "blocks": {
       "type": "array",
@@ -18,6 +22,8 @@
         "type": "object",
         "properties": {
           "id": { "type": "string", "description": "Sequential ID: b01, b02, etc. For list items under a parent: b05a, b05b, etc." },
+          "page": { "type": "integer", "description": "Page number where this block starts (1-indexed)" },
+          "spans_pages": { "type": "boolean", "description": "True if this block continues across a page boundary" },
           "role": {
             "type": "string",
             "enum": ["title", "subtitle", "section-heading", "body", "bullet-item", "numbered-item", "callout", "caption", "contact-info", "footer", "legal-reference", "cta", "icon-label", "fine-print"]
@@ -53,7 +59,7 @@
           },
           "notes": { "type": "string", "nullable": true, "description": "Translation-relevant context, or null" }
         },
-        "required": ["id", "role", "text", "translate", "spatial", "typography", "visual_emphasis", "notes"]
+        "required": ["id", "page", "spans_pages", "role", "text", "translate", "spatial", "typography", "visual_emphasis", "notes"]
       }
     },
     "non_translatable_elements": {
