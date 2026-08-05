@@ -169,20 +169,6 @@
     var topHtml = '';
     if (ts) topHtml += '<div class="meta">Generated ' + esc(ts) + '</div>';
 
-    if (meta.document_type || meta.state) {
-      topHtml += '<div class="metadata-row">';
-      if (meta.document_type) topHtml += '<span>Type:</span> ' + esc(meta.document_type);
-      if (meta.document_type && meta.state) topHtml += ' &middot; ';
-      if (meta.state) topHtml += '<span>State:</span> ' + esc(meta.state);
-      topHtml += '</div>';
-    }
-
-    if (DATA.provider || DATA.model) {
-      topHtml += '<div class="metadata-row"><span>Model:</span> '
-        + esc((DATA.provider || '') + (DATA.provider && DATA.model ? '/' : '') + (DATA.model || ''))
-        + '</div>';
-    }
-
     if (SOURCE_FILE_ID) {
       topHtml += '<div class="metadata-row"><a href="#" class="source-link" id="viewSourceBtn">View source</a></div>';
     }
@@ -192,10 +178,6 @@
       if (overallScore != null) {
         var rounded = Math.round(parseFloat(overallScore) * 10) / 10;
         topHtml += '<div class="score-big">' + esc(String(rounded)) + '<small>/5</small></div>';
-      }
-      if (overallPriority) {
-        topHtml += '<span class="priority-badge ' + priorityClass(overallPriority) + '">'
-          + esc(overallPriority) + ' FIX PRIORITY</span>';
       }
       topHtml += '</div>';
     }
@@ -219,13 +201,10 @@
 
       var val = node.score;
       var colorClass = scoreClass(val);
-      var dimPriority = node.priority;
-
       html += '<details class="dim">'
         + '<summary class="dim-summary">'
         +   '<span class="dim-name">' + esc(d.label) + '</span>'
         +   '<span class="dim-score-wrap">'
-        +     (dimPriority ? '<span class="priority-badge small ' + priorityClass(dimPriority) + '">' + esc(dimPriority) + '</span>' : '')
         +     (val != null ? '<span class="score-dot ' + colorClass + '"></span><span class="dim-score">' + esc(String(val)) + '</span>' : '')
         +   '</span>'
         + '</summary>'
@@ -250,8 +229,22 @@
 
     html += '<section>'
       + '<button class="debug-toggle" id="debugToggle"><span>Debug info</span><span class="chevron">&#9656;</span></button>'
-      + '<div class="debug-body" id="debugBody" style="display:none;">'
-      +   '<details class="debug-item"><summary>Full evaluation JSON</summary><div class="debug-body-inner"><pre class="json">'
+      + '<div class="debug-body" id="debugBody" style="display:none;">';
+
+    if (meta.document_type || meta.state) {
+      html += '<div class="metadata-row">';
+      if (meta.document_type) html += '<span>Type:</span> ' + esc(meta.document_type);
+      if (meta.document_type && meta.state) html += ' &middot; ';
+      if (meta.state) html += '<span>State:</span> ' + esc(meta.state);
+      html += '</div>';
+    }
+    if (DATA.provider || DATA.model) {
+      html += '<div class="metadata-row"><span>Model:</span> '
+        + esc((DATA.provider || '') + (DATA.provider && DATA.model ? '/' : '') + (DATA.model || ''))
+        + '</div>';
+    }
+
+    html += '<details class="debug-item"><summary>Full evaluation JSON</summary><div class="debug-body-inner"><pre class="json">'
       +     esc(prettyJson(DATA))
       +   '</pre></div></details>'
       + '</div>'
