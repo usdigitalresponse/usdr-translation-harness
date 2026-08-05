@@ -1,0 +1,16 @@
+{
+  "models": [
+    {
+      "role": "plain-language-eval",
+      "provider": "anthropic",
+      "model": "claude-sonnet-5",
+      "active": true
+    },
+    {
+      "role": "plain-language-eval",
+      "provider": "google",
+      "model": "gemini-3.5-flash",
+      "active": false
+    }
+  ]
+}

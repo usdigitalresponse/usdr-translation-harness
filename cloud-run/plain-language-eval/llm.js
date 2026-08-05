@@ -11,27 +11,37 @@ const PROVIDER_GOOGLE = "google";
 
 const SCHEMA_DIR = __dirname;
 const SCHEMA_PATHS = {
-  [PROVIDER_ANTHROPIC]: path.join(SCHEMA_DIR, "translation-schema-claude.json"),
-  [PROVIDER_GOOGLE]: path.join(SCHEMA_DIR, "translation-schema-gemini.json"),
+  [PROVIDER_ANTHROPIC]: path.join(SCHEMA_DIR, "plain-language-schema-claude.json"),
+  [PROVIDER_GOOGLE]: path.join(SCHEMA_DIR, "plain-language-schema-gemini.json"),
 };
 
 const DEFAULT_MAX_TOKENS = 65536;
 const LLM_TIMEOUT_MS = 240_000;
 
-function loadTranslationSchema(provider) {
+function loadEvalSchema(provider) {
   const schemaPath = SCHEMA_PATHS[provider];
   if (!schemaPath) {
-    throw new Error(`No translation schema for provider: ${provider}`);
+    throw new Error(`No plain language eval schema for provider: ${provider}`);
   }
   return JSON.parse(fs.readFileSync(schemaPath, "utf-8"));
 }
 
-async function callClaude(prompt, { model, maxTokens = DEFAULT_MAX_TOKENS, outputSchema } = {}) {
+async function callClaude(prompt, { model, maxTokens = DEFAULT_MAX_TOKENS, outputSchema, pdfBase64 } = {}) {
   const client = new Anthropic({ timeout: LLM_TIMEOUT_MS });
+
+  const content = [];
+  if (pdfBase64) {
+    content.push({
+      type: "document",
+      source: { type: "base64", media_type: "application/pdf", data: pdfBase64 },
+    });
+  }
+  content.push({ type: "text", text: prompt });
+
   const kwargs = {
     model,
     max_tokens: maxTokens,
-    messages: [{ role: "user", content: prompt }],
+    messages: [{ role: "user", content }],
   };
 
   if (outputSchema) {
@@ -52,11 +62,23 @@ async function callClaude(prompt, { model, maxTokens = DEFAULT_MAX_TOKENS, outpu
   return { text: textBlock.text, usage, stop_reason: response.stop_reason };
 }
 
-async function callGemini(prompt, { model, outputSchema } = {}) {
+async function callGemini(prompt, { model, outputSchema, pdfBase64 } = {}) {
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+  const parts = [];
+  if (pdfBase64) {
+    parts.push({
+      inlineData: {
+        mimeType: "application/pdf",
+        data: pdfBase64,
+      },
+    });
+  }
+  parts.push({ text: prompt });
+
   const kwargs = {
     model,
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    contents: [{ role: "user", parts }],
   };
 
   if (outputSchema) {
@@ -76,15 +98,15 @@ async function callGemini(prompt, { model, outputSchema } = {}) {
   return { text: response.text, usage, stop_reason: finishReason };
 }
 
-async function callLlm(provider, model, prompt) {
-  const outputSchema = loadTranslationSchema(provider);
+async function callLlm(provider, model, prompt, pdfBase64 = null) {
+  const outputSchema = loadEvalSchema(provider);
   const start = Date.now();
 
   let result;
   if (provider === PROVIDER_ANTHROPIC) {
-    result = await callClaude(prompt, { model, outputSchema });
+    result = await callClaude(prompt, { model, outputSchema, pdfBase64 });
   } else if (provider === PROVIDER_GOOGLE) {
-    result = await callGemini(prompt, { model, outputSchema });
+    result = await callGemini(prompt, { model, outputSchema, pdfBase64 });
   } else {
     throw new Error(`Unknown provider: ${provider}`);
   }
@@ -92,12 +114,11 @@ async function callLlm(provider, model, prompt) {
   return result;
 }
 
-
 module.exports = {
   callClaude,
   callGemini,
   callLlm,
-  loadTranslationSchema,
+  loadEvalSchema,
   PROVIDER_ANTHROPIC,
   PROVIDER_GOOGLE,
   DEFAULT_MAX_TOKENS,

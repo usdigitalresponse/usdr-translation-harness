@@ -1,0 +1,111 @@
+{
+  "type": "object",
+  "properties": {
+    "accuracy_and_relevance": {
+      "type": "object",
+      "description": "Accuracy & Relevance (30% weight): retains critical details, deadlines, requirements, steps; no omissions or additions; terms aligned with FAMLI policy and glossary",
+      "properties": {
+        "score": { "type": "integer", "description": "Score from 1 to 5" },
+        "strengths": { "type": "string", "description": "Specific strengths observed" },
+        "issues": { "type": ["string", "null"], "description": "Specific issues found, or null if none" },
+        "recommendations": { "type": ["string", "null"], "description": "Concrete improvement suggestions, or null if none needed" },
+        "priority": { "type": "string", "enum": ["Critical", "High", "Medium", "Low"] },
+        "examples": { "type": "string", "description": "Specific text excerpts with explanations supporting the score, formatted as readable text" }
+      },
+      "required": ["score", "strengths", "issues", "recommendations", "priority", "examples"],
+      "additionalProperties": false
+    },
+    "clarity_simplicity_accessibility": {
+      "type": "object",
+      "description": "Clarity, Simplicity & Accessibility (25% weight): plain language at 6th-grade level, short sentences (15-20 words), simple tense, jargon explained, W3C accessibility principles",
+      "properties": {
+        "score": { "type": "integer", "description": "Score from 1 to 5" },
+        "strengths": { "type": "string", "description": "Specific strengths observed" },
+        "issues": { "type": ["string", "null"], "description": "Specific issues found, or null if none" },
+        "recommendations": { "type": ["string", "null"], "description": "Concrete improvement suggestions, or null if none needed" },
+        "priority": { "type": "string", "enum": ["Critical", "High", "Medium", "Low"] },
+        "examples": { "type": "string", "description": "Specific text excerpts with explanations supporting the score, formatted as readable text" }
+      },
+      "required": ["score", "strengths", "issues", "recommendations", "priority", "examples"],
+      "additionalProperties": false
+    },
+    "active_voice_and_tone": {
+      "type": "object",
+      "description": "Active Voice & Tone (15% weight): active voice, direct address with 'you', professional and supportive tone, not bureaucratic",
+      "properties": {
+        "score": { "type": "integer", "description": "Score from 1 to 5" },
+        "strengths": { "type": "string", "description": "Specific strengths observed" },
+        "issues": { "type": ["string", "null"], "description": "Specific issues found, or null if none" },
+        "recommendations": { "type": ["string", "null"], "description": "Concrete improvement suggestions, or null if none needed" },
+        "priority": { "type": "string", "enum": ["Critical", "High", "Medium", "Low"] },
+        "examples": { "type": "string", "description": "Specific text excerpts with explanations supporting the score, formatted as readable text" }
+      },
+      "required": ["score", "strengths", "issues", "recommendations", "priority", "examples"],
+      "additionalProperties": false
+    },
+    "structure_for_action": {
+      "type": "object",
+      "description": "Structure for Action (20% weight): clear steps and deadlines, headings/bullets/lists/tables for complex info, terms defined in context of user journey",
+      "properties": {
+        "score": { "type": "integer", "description": "Score from 1 to 5" },
+        "strengths": { "type": "string", "description": "Specific strengths observed" },
+        "issues": { "type": ["string", "null"], "description": "Specific issues found, or null if none" },
+        "recommendations": { "type": ["string", "null"], "description": "Concrete improvement suggestions, or null if none needed" },
+        "priority": { "type": "string", "enum": ["Critical", "High", "Medium", "Low"] },
+        "examples": { "type": "string", "description": "Specific text excerpts with explanations supporting the score, formatted as readable text" }
+      },
+      "required": ["score", "strengths", "issues", "recommendations", "priority", "examples"],
+      "additionalProperties": false
+    },
+    "consistency_and_style": {
+      "type": "object",
+      "description": "Consistency & Style (10% weight): consistent terms and formatting, sentence case, plain language style throughout",
+      "properties": {
+        "score": { "type": "integer", "description": "Score from 1 to 5" },
+        "strengths": { "type": "string", "description": "Specific strengths observed" },
+        "issues": { "type": ["string", "null"], "description": "Specific issues found, or null if none" },
+        "recommendations": { "type": ["string", "null"], "description": "Concrete improvement suggestions, or null if none needed" },
+        "priority": { "type": "string", "enum": ["Critical", "High", "Medium", "Low"] },
+        "examples": { "type": "string", "description": "Specific text excerpts with explanations supporting the score, formatted as readable text" }
+      },
+      "required": ["score", "strengths", "issues", "recommendations", "priority", "examples"],
+      "additionalProperties": false
+    },
+    "weighted_overall_score": {
+      "type": "number",
+      "description": "Weighted overall score out of 5, using weights: accuracy 30%, clarity 25%, structure 20%, voice 15%, consistency 10%"
+    },
+    "overall_priority_rating": {
+      "type": "string",
+      "description": "Overall priority level for fixes needed",
+      "enum": ["Critical", "High", "Medium", "Low"]
+    },
+    "overall_summary": {
+      "type": "string",
+      "description": "Brief narrative summary of the evaluation, e.g. 'Minor Revisions Needed (High-priority clarity issues)'"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Evaluation metadata",
+      "properties": {
+        "document_type": { "type": "string", "description": "Type of document evaluated, e.g. 'FAMLI benefits notice'" },
+        "state": { "type": "string", "description": "U.S. state context for the evaluation" },
+        "evaluation_notes": { "type": ["string", "null"], "description": "Overall observations not captured in dimension scores" }
+      },
+      "required": ["document_type", "state", "evaluation_notes"],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "accuracy_and_relevance",
+    "clarity_simplicity_accessibility",
+    "active_voice_and_tone",
+    "structure_for_action",
+    "consistency_and_style",
+    "weighted_overall_score",
+    "overall_priority_rating",
+    "overall_summary",
+    "metadata"
+  ],
+  "additionalProperties": false
+}
