@@ -1,4 +1,4 @@
-// Editor Add-on: adds "Translation Review" menu to translation output docs.
+// Editor Add-on: adds "USDR Multilingual Plain Language Assistant" menu to translation output docs.
 //
 // The Translate Cloud Run function sets the "usdr_translation_review" property
 // on the Drive file via the Drive API v3 `properties` field. This add-on reads
@@ -630,7 +630,7 @@ function showPlainLanguageEval() {
   }
 
   var html = HtmlService.createHtmlOutputFromFile("PlainLanguageEvalSidebar")
-    .setTitle("Plain Language Eval")
+    .setTitle("Plain Language Eval - English")
     .setWidth(340);
   DocumentApp.getUi().showSidebar(html);
 }
@@ -644,8 +644,8 @@ function showPlainLanguageEval() {
 function onOpen(e) {
   DocumentApp.getUi()
     .createAddonMenu()
-    .addItem("Show AI Suggestions", "showReviewPanel")
-    .addItem("View Plain Language Eval", "showPlainLanguageEval")
+    .addItem("AI Suggestions - Spanish", "showReviewPanel")
+    .addItem("Plain Language Eval - English", "showPlainLanguageEval")
     .addItem("Submit Review", "submitReview")
     .addToUi();
 }
@@ -673,7 +673,7 @@ function showReviewPanel() {
 
   clearAllHighlights();
   var html = HtmlService.createHtmlOutputFromFile("Sidebar")
-    .setTitle("AI Suggestions")
+    .setTitle("AI Suggestions - Spanish")
     .setWidth(340);
   DocumentApp.getUi().showSidebar(html);
 }
