@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #071A51; --ink-soft: #4b5580; --ink-faint: #8b93b8;
+      --line: #dbe4f7; --line-strong: #c7d2ea; --line-soft: #eef3fc; --paper: #ffffff; --raise: #f5f8ff;
+      --accent: #0066FF; --accent-bg: #e8f0ff;
+      --code-bg: #f3f6fb; --code-ink: #1c2540;
+      --red-ink:    #b23b3b; --red-bg:    #fdeceb; --red-bdr:    #f3c6c2;
+      --yellow-ink: #b07a3a; --yellow-bg: #fef3e2; --yellow-bdr: #f5d9a8;
+      --green-ink:  #1f7a5c; --green-bg:  #e9f7f1; --green-bdr:  #bfe3d3;
+      --font-head: 'Lora', Georgia, 'Times New Roman', serif;
+      --font-body: 'Inter', Roboto, -apple-system, 'Segoe UI', sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin:0; padding:0; height:100%; background:var(--paper); color:var(--ink);
+      font-family:var(--font-body); font-size:13px; line-height:1.5; }
+    #root { display:flex; flex-direction:column; height:100vh; }
+    .top { flex:0 0 auto; padding:14px 14px 12px; border-bottom:1px solid var(--line); }
+    .scroll { flex:1 1 auto; overflow-y:auto; padding:14px 14px 40px; }
+
+    .meta { margin-top:6px; font-size:11px; color:var(--ink-faint); }
+
+    .summary-text { margin-top:10px; font-size:12.5px; color:var(--ink-soft); line-height:1.55; }
+
+    .score-card { margin-top:14px; display:flex; align-items:center; gap:14px; }
+    .score-big { font-family:var(--font-head); font-size:32px; font-weight:600; color:var(--ink); line-height:1; }
+    .score-big small { font-size:14px; font-weight:600; color:var(--ink-faint); }
+    .priority-badge { font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+      border-radius:5px; padding:3px 8px; display:inline-block; }
+    .priority-badge.red    { color:var(--red-ink);    background:var(--red-bg);    border:1px solid var(--red-bdr); }
+    .priority-badge.yellow { color:var(--yellow-ink); background:var(--yellow-bg); border:1px solid var(--yellow-bdr); }
+    .priority-badge.green  { color:var(--green-ink);  background:var(--green-bg);  border:1px solid var(--green-bdr); }
+    .priority-badge.small { font-size:9px; padding:2px 5px; letter-spacing:.03em; margin-right:4px; }
+
+    section { margin-top:20px; }
+
+    details.dim { border:1px solid var(--line); border-radius:9px; margin-bottom:7px; overflow:hidden; }
+    details.dim[open] { border-color:var(--line-strong); }
+    .dim-summary {
+      cursor:pointer; list-style:none; display:flex; justify-content:space-between;
+      align-items:center; gap:8px; padding:10px 12px;
+    }
+    .dim-summary::-webkit-details-marker { display:none; }
+    .dim-summary::after {
+      content:'\25b8'; font-size:11px; color:var(--ink-soft); margin-left:6px;
+      transition: transform 120ms ease; display:inline-block;
+    }
+    details.dim[open] .dim-summary::after { transform: rotate(90deg); }
+    .dim-name { font-family:var(--font-head); font-weight:600; font-size:13px; flex:1; color:var(--ink); }
+    .dim-score-wrap { display:flex; align-items:center; gap:6px; }
+    .score-dot { width:8px; height:8px; border-radius:50%; display:inline-block; flex:0 0 auto; }
+    .score-dot.red    { background: var(--red-ink); }
+    .score-dot.yellow { background: var(--yellow-ink); }
+    .score-dot.green  { background: var(--green-ink); }
+    .dim-score { font-variant-numeric:tabular-nums; font-weight:700; color:var(--ink); white-space:nowrap; }
+    .dim-body { padding:2px 12px 12px; border-top:1px solid var(--line-soft); }
+
+    .detail-section { margin-top:10px; }
+    .detail-label { font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
+      color:var(--ink-soft); margin-bottom:3px; }
+    .detail-text { font-size:12px; color:var(--ink-soft); white-space:pre-wrap; line-height:1.5; }
+    .detail-text.empty { color:var(--ink-faint); font-style:italic; }
+
+    .examples-block { margin-top:10px; padding:8px 10px; background:var(--raise);
+      border:1px solid var(--line-soft); border-radius:7px; }
+    .examples-label { font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
+      color:var(--ink-soft); margin-bottom:4px; }
+    .examples-text { font-size:12px; color:var(--ink-soft); white-space:pre-wrap; line-height:1.5; }
+
+    .debug-toggle {
+      width:100%; display:flex; align-items:center; justify-content:space-between;
+      background:none; border:none; cursor:pointer; padding:4px 0;
+      color:var(--ink-faint); font-size:12px;
+    }
+    .debug-toggle .chevron { font-size:12px; color:var(--ink-faint); transition:transform 120ms ease; }
+    .debug-toggle.open .chevron { transform:rotate(90deg); }
+    .debug-body { margin-top:6px; }
+    details.debug-item { border:none; border-top:1px solid var(--line-soft); }
+    details.debug-item summary {
+      cursor:pointer; padding:8px 0; font-size:12px; color:var(--ink-faint); list-style:none;
+    }
+    details.debug-item summary::-webkit-details-marker { display:none; }
+    details.debug-item summary::before { content:'\25b8'; margin-right:6px; display:inline-block; font-size:11px; }
+    details.debug-item[open] summary::before { transform: rotate(90deg); display:inline-block; }
+    .debug-body-inner { padding:0 0 10px; }
+    pre.json { margin:0; background:var(--code-bg); border:1px solid var(--line-soft); border-radius:7px;
+      padding:8px 9px; font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace; font-size:11px;
+      line-height:1.45; color:var(--code-ink); white-space:pre-wrap; word-break:break-word; overflow-x:auto; }
+
+    .stage { text-align:center; color:var(--ink-soft); padding:56px 16px; font-size:12.5px; }
+    .stage strong { display:block; color:var(--ink); font-size:13px; margin-bottom:6px; }
+    .stage .hint { color:var(--ink-faint); margin-top:8px; font-size:12px; }
+
+    .metadata-row { margin-top:6px; font-size:11px; color:var(--ink-faint); }
+    .metadata-row span { font-weight:600; color:var(--ink-soft); }
+    .source-link { font-size:12px; font-weight:600; color:var(--accent); text-decoration:none; cursor:pointer; }
+    .source-link:hover { text-decoration:underline; }
+  </style>
+</head>
+<body>
+<div id="root">
+  <div class="top" id="topBar"></div>
+  <div class="scroll" id="content"><div class="stage">Loading evaluation...</div></div>
+</div>
+
+<script>
+  var DATA = null;
+  var SOURCE_FILE_ID = null;
+
+  var DIMENSIONS = [
+    { key: 'accuracy_and_relevance',         label: 'Accuracy & Relevance',                weight: '30%' },
+    { key: 'clarity_simplicity_accessibility', label: 'Clarity, Simplicity & Accessibility', weight: '25%' },
+    { key: 'structure_for_action',           label: 'Structure for Action',                weight: '20%' },
+    { key: 'active_voice_and_tone',          label: 'Active Voice & Tone',                 weight: '15%' },
+    { key: 'consistency_and_style',          label: 'Consistency & Style',                 weight: '10%' }
+  ];
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function prettyJson(v) {
+    if (typeof v === 'string') return v;
+    try { return JSON.stringify(v, null, 2); } catch(e) { return String(v); }
+  }
+
+  function scoreClass(val) {
+    var n = parseFloat(val);
+    if (isNaN(n)) return '';
+    if (n <= 2) return 'red';
+    if (n === 3) return 'yellow';
+    return 'green';
+  }
+
+  function priorityClass(rating) {
+    var s = String(rating || '');
+    if (/critical/i.test(s)) return 'red';
+    if (/high|urgent/i.test(s)) return 'red';
+    if (/medium/i.test(s)) return 'yellow';
+    if (/low|none/i.test(s)) return 'green';
+    return '';
+  }
+
+  function detailBlock(label, text) {
+    if (!text) return '<div class="detail-section"><div class="detail-label">' + esc(label) + '</div><div class="detail-text empty">None</div></div>';
+    return '<div class="detail-section"><div class="detail-label">' + esc(label) + '</div><div class="detail-text">' + esc(text) + '</div></div>';
+  }
+
+  function render() {
+    if (!DATA) { renderEmpty(); return; }
+
+    var overallScore = DATA.weighted_overall_score;
+    var overallPriority = DATA.overall_priority_rating;
+    var overallSummary = DATA.overall_summary;
+    var meta = DATA.metadata || {};
+    var ts = DATA._evalModifiedTime
+      ? new Date(DATA._evalModifiedTime).toLocaleString([], { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' })
+      : '';
+
+    SOURCE_FILE_ID = DATA.sourceFileId || null;
+
+    var topHtml = '';
+    if (ts) topHtml += '<div class="meta">Generated ' + esc(ts) + '</div>';
+
+    if (meta.document_type || meta.state) {
+      topHtml += '<div class="metadata-row">';
+      if (meta.document_type) topHtml += '<span>Type:</span> ' + esc(meta.document_type);
+      if (meta.document_type && meta.state) topHtml += ' &middot; ';
+      if (meta.state) topHtml += '<span>State:</span> ' + esc(meta.state);
+      topHtml += '</div>';
+    }
+
+    if (DATA.provider || DATA.model) {
+      topHtml += '<div class="metadata-row"><span>Model:</span> '
+        + esc((DATA.provider || '') + (DATA.provider && DATA.model ? '/' : '') + (DATA.model || ''))
+        + '</div>';
+    }
+
+    if (SOURCE_FILE_ID) {
+      topHtml += '<div class="metadata-row"><a href="#" class="source-link" id="viewSourceBtn">View source</a></div>';
+    }
+
+    if (overallScore != null || overallPriority) {
+      topHtml += '<div class="score-card">';
+      if (overallScore != null) {
+        var rounded = Math.round(parseFloat(overallScore) * 10) / 10;
+        topHtml += '<div class="score-big">' + esc(String(rounded)) + '<small>/5</small></div>';
+      }
+      if (overallPriority) {
+        topHtml += '<span class="priority-badge ' + priorityClass(overallPriority) + '">'
+          + esc(overallPriority) + ' FIX PRIORITY</span>';
+      }
+      topHtml += '</div>';
+    }
+
+    if (overallSummary) {
+      topHtml += '<div class="summary-text">' + esc(overallSummary) + '</div>';
+    }
+
+    document.getElementById('topBar').innerHTML = topHtml;
+
+    var viewSourceBtn = document.getElementById('viewSourceBtn');
+    if (viewSourceBtn) viewSourceBtn.onclick = function(e) {
+      e.preventDefault();
+      google.script.run.showSourcePreview(SOURCE_FILE_ID);
+    };
+
+    var html = '<section>';
+    DIMENSIONS.forEach(function(d) {
+      var node = DATA[d.key];
+      if (!node || typeof node !== 'object') return;
+
+      var val = node.score;
+      var colorClass = scoreClass(val);
+      var dimPriority = node.priority;
+
+      html += '<details class="dim">'
+        + '<summary class="dim-summary">'
+        +   '<span class="dim-name">' + esc(d.label) + '</span>'
+        +   '<span class="dim-score-wrap">'
+        +     (dimPriority ? '<span class="priority-badge small ' + priorityClass(dimPriority) + '">' + esc(dimPriority) + '</span>' : '')
+        +     (val != null ? '<span class="score-dot ' + colorClass + '"></span><span class="dim-score">' + esc(String(val)) + '</span>' : '')
+        +   '</span>'
+        + '</summary>'
+        + '<div class="dim-body">';
+
+      html += detailBlock('Strengths', node.strengths);
+      html += detailBlock('Issues', node.issues);
+      html += detailBlock('Recommendations', node.recommendations);
+
+      if (node.examples) {
+        html += '<div class="examples-block"><div class="examples-label">Examples</div>'
+          + '<div class="examples-text">' + esc(node.examples) + '</div></div>';
+      }
+
+      html += '</div></details>';
+    });
+    html += '</section>';
+
+    if (meta.evaluation_notes) {
+      html += '<section>' + detailBlock('Evaluation Notes', meta.evaluation_notes) + '</section>';
+    }
+
+    html += '<section>'
+      + '<button class="debug-toggle" id="debugToggle"><span>Debug info</span><span class="chevron">&#9656;</span></button>'
+      + '<div class="debug-body" id="debugBody" style="display:none;">'
+      +   '<details class="debug-item"><summary>Full evaluation JSON</summary><div class="debug-body-inner"><pre class="json">'
+      +     esc(prettyJson(DATA))
+      +   '</pre></div></details>'
+      + '</div>'
+      + '</section>';
+
+    document.getElementById('content').innerHTML = html;
+
+    var debugToggle = document.getElementById('debugToggle');
+    if (debugToggle) debugToggle.addEventListener('click', function() {
+      var body = document.getElementById('debugBody');
+      var open = body.style.display !== 'none';
+      body.style.display = open ? 'none' : 'block';
+      debugToggle.classList.toggle('open', !open);
+    });
+  }
+
+  function renderEmpty() {
+    document.getElementById('topBar').innerHTML = '';
+    document.getElementById('content').innerHTML = '<div class="stage"><strong>No evaluation found</strong>'
+      + 'No plain language evaluation was found for this document\'s source file.'
+      + '<div class="hint">The eval runs automatically when a document is submitted for translation.</div></div>';
+  }
+
+  function onData(res) { DATA = res; render(); }
+  function onErr(err) {
+    document.getElementById('content').innerHTML =
+      '<div class="stage"><strong>Couldn\'t load evaluation</strong>' + esc(err && err.message ? err.message : err) + '</div>';
+  }
+
+  function boot() {
+    google.script.run.withSuccessHandler(onData).withFailureHandler(onErr).getPlainLanguageEvalData();
+  }
+
+  boot();
+</script>
+</body>
+</html>

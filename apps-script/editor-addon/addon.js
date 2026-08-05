@@ -11,6 +11,7 @@ var SIDEBAR_CHECKS_KEY = "SIDEBAR_CHECKS";
 var SIDEBAR_OPENED_AT_KEY = "SIDEBAR_OPENED_AT";
 var HIGHLIGHT_COLOR = "#FFD700";
 var DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+var PL_EVAL_FOLDER_ID = "1Sa5r8G4YMo0Hn02rCjyClixN0jCgbQ5U";
 
 // ── Drive property access ────────────────────────────────────────────────
 
@@ -554,6 +555,86 @@ function evaluateTranslationFromSidebar() {
   return { problem: "not_implemented", message: "Evaluation is not yet available." };
 }
 
+// ── Plain Language Eval ─────────────────────────────────────────────────
+
+/**
+ * Search the plain-language-eval Drive folder for an eval JSON matching
+ * the current document's source file. Looks up the source filename from
+ * the translation JSON, then searches by name pattern.
+ * @returns {Object|null} Parsed eval JSON with _evalFileName and _evalModifiedTime, or null
+ */
+function getPlainLanguageEvalData() {
+  var json = getTranslationJson_();
+  if (!json) return null;
+
+  var sourceFileId = json.sourceFileId;
+  if (!sourceFileId) return null;
+
+  var sourceFileName;
+  try {
+    var file = Drive.Files.get(sourceFileId, { fields: "name", supportsAllDrives: true });
+    sourceFileName = file.name;
+  } catch (e) {
+    Logger.log("Could not get source file name: " + e.message);
+    return null;
+  }
+
+  var baseName = sourceFileName.replace(/\.[^.]+$/, "");
+  var escapedName = baseName.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+
+  var query = "'" + PL_EVAL_FOLDER_ID + "' in parents"
+    + " and name contains '" + escapedName + "'"
+    + " and name contains 'plain-language-eval'"
+    + " and trashed = false";
+
+  try {
+    var results = Drive.Files.list({
+      q: query,
+      fields: "files(id,name,modifiedTime)",
+      orderBy: "modifiedTime desc",
+      pageSize: 1,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+
+    if (!results.files || results.files.length === 0) return null;
+
+    var evalFile = results.files[0];
+    var content = Drive.Files.get(evalFile.id, {
+      alt: "media",
+      supportsAllDrives: true,
+    });
+
+    var parsed = typeof content === "string" ? JSON.parse(content) : content;
+    parsed._evalFileName = evalFile.name;
+    parsed._evalModifiedTime = evalFile.modifiedTime;
+    return parsed;
+  } catch (e) {
+    Logger.log("Could not fetch plain language eval: " + e.message);
+    return null;
+  }
+}
+
+/**
+ * Open the Plain Language Eval sidebar. Only available on translation docs.
+ */
+function showPlainLanguageEval() {
+  var translationFileId = getTranslationFileId_();
+  if (!translationFileId) {
+    DocumentApp.getUi().alert(
+      "Not a Translation Document",
+      "This document does not have translation data associated with it.",
+      DocumentApp.getUi().ButtonSet.OK
+    );
+    return;
+  }
+
+  var html = HtmlService.createHtmlOutputFromFile("PlainLanguageEvalSidebar")
+    .setTitle("Plain Language Eval")
+    .setWidth(340);
+  DocumentApp.getUi().showSidebar(html);
+}
+
 // ── Menu and sidebar ─────────────────────────────────────────────────────
 
 /**
@@ -564,6 +645,7 @@ function onOpen(e) {
   DocumentApp.getUi()
     .createAddonMenu()
     .addItem("Show AI Suggestions", "showReviewPanel")
+    .addItem("View Plain Language Eval", "showPlainLanguageEval")
     .addItem("Submit Review", "submitReview")
     .addToUi();
 }
