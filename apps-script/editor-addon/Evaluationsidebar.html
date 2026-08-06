@@ -32,6 +32,8 @@
     }
     .refresh-icon-btn:hover { background:var(--line-soft); color:var(--ink); }
     .meta { margin-top:6px; font-size:11px; color:var(--ink-faint); }
+    .stale-note { margin:0 0 12px; padding:8px 10px; font-size:12px; line-height:1.4; border-radius:6px;
+      color:var(--yellow-ink); background:var(--yellow-bg); border:1px solid var(--yellow-bdr); }
 
     /* Rubric link row + manage menu */
     .rubric-row { margin-top:8px; display:flex; align-items:center; gap:10px; position:relative; }
@@ -80,6 +82,42 @@
     .priority-badge.red    { color:var(--red-ink);    background:var(--red-bg);    border:1px solid var(--red-bdr); }
     .priority-badge.yellow { color:var(--yellow-ink); background:var(--yellow-bg); border:1px solid var(--yellow-bdr); }
     .priority-badge.green  { color:var(--green-ink);  background:var(--green-bg);  border:1px solid var(--green-bdr); }
+
+    /* Compiled-score hover breakdown (multi-model) */
+    .score-wrap { position:relative; display:inline-flex; flex-direction:column; }
+    .score-wrap.has-breakdown { cursor:help; }
+    .score-hint { font-size:10px; color:var(--ink-faint); margin-top:2px; white-space:nowrap; }
+    .score-breakdown {
+      position:absolute; top:100%; left:0; z-index:20; margin-top:6px;
+      min-width:210px; padding:10px; border-radius:8px;
+      background:var(--surface, #fff); border:1px solid var(--bdr, #d8dce0);
+      box-shadow:0 6px 20px rgba(0,0,0,.16);
+      opacity:0; visibility:hidden; transform:translateY(-4px);
+      transition:opacity .12s ease, transform .12s ease, visibility .12s;
+    }
+    .score-wrap.has-breakdown:hover .score-breakdown,
+    .score-wrap.has-breakdown:focus .score-breakdown,
+    .score-wrap.has-breakdown:focus-within .score-breakdown {
+      opacity:1; visibility:visible; transform:translateY(0);
+    }
+    .bd-model { padding:6px 0; border-top:1px solid var(--bdr, #eceef0); }
+    .bd-model:first-child { border-top:none; padding-top:0; }
+    .bd-head { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+    .bd-name { font-weight:600; font-size:12px; color:var(--ink); }
+    .bd-overall { font-weight:700; font-size:13px; color:var(--ink); }
+    .bd-priority { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; margin:2px 0 4px; }
+    .bd-priority.red { color:var(--red-ink); }
+    .bd-priority.yellow { color:var(--yellow-ink); }
+    .bd-priority.green { color:var(--green-ink); }
+    .bd-dim { display:flex; justify-content:space-between; font-size:11px; color:var(--ink-faint); padding:1px 0; }
+
+    /* Per-model detail inside a dimension */
+    .model-detail { margin-bottom:8px; }
+    .model-detail:last-child { margin-bottom:0; }
+    .model-detail-head { display:flex; justify-content:space-between; align-items:baseline;
+      font-size:11px; margin:4px 0 3px; padding-top:6px; border-top:1px dashed var(--bdr, #e4e7ea); }
+    .model-detail:first-child .model-detail-head { border-top:none; padding-top:0; }
+    .model-detail-score { font-weight:700; color:var(--ink); }
 
 
     section { margin-top:20px; }
@@ -393,6 +431,69 @@
     });
   }
 
+  // ---- Multi-model breakdown ----
+
+  function modelLabel(m) { return m.model || m.provider || 'model'; }
+
+  // Normalize to a models[] array whether DATA is new (per-model breakdown)
+  // or legacy (single flattened evaluation).
+  function evalModels(scores) {
+    if (DATA.models && DATA.models.length) return DATA.models;
+    return [{ provider: DATA.provider || '', model: DATA.model || '',
+              scores: scores, raw: tryParse(DATA.raw_eval_text) || {} }];
+  }
+
+  // Hover popover: each model's own weighted overall, priority, and per-dimension.
+  function buildBreakdown(models) {
+    var rows = models.map(function (m) {
+      var s = m.scores || {};
+      var dims = DIMENSIONS.map(function (d) {
+        var v = s[d.key];
+        return '<div class="bd-dim"><span>' + esc(d.label) + '</span><span>'
+          + (v !== '' && v !== undefined ? esc(v) : '—') + '</span></div>';
+      }).join('');
+      return '<div class="bd-model">'
+        + '<div class="bd-head"><span class="bd-name">' + esc(modelLabel(m)) + '</span>'
+        +   '<span class="bd-overall">' + (s.weightedOverall !== '' ? esc(s.weightedOverall) + '/5' : '—') + '</span></div>'
+        + (s.priorityRating ? '<div class="bd-priority ' + priorityClass(s.priorityRating) + '">'
+            + esc(s.priorityRating) + ' fix priority</div>' : '')
+        + dims
+        + '</div>';
+    }).join('');
+    return '<div class="score-breakdown" role="tooltip">' + rows + '</div>';
+  }
+
+  // Per-dimension detail, shown once per model (labeled when more than one).
+  function buildDimDetail(d, models) {
+    var multi = models.length > 1;
+    return models.map(function (m) {
+      var node      = m.raw ? m.raw[d.rawKey] : null;
+      var strengths = extractList_(node, ['strengths','strength','pros']);
+      var issues    = extractList_(node, ['issues','weaknesses','problems','concerns']);
+      var recs      = extractList_(node, ['recommendations','recommendation','suggestions','fixes']);
+      var comment   = rawComment(node);
+      var hasLists  = strengths.length || issues.length || recs.length;
+      var emptyMsg = DATA.detailTrimmed
+        ? 'Detail too large to cache — click &#8635; to re-run and view.'
+        : 'No additional detail provided.';
+      var inner = hasLists
+        ? '<div class="subdim-toggles">'
+            + subdimToggle('Strengths', strengths)
+            + subdimToggle('Issues', issues)
+            + subdimToggle('Recommendations', recs)
+          + '</div>'
+        : (comment ? '<div class="dim-comment">' + esc(comment) + '</div>'
+                   : '<div class="dim-comment empty-val">' + emptyMsg + '</div>');
+      var mScore = m.scores[d.key];
+      var head = multi
+        ? '<div class="model-detail-head"><span class="bd-name">' + esc(modelLabel(m)) + '</span>'
+            + (mScore !== '' && mScore !== undefined ? '<span class="model-detail-score">' + esc(mScore) + '/5</span>' : '')
+          + '</div>'
+        : '';
+      return '<div class="model-detail">' + head + inner + '</div>';
+    }).join('');
+  }
+
   // ---- Main render ----
 
   function render() {
@@ -406,11 +507,16 @@
     var topHtml = buildTopHtml();
     if (ts) topHtml += '<div class="meta">Generated ' + esc(ts) + '</div>';
 
+    var models = evalModels(scores);
+    var multi  = models.length > 1;
+
     if (!fallback && (scores.weightedOverall !== '' || scores.priorityRating)) {
       topHtml += '<div class="score-card">';
       if (scores.weightedOverall !== '') {
-        topHtml += '<div class="score-big">'
-              + esc(scores.weightedOverall) + '<small>/5</small></div>';
+        topHtml += '<div class="score-wrap' + (multi ? ' has-breakdown" tabindex="0' : '') + '">'
+              +   '<div class="score-big">' + esc(scores.weightedOverall) + '<small>/5</small></div>'
+              +   (multi ? '<span class="score-hint">avg of ' + models.length + ' models &#9432;</span>' + buildBreakdown(models) : '')
+              + '</div>';
       }
       if (scores.priorityRating) {
         topHtml += '<span class="priority-badge ' + priorityClass(scores.priorityRating) + '">'
@@ -422,20 +528,18 @@
     document.getElementById('topBar').innerHTML = topHtml;
     attachTopBarListeners();
 
-    var html = '<section>';
+    var html = '';
+    if (DATA.stale) {
+      html += '<div class="stale-note">This document has changed since it was last evaluated. '
+        + 'Click the &#8635; refresh button above to re-evaluate.</div>';
+    }
+    html += '<section>';
     if (fallback) {
       html += '<div class="empty-sec">The model didn\'t return parseable JSON for this evaluation — see the full response below.</div>';
     } else {
       DIMENSIONS.forEach(function(d) {
         var val        = scores[d.key];
-        var node       = dimNode(parsedRaw, d.rawKey);
-        var strengths  = extractList_(node, ['strengths','strength','pros']);
-        var issues     = extractList_(node, ['issues','weaknesses','problems','concerns']);
-        var recs       = extractList_(node, ['recommendations','recommendation','suggestions','fixes']);
-        var comment    = rawComment(node);
-        var hasLists   = strengths.length || issues.length || recs.length;
         var colorClass = dimScoreClass(val);
-
 
         html += '<details class="dim">'
           + '<summary class="dim-summary">'
@@ -444,13 +548,7 @@
           + '</summary>'
           + '<div class="dim-body">'
           +   rubricScaleBlock(d.key, val, colorClass)
-          +   (hasLists
-                ? '<div class="subdim-toggles">'
-                  + subdimToggle('Strengths', strengths)
-                  + subdimToggle('Issues', issues)
-                  + subdimToggle('Recommendations', recs)
-                  + '</div>'
-                : (comment ? '<div class="dim-comment">' + esc(comment) + '</div>' : '<div class="dim-comment empty-val">No additional detail provided.</div>'))
+          +   buildDimDetail(d, models)
           +   '<a href="' + esc(d.rubricUrl || rubricUrl) + '" target="_blank" rel="noopener" class="dim-rubric-link">View rubric &#8599;</a>'
           + '</div>'
           + '</details>';
@@ -513,7 +611,8 @@
             + esc(problemLabel(res.problem)) + '</strong>' + esc(res.message || '') + '</div>';
           return;
         }
-        reload();
+        // Render the freshly returned result directly — full detail, no trim.
+        onData(res);
       })
       .withFailureHandler(function(err) {
         document.getElementById('content').innerHTML = '<div class="stage"><strong>Evaluation failed</strong>'
@@ -537,7 +636,18 @@
       })
       .withFailureHandler(function () { /* keep default rubric link silently */ })
       .getRubricUrl();
-    reload();
+
+    // Show the previous evaluation if one exists; only run automatically the
+    // first time (nothing cached). The ↻ button re-runs on demand, and a
+    // stale banner appears when the doc changed since the cached result.
+    document.getElementById('content').innerHTML = '<div class="stage">Loading evaluation…</div>';
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res) { onData(res); }
+        else { runRefreshEvaluation(); }
+      })
+      .withFailureHandler(onErr)
+      .getEvalData();
   }
 
   boot();

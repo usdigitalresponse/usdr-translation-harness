@@ -7,4 +7,5 @@ google-auth>=2.36.0
 sacrebleu>=2.4.0
 rouge-score>=0.1.2
 python-dotenv>=1.0.0
+jsonschema>=4.20.0
 pytest>=8.0.0

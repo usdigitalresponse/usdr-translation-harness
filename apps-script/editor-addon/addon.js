@@ -15,6 +15,11 @@ var PL_EVAL_FOLDER_ID = "1Sa5r8G4YMo0Hn02rCjyClixN0jCgbQ5U";
 
 // ── Drive property access ────────────────────────────────────────────────
 
+// Sandbox override: set this script property to a translation JSON file ID (or
+// any placeholder) to work on a doc that has no usdr_translation_review Drive
+// property. Unset in production, where the property comes from Translate.
+var SANDBOX_FILE_ID_KEY = "SANDBOX_TRANSLATION_FILE_ID";
+
 /**
  * Look up the translation JSON file ID from the active document's Drive
  * file properties. The Translate function sets this when creating the doc.
@@ -22,6 +27,9 @@ var PL_EVAL_FOLDER_ID = "1Sa5r8G4YMo0Hn02rCjyClixN0jCgbQ5U";
  * @returns {string|null} Drive file ID of the translation JSON, or null
  */
 function getTranslationFileId_() {
+  var override = PropertiesService.getScriptProperties().getProperty(SANDBOX_FILE_ID_KEY);
+  if (override) return override;
+
   var docId = DocumentApp.getActiveDocument().getId();
   try {
     var file = Drive.Files.get(docId, { fields: "properties", supportsAllDrives: true });
@@ -523,7 +531,6 @@ function generateReviewDocx() {
     return null;
   }
 }
-
 function appendSection_(body, title, items, headers, fields) {
   if (!items || items.length === 0) return;
 
@@ -547,12 +554,389 @@ function appendSection_(body, title, items, headers, fields) {
   }
 }
 
+// ── Evaluation ───────────────────────────────────────────────────────────
+//
+// The reviewer's current doc content is what gets scored, not the stored
+// translation JSON — so re-running after edits reflects those edits. Results
+// are cached in document properties so reopening the sidebar doesn't re-call
+// the model.
+
+var EVAL_FUNCTION_URL_KEY = "EVAL_QUALITY_FUNCTION_URL";
+
+/**
+ * Read the English/Spanish table into blocks for the eval function.
+ * Mirrors the layout the highlighting helpers assume: column 0 English,
+ * column 1 Spanish, row 0 a header.
+ */
+function extractDocBlocks_() {
+  var table = getFirstTable_();
+  if (!table || table.getNumRows() < 2) return [];
+
+  var blocks = [];
+  for (var row = 1; row < table.getNumRows(); row++) {
+    var original = table.getRow(row).getCell(0).getText().trim();
+    var translated = table.getRow(row).getCell(1).getText().trim();
+    if (!original && !translated) continue;
+    blocks.push({
+      id: "b" + (row < 10 ? "0" : "") + row,
+      original_text: original,
+      translated_text: translated,
+    });
+  }
+  return blocks;
+}
+
+function buildEvalPayload_(blocks) {
+  var json = getTranslationJson_();
+  var metadata = (json && json.metadata) || {};
+  return {
+    documentId: DocumentApp.getActiveDocument().getId(),
+    // Fingerprint of what we're evaluating; the function stores it so a later
+    // open can detect the doc changed, without keeping the whole translation.
+    contentHash: hashBlocks_(blocks),
+    blocks: blocks,
+    metadata: {
+      source_language: metadata.source_language || "English",
+      target_language: metadata.target_language || "Spanish",
+      overall_notes: metadata.overall_notes || "",
+    },
+  };
+}
+
+// Maps the eval function's raw dimension keys to the short keys the sidebar
+// (DIMENSIONS[].key in Evaluationsidebar.html) renders.
+var EVAL_DIM_KEYS = [
+  { raw: "accuracy_and_relevance", key: "accuracy" },
+  { raw: "clarity_and_simplicity", key: "clarity" },
+  { raw: "cultural_sensitivity", key: "cultural" },
+  { raw: "active_voice_and_tone", key: "voice" },
+  { raw: "consistency_and_style", key: "consistency" },
+];
+
+// Fix-priority severity, most severe first, for compiling one rating from many.
+var PRIORITY_ORDER = ["Critical", "High", "Medium", "Low"];
+
+function round1_(n) {
+  return Math.round(n * 10) / 10;
+}
+
+/**
+ * Pull one model's evaluation into the flat per-dimension shape the sidebar
+ * uses, keeping the full raw scores object for the strengths/issues breakdown.
+ */
+function normalizeModelScores_(evaluation) {
+  var scores = evaluation.scores || {};
+  var flat = {
+    weightedOverall: scores.weighted_overall_score !== undefined
+      ? scores.weighted_overall_score : "",
+    priorityRating: scores.overall_priority_rating || "",
+  };
+  EVAL_DIM_KEYS.forEach(function (d) {
+    var node = scores[d.raw];
+    flat[d.key] = node && node.score !== undefined && node.score !== null ? node.score : "";
+  });
+  return {
+    provider: evaluation.provider || "",
+    model: evaluation.model || "",
+    scores: flat,
+    raw: scores,
+  };
+}
+
+/** Average a numeric field across models, ignoring blanks. "" if none numeric. */
+function averageField_(models, field) {
+  var nums = models
+    .map(function (m) { return parseFloat(m.scores[field]); })
+    .filter(function (n) { return !isNaN(n); });
+  if (!nums.length) return "";
+  var sum = nums.reduce(function (a, b) { return a + b; }, 0);
+  return round1_(sum / nums.length);
+}
+
+/** Compile a single fix-priority rating from several — take the most severe. */
+function mostSeverePriority_(models) {
+  for (var i = 0; i < PRIORITY_ORDER.length; i++) {
+    for (var j = 0; j < models.length; j++) {
+      if (models[j].scores.priorityRating === PRIORITY_ORDER[i]) {
+        return PRIORITY_ORDER[i];
+      }
+    }
+  }
+  return "";
+}
+
+/**
+ * Compile every succeeded model evaluation into the shape
+ * Evaluationsidebar.html renders: an averaged headline score plus a per-model
+ * breakdown. With a single active model this collapses to that model's scores.
+ */
+function compileEvalData_(evaluations, blocks) {
+  var models = evaluations.map(normalizeModelScores_);
+
+  var compiled = {
+    weightedOverall: averageField_(models, "weightedOverall"),
+    priorityRating: mostSeverePriority_(models),
+  };
+  EVAL_DIM_KEYS.forEach(function (d) {
+    compiled[d.key] = averageField_(models, d.key);
+  });
+
+  var sourceText = [];
+  var translatedText = [];
+  for (var i = 0; i < blocks.length; i++) {
+    sourceText.push(blocks[i].original_text);
+    translatedText.push(blocks[i].translated_text);
+  }
+
+  return {
+    timestamp: new Date().toISOString(),
+    scores: compiled,
+    models: models,
+    // Kept for single-model fallback rendering / the debug panel.
+    raw_eval_text: JSON.stringify(models[0].raw),
+    source_text: sourceText.join("\n\n"),
+    translated_text: translatedText.join("\n\n"),
+  };
+}
+
+/**
+ * Stable fingerprint of the evaluated content, so a cached result can be
+ * told apart from a doc that has since been edited. Order-sensitive over the
+ * English/Spanish pairs; whitespace already trimmed by extractDocBlocks_.
+ */
+function hashBlocks_(blocks) {
+  var joined = blocks
+    .map(function (b) { return b.original_text + "" + b.translated_text; })
+    .join("");
+  var digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.MD5, joined, Utilities.Charset.UTF_8
+  );
+  return digest
+    .map(function (byte) { return ("0" + (byte & 0xff).toString(16)).slice(-2); })
+    .join("");
+}
+
+/**
+ * Find the active doc's most recent eval result. The eval function tags each
+ * combined result file with a public Drive property documentId; query for the
+ * newest and return its file id, or null if the doc has none yet.
+ */
+function findLatestResultFileId_(documentId) {
+  try {
+    var res = Drive.Files.list({
+      q: "properties has { key='documentId' and value='" + documentId + "' } and trashed = false",
+      orderBy: "createdTime desc",
+      pageSize: 1,
+      fields: "files(id)",
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    var files = (res && res.files) || [];
+    return files.length ? files[0].id : null;
+  } catch (e) {
+    Logger.log("Could not query Drive for latest result: " + e.message);
+    return null;
+  }
+}
+
+/**
+ * Load and compile a full evaluation from its Drive JSON file. Returns the
+ * sidebar-shaped DATA (with contentHash/timestamp from the file), or null if
+ * the file can't be read.
+ */
+function loadEvalFromLocation_(fileId) {
+  var content;
+  try {
+    content = DriveApp.getFileById(fileId).getBlob().getDataAsString("UTF-8");
+  } catch (e) {
+    Logger.log("Could not read evaluation file " + fileId + ": " + e.message);
+    return null;
+  }
+
+  var parsed;
+  try {
+    parsed = JSON.parse(content);
+  } catch (e) {
+    Logger.log("Evaluation file " + fileId + " was unparseable: " + e.message);
+    return null;
+  }
+
+  var succeeded = (parsed.evaluations || []).filter(function (e) { return !e.error; });
+  if (!succeeded.length) return null;
+
+  // The stored file carries a contentHash (for staleness) but not the
+  // translation itself, so the debug panel's source/translated text is empty
+  // on a reload — it's populated only on a fresh in-session run.
+  var data = compileEvalData_(succeeded, []);
+  data.contentHash = parsed.contentHash || "";
+  if (parsed.evaluatedAt) data.timestamp = parsed.evaluatedAt;
+  return data;
+}
+
+/**
+ * Read the active doc's latest evaluation straight from its Drive JSON file —
+ * the single source of truth. No Document Properties involved. Staleness comes
+ * from the blocks recorded in the file vs the doc's current content.
+ */
 function getEvalData() {
-  return null;
+  var documentId = DocumentApp.getActiveDocument().getId();
+  var fileId = findLatestResultFileId_(documentId);
+  if (!fileId) return null;
+
+  var data = loadEvalFromLocation_(fileId);
+  if (!data) return null;
+
+  try {
+    var currentHash = hashBlocks_(extractDocBlocks_());
+    data.stale = data.contentHash ? data.contentHash !== currentHash : false;
+  } catch (e) {
+    data.stale = false;
+  }
+  return data;
 }
 
 function evaluateTranslationFromSidebar() {
-  return { problem: "not_implemented", message: "Evaluation is not yet available." };
+  var evalUrl = PropertiesService.getScriptProperties().getProperty(EVAL_FUNCTION_URL_KEY);
+  if (!evalUrl) {
+    return {
+      problem: "config",
+      message: "Evaluation function URL is not configured. Set " +
+        EVAL_FUNCTION_URL_KEY + " in Project Settings → Script Properties.",
+    };
+  }
+
+  var blocks = extractDocBlocks_();
+  if (!blocks.length) {
+    return {
+      problem: "no_translation",
+      message: "Could not find an English/Spanish table in this document to evaluate.",
+    };
+  }
+
+  var options = {
+    method: "post",
+    contentType: "application/json",
+    headers: { Authorization: "Bearer " + ScriptApp.getIdentityToken() },
+    payload: JSON.stringify(buildEvalPayload_(blocks)),
+    muteHttpExceptions: true,
+  };
+
+  var response;
+  try {
+    response = UrlFetchApp.fetch(evalUrl, options);
+  } catch (e) {
+    return { problem: "eval_failed", message: "Could not reach the evaluation service: " + e.message };
+  }
+
+  var body = response.getContentText();
+  var result;
+  try {
+    result = JSON.parse(body);
+  } catch (e) {
+    return { problem: "eval_failed", message: "Unexpected response: " + body.substring(0, 300) };
+  }
+
+  if (response.getResponseCode() !== HTTP_OK) {
+    return { problem: "eval_failed", message: result.error || body.substring(0, 300) };
+  }
+
+  var succeeded = (result.evaluations || []).filter(function (e) { return !e.error; });
+  if (!succeeded.length) {
+    var firstError = (result.evaluations || [])[0];
+    return {
+      problem: "eval_failed",
+      message: (firstError && firstError.error) || "The evaluation model returned no result.",
+    };
+  }
+
+  // The eval function persisted the full result to Drive (tagged with this
+  // doc's id). Return it for immediate rendering; the sidebar reads it back
+  // from Drive on later opens. Nothing is stored in Document Properties.
+  var data = compileEvalData_(succeeded, blocks);
+  data.contentHash = hashBlocks_(blocks);
+  data.stale = false;
+  return data;
+}
+
+
+// ── Plain Language Eval ─────────────────────────────────────────────────
+
+/**
+ * Search the plain-language-eval Drive folder for an eval JSON matching
+ * the current document's source file. Looks up the source filename from
+ * the translation JSON, then searches by name pattern.
+ * @returns {Object|null} Parsed eval JSON with _evalFileName and _evalModifiedTime, or null
+ */
+function getPlainLanguageEvalData() {
+  var json = getTranslationJson_();
+  if (!json) return null;
+
+  var sourceFileId = json.sourceFileId;
+  if (!sourceFileId) return null;
+
+  var sourceFileName;
+  try {
+    var file = Drive.Files.get(sourceFileId, { fields: "name", supportsAllDrives: true });
+    sourceFileName = file.name;
+  } catch (e) {
+    Logger.log("Could not get source file name: " + e.message);
+    return null;
+  }
+
+  var baseName = sourceFileName.replace(/\.[^.]+$/, "");
+  var escapedName = baseName.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+
+  var query = "'" + PL_EVAL_FOLDER_ID + "' in parents"
+    + " and name contains '" + escapedName + "'"
+    + " and name contains 'plain-language-eval'"
+    + " and trashed = false";
+
+  try {
+    var results = Drive.Files.list({
+      q: query,
+      fields: "files(id,name,modifiedTime)",
+      orderBy: "modifiedTime desc",
+      pageSize: 1,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+
+    if (!results.files || results.files.length === 0) return null;
+
+    var evalFile = results.files[0];
+    var content = Drive.Files.get(evalFile.id, {
+      alt: "media",
+      supportsAllDrives: true,
+    });
+
+    var parsed = typeof content === "string" ? JSON.parse(content) : content;
+    parsed._evalFileName = evalFile.name;
+    parsed._evalModifiedTime = evalFile.modifiedTime;
+    return parsed;
+  } catch (e) {
+    Logger.log("Could not fetch plain language eval: " + e.message);
+    return null;
+  }
+}
+
+/**
+ * Open the Plain Language Eval sidebar. Only available on translation docs.
+ */
+function showPlainLanguageEval() {
+  var translationFileId = getTranslationFileId_();
+  if (!translationFileId) {
+    DocumentApp.getUi().alert(
+      "Not a Translation Document",
+      "This document does not have translation data associated with it.",
+      DocumentApp.getUi().ButtonSet.OK
+    );
+    return;
+  }
+
+  var html = HtmlService.createHtmlOutputFromFile("PlainLanguageEvalSidebar")
+    .setTitle("Plain Language Eval - English")
+    .setWidth(340);
+  DocumentApp.getUi().showSidebar(html);
 }
 
 // ── Plain Language Eval ─────────────────────────────────────────────────
@@ -646,10 +1030,10 @@ function onOpen(e) {
     .createAddonMenu()
     .addItem("AI Suggestions - Spanish", "showReviewPanel")
     .addItem("Plain Language Eval - English", "showPlainLanguageEval")
+    .addItem("Evaluate Translation", "showEvaluationPanel")
     .addItem("Submit Review", "submitReview")
     .addToUi();
 }
-
 /**
  * Open the AI Suggestions sidebar. Records the first-open timestamp
  * for time-to-approve tracking (only set once per document — persists
@@ -677,6 +1061,23 @@ function showReviewPanel() {
     .setWidth(340);
   DocumentApp.getUi().showSidebar(html);
 }
+
+function showEvaluationPanel() {
+  if (!getTranslationFileId_()) {
+    DocumentApp.getUi().alert(
+      "Not a Translation Document",
+      "This document does not have translation data associated with it.",
+      DocumentApp.getUi().ButtonSet.OK
+    );
+    return;
+  }
+
+  var html = HtmlService.createHtmlOutputFromFile("Evaluationsidebar")
+    .setTitle("Translation Evaluation")
+    .setWidth(340);
+  DocumentApp.getUi().showSidebar(html);
+}
+
 
 /**
  * Open a modal dialog showing a Google Drive preview of the source file.
