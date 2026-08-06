@@ -5,6 +5,8 @@ const { buildTranslationPrompt } = require("./prompt-assembly");
 const { callLlm } = require("./llm");
 const { loadConfig, writeOutput, logTranslationResult, stripExtension } = require("./loaders");
 const { createTranslationDoc } = require("./doc-writer");
+const { withRetry } = require("./retry");
+const { notifyDocCreated, notifyDocFailed } = require("./notifier");
 
 const REQUIRED_FIELDS = ["extractionFileId", "sourceFileName"];
 const TRANSLATE_ROLE = "translate";
@@ -109,9 +111,9 @@ async function translate(req, res) {
   const results = await Promise.allSettled(
     activeModels.map(async ({ provider, model }) => {
       console.log(`Calling ${provider} (${model})...`);
-      const { text: translationJson, usage } = await callLlm(provider, model, prompt);
-      console.log(`${provider} (${model}) complete (%d in / %d out tokens), writing output...`,
-        usage.input_tokens, usage.output_tokens);
+      const { text: translationJson, usage, stop_reason } = await callLlm(provider, model, prompt);
+      console.log(`${provider} (${model}) complete (%d in / %d out tokens, stop_reason=%s), writing output...`,
+        usage.input_tokens, usage.output_tokens, stop_reason);
       const outputFileName = `${baseName}_${provider}_${model}.json`;
       let parsed;
       try {
@@ -181,20 +183,24 @@ async function translate(req, res) {
   const outputFolderId = process.env.DRIVE_TRANSLATION_DOC_FOLDER_ID;
   for (const t of succeeded) {
     try {
-      const docId = await createTranslationDoc({
-        translationJson: t.translationJson,
-        translationFileId: t.outputFileId,
-        sourceFileName,
-        provider: t.provider,
-        model: t.model,
-        stagingFolderId,
-        outputFolderId,
-      });
+      const docId = await withRetry(() =>
+        createTranslationDoc({
+          translationJson: t.translationJson,
+          translationFileId: t.outputFileId,
+          sourceFileName,
+          provider: t.provider,
+          model: t.model,
+          stagingFolderId,
+          outputFolderId,
+        })
+      );
       t.docId = docId;
       console.log(`Created translation doc ${docId} for ${t.provider}/${t.model}`);
+      await notifyDocCreated({ sourceFileName, provider: t.provider, model: t.model, docId });
     } catch (err) {
       console.error(`Failed to create doc for ${t.provider}/${t.model}:`, err.message);
       t.docError = err.message;
+      await notifyDocFailed({ sourceFileName, provider: t.provider, model: t.model, error: err.message });
     }
   }
 

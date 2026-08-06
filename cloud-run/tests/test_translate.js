@@ -32,6 +32,11 @@ jest.mock("../translate/doc-writer.js", () => ({
   createTranslationDoc: jest.fn().mockResolvedValue("mock-doc-id"),
 }));
 
+jest.mock("../translate/notifier.js", () => ({
+  notifyDocCreated: jest.fn().mockResolvedValue(),
+  notifyDocFailed: jest.fn().mockResolvedValue(),
+}));
+
 const { createTranslationDoc } = require("../translate/doc-writer.js");
 
 const {
@@ -471,7 +476,7 @@ describe("buildTranslationPrompt", () => {
 
   test("assembles prompt with extraction JSON and no glossary", async () => {
     const extractionJson = {
-      page_metadata: { page_number: 1 },
+      page_metadata: [{ page_number: 1, dimensions_description: "8.5x11in portrait", layout_type: "single-column", layout_description: "Single column layout" }],
       blocks: [{ id: "b01", text: "Hello", translate: true }],
       non_translatable_elements: [],
       translation_warnings: [],

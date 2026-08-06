@@ -71,6 +71,7 @@ install: install-js install-py
 install-js:
 	cd translate && npm install
 	cd capture-feedback && npm install
+	cd plain-language-eval && npm install
 	npm install
 
 install-py:
@@ -92,6 +93,9 @@ eval-quality:
 
 eval-drift:
 	cd eval/drift && functions-framework --target=eval_drift --port=8085
+
+plain-language-eval:
+	cd plain-language-eval && npx functions-framework --target=plainLanguageEval --port=8086
 
 # ── Test ─────────────────────────────────────────────────────────────
 test: test-js test-py

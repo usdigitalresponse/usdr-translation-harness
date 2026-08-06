@@ -22,7 +22,7 @@ SCHEMA_PATHS = {
 }
 
 
-def call_claude(prompt, *, model="claude-sonnet-4-6", max_tokens=16384, system=None, pdf_base64=None, output_schema=None):
+def call_claude(prompt, *, model="claude-sonnet-4-6", max_tokens=65536, system=None, pdf_base64=None, output_schema=None):
     client = anthropic.Anthropic(timeout=LLM_TIMEOUT_SECONDS)
     content = []
 
@@ -50,7 +50,8 @@ def call_claude(prompt, *, model="claude-sonnet-4-6", max_tokens=16384, system=N
         "input_tokens": response.usage.input_tokens,
         "output_tokens": response.usage.output_tokens,
     }
-    return response.content[0].text, usage
+    text_block = next(b for b in response.content if b.type == "text")
+    return text_block.text, usage
 
 
 def call_gemini(prompt, *, model="gemini-3.5-flash", pdf_base64=None, output_schema=None):

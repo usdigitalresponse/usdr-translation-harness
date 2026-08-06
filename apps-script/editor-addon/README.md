@@ -1,6 +1,6 @@
 # Editor Add-on
 
-Google Docs editor add-on for reviewing AI-generated translations. When a reviewer opens a translation output doc, the add-on provides a sidebar for reviewing AI suggestions (alternative translations, flagged terms, glossary cross-checks) and a "Submit Review" menu item that sends the reviewer's edits to the Capture Feedback Cloud Run function.
+Google Docs editor add-on for reviewing AI-generated translations. When a reviewer opens a translation output doc, the add-on provides a sidebar for reviewing AI suggestions (alternative translations, flagged terms, glossary cross-checks), a plain language evaluation sidebar, and a "Submit Review" menu item that sends the reviewer's edits to the Capture Feedback Cloud Run function.
 
 ## How the review flow works
 
@@ -44,7 +44,28 @@ When the reviewer clicks "Use alternative" on an alt_translations card, the side
 
 The first time `showReviewPanel()` opens the sidebar, it records an ISO timestamp in document properties (`SIDEBAR_OPENED_AT` key). This timestamp is included in the submit payload so the Capture Feedback function can compute seconds elapsed between first sidebar open and review submission.
 
-### 7. Submit Review
+### 7. Plain Language Eval sidebar
+
+Selecting "View Plain Language Eval" opens a sidebar displaying the plain language evaluation for the document's source file. The eval is produced by the `plain-language-eval` Cloud Run function, which runs independently alongside extraction when a document is submitted.
+
+**Lookup strategy:** The sidebar calls `getPlainLanguageEvalData()`, which:
+
+1. Reads the `sourceFileId` from the translation JSON (set during translation)
+2. Resolves the source filename via `Drive.Files.get()`
+3. Searches the plain-language-eval Drive folder (`1Sa5r8G4YMo0Hn02rCjyClixN0jCgbQ5U`) for files matching the base filename and containing `plain-language-eval` in the name
+4. Returns the most recent match (ordered by `modifiedTime desc`)
+
+No doc property links the translated doc to the eval JSON because the two services run in parallel with no guaranteed ordering. If no eval is found, the sidebar shows a "No evaluation found" message.
+
+The sidebar displays:
+- Overall weighted score (/5) and fix priority rating
+- Overall summary
+- Per-dimension scores and priorities for: Accuracy & Relevance (30%), Clarity/Simplicity/Accessibility (25%), Structure for Action (20%), Active Voice & Tone (15%), Consistency & Style (10%)
+- Strengths, issues, recommendations, and examples for each dimension
+- A "View source" link to preview the source PDF
+- Debug section with the full evaluation JSON
+
+### 8. Submit Review
 
 Selecting "Submit Review" from the menu:
 
@@ -54,7 +75,7 @@ Selecting "Submit Review" from the menu:
 4. Sends the payload to the Capture Feedback Cloud Run function via `UrlFetchApp.fetch()`, authenticated with an identity token
 5. Displays the result (number of terminology decisions captured, any warnings)
 
-### 8. Orphan detection
+### 9. Orphan detection
 
 `checkItemsExist()` checks whether each reviewable item's original phrase and translation still appear in the document text. Items whose text is missing are "orphans" — this means the reviewer edited the text directly in the doc. Orphan status is sent to Capture Feedback and used to distinguish signals like `accepted_then_changed` (accepted in sidebar but text was edited) vs. `accepted` (accepted and left unchanged).
 
@@ -65,6 +86,7 @@ Selecting "Submit Review" from the menu:
 | `addon.js` | All server-side logic: menu, sidebar data, highlighting, text replacement, submit |
 | `Sidebar.html` | Sidebar UI — card-based review flow, status tracking, highlight interaction |
 | `Evaluationsidebar.html` | Evaluation sidebar (separate feature, not part of the review flow) |
+| `PlainLanguageEvalSidebar.html` | Plain language eval sidebar — displays rubric-based eval results for the source document |
 | `appsscript.json` | Manifest — scopes, add-on config, URL whitelist |
 
 ## Evaluation 
@@ -93,9 +115,9 @@ Document properties cap values at 9KB. If an evaluation exceeds that, `source_te
 **Exception logging:** `STACKDRIVER` routes Apps Script errors to Cloud Logging in the linked GCP project (viewable in GCP Console -> Logging -> Log Explorer). This requires the Apps Script project to be linked to a GCP project under Project Settings -> Google Cloud Platform Project.
 
 **OAuth scopes:**
-- `auth/documents.currentonly` — read the currently open doc and its body/table
+- `auth/documents` — read the currently open doc; create temp docs for DOCX export
 - `auth/script.container.ui` — add menus and show the sidebar
-- `auth/drive.readonly` — read Drive file properties and fetch translation JSON
+- `auth/drive` — read Drive file properties, fetch translation JSON, export and trash temp docs
 - `auth/script.external_request` — call the Capture Feedback Cloud Run function
 - `openid` + `auth/userinfo.email` — generate an identity token for Cloud Run IAM authentication
 

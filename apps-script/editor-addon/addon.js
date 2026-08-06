@@ -1,4 +1,4 @@
-// Editor Add-on: adds "Translation Review" menu to translation output docs.
+// Editor Add-on: adds "USDR Multilingual Plain Language Assistant" menu to translation output docs.
 //
 // The Translate Cloud Run function sets the "usdr_translation_review" property
 // on the Drive file via the Drive API v3 `properties` field. This add-on reads
@@ -10,6 +10,8 @@ var DOC_PROPERTY_KEY = "usdr_translation_review";
 var SIDEBAR_CHECKS_KEY = "SIDEBAR_CHECKS";
 var SIDEBAR_OPENED_AT_KEY = "SIDEBAR_OPENED_AT";
 var HIGHLIGHT_COLOR = "#FFD700";
+var DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+var PL_EVAL_FOLDER_ID = "1Sa5r8G4YMo0Hn02rCjyClixN0jCgbQ5U";
 
 // ── Drive property access ────────────────────────────────────────────────
 
@@ -121,6 +123,7 @@ function getSidebarData() {
       back_translation_of_key_phrases: sections.back_translation_of_key_phrases,
       glossary_cross_check: sections.glossary_cross_check,
       metadata: json.metadata || null,
+      sourceFileId: json.sourceFileId || null,
     },
     checks: rawChecks ? JSON.parse(rawChecks) : {},
   };
@@ -476,7 +479,79 @@ function regenerateSuggestions() {
 }
 
 function generateReviewDocx() {
-  return null;
+  var result = getSidebarData();
+  if (!result || !result.data) return null;
+  var data = result.data;
+
+  var docName = DocumentApp.getActiveDocument().getName();
+  var tempDoc = DocumentApp.create("AI Suggestions — " + docName);
+  var body = tempDoc.getBody();
+
+  var meta = data.metadata || {};
+  if (meta.source_language || meta.target_language) {
+    body.appendParagraph(
+      (meta.source_language || "?") + " → " + (meta.target_language || "?")
+    ).setHeading(DocumentApp.ParagraphHeading.SUBTITLE);
+  }
+  if (meta.overall_notes) {
+    body.appendParagraph(meta.overall_notes);
+  }
+
+  appendSection_(body, "Alternative Translations", data.alt_translations,
+    ["Original Phrase", "Primary Translation", "Alternative", "Rationale"],
+    ["original_phrase", "primary_translation", "alt_translation", "rationale"]);
+
+  appendSection_(body, "Terms Flagged for Clarification", data.terms_flagged_for_clarification,
+    ["Original Phrase", "Translation", "Clarification Needed"],
+    ["original_phrase", "translation", "needed_clarification"]);
+
+  appendSection_(body, "Back Translation of Key Phrases", data.back_translation_of_key_phrases,
+    ["Original Phrase", "Translation", "Back Translation"],
+    ["original_phrase", "translation", "back_translation"]);
+
+  appendSection_(body, "Glossary Cross-Check", data.glossary_cross_check,
+    ["Term", "Translation", "Status", "Note"],
+    ["term", "translation", "status", "note"]);
+
+  tempDoc.saveAndClose();
+
+  var tempId = tempDoc.getId();
+  try {
+    var exportUrl = "https://www.googleapis.com/drive/v3/files/" +
+      tempId + "/export?mimeType=" + encodeURIComponent(DOCX_MIME);
+    var response = UrlFetchApp.fetch(exportUrl, {
+      headers: { Authorization: "Bearer " + ScriptApp.getOAuthToken() },
+    });
+    var base64 = Utilities.base64Encode(response.getBlob().getBytes());
+    Drive.Files.update({trashed: true}, tempId);
+    return base64;
+  } catch (e) {
+    Logger.log("DOCX export failed: " + e.message);
+    try { Drive.Files.update({trashed: true}, tempId); } catch (ignored) {}
+    return null;
+  }
+}
+function appendSection_(body, title, items, headers, fields) {
+  if (!items || items.length === 0) return;
+
+  body.appendParagraph(title)
+    .setHeading(DocumentApp.ParagraphHeading.HEADING2);
+
+  var rows = [headers];
+  for (var i = 0; i < items.length; i++) {
+    var row = [];
+    for (var f = 0; f < fields.length; f++) {
+      var val = items[i][fields[f]];
+      row.push(val != null ? String(val) : "");
+    }
+    rows.push(row);
+  }
+  var table = body.appendTable(rows);
+
+  var headerRow = table.getRow(0);
+  for (var h = 0; h < headerRow.getNumCells(); h++) {
+    headerRow.getCell(h).editAsText().setBold(true);
+  }
 }
 
 // ── Evaluation ───────────────────────────────────────────────────────────
@@ -783,6 +858,167 @@ function evaluateTranslationFromSidebar() {
   return data;
 }
 
+
+// ── Plain Language Eval ─────────────────────────────────────────────────
+
+/**
+ * Search the plain-language-eval Drive folder for an eval JSON matching
+ * the current document's source file. Looks up the source filename from
+ * the translation JSON, then searches by name pattern.
+ * @returns {Object|null} Parsed eval JSON with _evalFileName and _evalModifiedTime, or null
+ */
+function getPlainLanguageEvalData() {
+  var json = getTranslationJson_();
+  if (!json) return null;
+
+  var sourceFileId = json.sourceFileId;
+  if (!sourceFileId) return null;
+
+  var sourceFileName;
+  try {
+    var file = Drive.Files.get(sourceFileId, { fields: "name", supportsAllDrives: true });
+    sourceFileName = file.name;
+  } catch (e) {
+    Logger.log("Could not get source file name: " + e.message);
+    return null;
+  }
+
+  var baseName = sourceFileName.replace(/\.[^.]+$/, "");
+  var escapedName = baseName.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+
+  var query = "'" + PL_EVAL_FOLDER_ID + "' in parents"
+    + " and name contains '" + escapedName + "'"
+    + " and name contains 'plain-language-eval'"
+    + " and trashed = false";
+
+  try {
+    var results = Drive.Files.list({
+      q: query,
+      fields: "files(id,name,modifiedTime)",
+      orderBy: "modifiedTime desc",
+      pageSize: 1,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+
+    if (!results.files || results.files.length === 0) return null;
+
+    var evalFile = results.files[0];
+    var content = Drive.Files.get(evalFile.id, {
+      alt: "media",
+      supportsAllDrives: true,
+    });
+
+    var parsed = typeof content === "string" ? JSON.parse(content) : content;
+    parsed._evalFileName = evalFile.name;
+    parsed._evalModifiedTime = evalFile.modifiedTime;
+    return parsed;
+  } catch (e) {
+    Logger.log("Could not fetch plain language eval: " + e.message);
+    return null;
+  }
+}
+
+/**
+ * Open the Plain Language Eval sidebar. Only available on translation docs.
+ */
+function showPlainLanguageEval() {
+  var translationFileId = getTranslationFileId_();
+  if (!translationFileId) {
+    DocumentApp.getUi().alert(
+      "Not a Translation Document",
+      "This document does not have translation data associated with it.",
+      DocumentApp.getUi().ButtonSet.OK
+    );
+    return;
+  }
+
+  var html = HtmlService.createHtmlOutputFromFile("PlainLanguageEvalSidebar")
+    .setTitle("Plain Language Eval - English")
+    .setWidth(340);
+  DocumentApp.getUi().showSidebar(html);
+}
+
+// ── Plain Language Eval ─────────────────────────────────────────────────
+
+/**
+ * Search the plain-language-eval Drive folder for an eval JSON matching
+ * the current document's source file. Looks up the source filename from
+ * the translation JSON, then searches by name pattern.
+ * @returns {Object|null} Parsed eval JSON with _evalFileName and _evalModifiedTime, or null
+ */
+function getPlainLanguageEvalData() {
+  var json = getTranslationJson_();
+  if (!json) return null;
+
+  var sourceFileId = json.sourceFileId;
+  if (!sourceFileId) return null;
+
+  var sourceFileName;
+  try {
+    var file = Drive.Files.get(sourceFileId, { fields: "name", supportsAllDrives: true });
+    sourceFileName = file.name;
+  } catch (e) {
+    Logger.log("Could not get source file name: " + e.message);
+    return null;
+  }
+
+  var baseName = sourceFileName.replace(/\.[^.]+$/, "");
+  var escapedName = baseName.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+
+  var query = "'" + PL_EVAL_FOLDER_ID + "' in parents"
+    + " and name contains '" + escapedName + "'"
+    + " and name contains 'plain-language-eval'"
+    + " and trashed = false";
+
+  try {
+    var results = Drive.Files.list({
+      q: query,
+      fields: "files(id,name,modifiedTime)",
+      orderBy: "modifiedTime desc",
+      pageSize: 1,
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+
+    if (!results.files || results.files.length === 0) return null;
+
+    var evalFile = results.files[0];
+    var content = Drive.Files.get(evalFile.id, {
+      alt: "media",
+      supportsAllDrives: true,
+    });
+
+    var parsed = typeof content === "string" ? JSON.parse(content) : content;
+    parsed._evalFileName = evalFile.name;
+    parsed._evalModifiedTime = evalFile.modifiedTime;
+    return parsed;
+  } catch (e) {
+    Logger.log("Could not fetch plain language eval: " + e.message);
+    return null;
+  }
+}
+
+/**
+ * Open the Plain Language Eval sidebar. Only available on translation docs.
+ */
+function showPlainLanguageEval() {
+  var translationFileId = getTranslationFileId_();
+  if (!translationFileId) {
+    DocumentApp.getUi().alert(
+      "Not a Translation Document",
+      "This document does not have translation data associated with it.",
+      DocumentApp.getUi().ButtonSet.OK
+    );
+    return;
+  }
+
+  var html = HtmlService.createHtmlOutputFromFile("PlainLanguageEvalSidebar")
+    .setTitle("Plain Language Eval - English")
+    .setWidth(340);
+  DocumentApp.getUi().showSidebar(html);
+}
+
 // ── Menu and sidebar ─────────────────────────────────────────────────────
 
 /**
@@ -792,12 +1028,12 @@ function evaluateTranslationFromSidebar() {
 function onOpen(e) {
   DocumentApp.getUi()
     .createAddonMenu()
-    .addItem("Show AI Suggestions", "showReviewPanel")
+    .addItem("AI Suggestions - Spanish", "showReviewPanel")
+    .addItem("Plain Language Eval - English", "showPlainLanguageEval")
     .addItem("Evaluate Translation", "showEvaluationPanel")
     .addItem("Submit Review", "submitReview")
     .addToUi();
 }
-
 /**
  * Open the AI Suggestions sidebar. Records the first-open timestamp
  * for time-to-approve tracking (only set once per document — persists
@@ -821,7 +1057,7 @@ function showReviewPanel() {
 
   clearAllHighlights();
   var html = HtmlService.createHtmlOutputFromFile("Sidebar")
-    .setTitle("AI Suggestions")
+    .setTitle("AI Suggestions - Spanish")
     .setWidth(340);
   DocumentApp.getUi().showSidebar(html);
 }
@@ -842,23 +1078,22 @@ function showEvaluationPanel() {
   DocumentApp.getUi().showSidebar(html);
 }
 
-// Temporary — returns the submit payload as a string for sidebar debug button.
-// Remove before release.
-function debugGetSubmitPayload() {
-  var doc = DocumentApp.getActiveDocument();
-  var props = PropertiesService.getDocumentProperties();
 
-  var rawChecks = props.getProperty(SIDEBAR_CHECKS_KEY);
-  var sidebarChecks = rawChecks ? JSON.parse(rawChecks) : {};
-  var sidebarOrphans = checkItemsExist();
-  var sidebarOpenedAt = props.getProperty(SIDEBAR_OPENED_AT_KEY) || null;
-
-  return JSON.stringify({
-    documentId: doc.getId(),
-    sidebarChecks: sidebarChecks,
-    sidebarOrphans: sidebarOrphans,
-    sidebarOpenedAt: sidebarOpenedAt,
-  }, null, 2);
+/**
+ * Open a modal dialog showing a Google Drive preview of the source file.
+ * @param {string} fileId - Drive file ID of the source document
+ */
+function showSourcePreview(fileId) {
+  var file = Drive.Files.get(fileId, { fields: "name", supportsAllDrives: true });
+  var title = file.name || "Source Document";
+  var previewUrl = "https://drive.google.com/file/d/" + fileId + "/preview";
+  var html = HtmlService.createHtmlOutput(
+    '<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}</style>'
+    + '<iframe src="' + previewUrl + '" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;"></iframe>'
+  )
+    .setWidth(600)
+    .setHeight(500);
+  DocumentApp.getUi().showModelessDialog(html, title);
 }
 
 /**
@@ -911,6 +1146,7 @@ function submitReview() {
     headers: { Authorization: "Bearer " + token },
     payload: JSON.stringify({
       documentId: doc.getId(),
+      reviewerEmail: Session.getActiveUser().getEmail(),
       sidebarChecks: sidebarChecks,
       sidebarOrphans: sidebarOrphans,
       sidebarOpenedAt: sidebarOpenedAt,
