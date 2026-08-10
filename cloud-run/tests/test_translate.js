@@ -202,6 +202,7 @@ describe("translate", () => {
       translated_text: "Hola",
       sourceFileId: "src456",
       extractionFileId: "file123",
+      contentType: "public_flyer",
       provider: "anthropic",
       model: "claude-sonnet-4-6",
     });

@@ -105,6 +105,8 @@ async function captureFeedback(req, res) {
   const diffs = diffBlocks(aiBlocks, reviewedBlocks);
 
   // Step 5: Extract terminology decisions from diffs + sidebar state
+  const contentType = translationJson.contentType || "public_flyer";
+
   const decisions = extractDecisions(diffs, translationJson, {
     checks: sidebarChecks || {},
     orphans: sidebarOrphans || {},
@@ -112,6 +114,7 @@ async function captureFeedback(req, res) {
     documentId,
     translationFileId,
     reviewerEmail: reviewerEmail || "",
+    contentType,
   });
 
   // Step 6: Compute quality metrics

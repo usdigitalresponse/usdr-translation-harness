@@ -2,6 +2,8 @@ var HTTP_ACCEPTED = 202;
 var POLL_INTERVAL_MINUTES = 5;
 var HEADER_ROWS = 1;
 
+var DEFAULT_CONTENT_TYPE = "public_flyer";
+
 var SUPPORTED_MIME_TYPES = [
   MimeType.PDF,
   MimeType.GOOGLE_DOCS,
@@ -17,6 +19,9 @@ var STATUS = {
   PL_EVAL_COMPLETE: "pl-eval-complete",
   PL_EVAL_FAILED: "pl-eval-failed",
 };
+
+var EXTRACT_STATUSES = [STATUS.TRIGGERED, STATUS.COMPLETE, STATUS.EXTRACTED];
+var PL_EVAL_STATUSES = [STATUS.PL_EVAL_TRIGGERED, STATUS.PL_EVAL_COMPLETE];
 
 var COL = {
   FILE_ID: 0,
@@ -58,9 +63,6 @@ function getProcessingLogSheet(sheetId) {
   return SpreadsheetApp.openById(sheetId).getSheetByName("ProcessingLog");
 }
 
-var EXTRACT_STATUSES = [STATUS.TRIGGERED, STATUS.COMPLETE, STATUS.EXTRACTED];
-var PL_EVAL_STATUSES = [STATUS.PL_EVAL_TRIGGERED, STATUS.PL_EVAL_COMPLETE];
-
 function getProcessedFileIds(sheetId) {
   var sheet = getProcessingLogSheet(sheetId);
   var data = sheet.getDataRange().getValues();
@@ -92,18 +94,23 @@ function logProcessingResult(sheetId, file, result, successStatus, failedStatus)
   ]);
 }
 
-function callCloudRunFunction(file, url, label) {
+function callCloudRunFunction(file, url, label, contentType) {
   var token = ScriptApp.getIdentityToken();
+
+  var payload = {
+    fileId: file.getId(),
+    fileName: file.getName(),
+    mimeType: file.getMimeType(),
+  };
+  if (contentType) {
+    payload.contentType = contentType;
+  }
 
   var options = {
     method: "post",
     contentType: "application/json",
     headers: { Authorization: "Bearer " + token },
-    payload: JSON.stringify({
-      fileId: file.getId(),
-      fileName: file.getName(),
-      mimeType: file.getMimeType(),
-    }),
+    payload: JSON.stringify(payload),
     muteHttpExceptions: true,
   };
 
@@ -171,7 +178,7 @@ function watchForNewFiles() {
     if (!processed.extract.has(fid)) {
       var extractStart = Date.now();
       try {
-        var extractResult = callCloudRunFunction(file, config.EXTRACT_URL, "Extract");
+        var extractResult = callCloudRunFunction(file, config.EXTRACT_URL, "Extract", DEFAULT_CONTENT_TYPE);
         extractResult.durationMs = Date.now() - extractStart;
         logProcessingResult(config.PROCESSING_LOG_SHEET_ID, file, extractResult, STATUS.TRIGGERED, STATUS.FAILED);
       } catch (e) {

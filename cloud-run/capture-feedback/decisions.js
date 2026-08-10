@@ -54,7 +54,7 @@ function buildSidebarKeyToBlockMap(translationJson) {
  * @param {Array} diffs - Output from diffBlocks()
  * @param {Object} translationJson - Full translation JSON (for metadata/glossary context)
  * @param {Object} sidebar - { checks: { status: {id: status}, flagged: {id: true} }, orphans: {key: true} }
- * @param {Object} docIds - { documentId, translationFileId } for linking back to source artifacts
+ * @param {Object} docIds - { documentId, translationFileId, reviewerEmail, contentType } for linking back to source artifacts
  * @returns {Array<Object>} Terminology decisions with classification
  */
 function extractDecisions(diffs, translationJson, sidebar = {}, docIds = {}) {
@@ -90,6 +90,7 @@ function extractDecisions(diffs, translationJson, sidebar = {}, docIds = {}) {
             documentId: docIds.documentId || "document ID not available",
             translationFileId: docIds.translationFileId || "translation file ID not available",
             reviewerEmail: docIds.reviewerEmail || "",
+            contentType: docIds.contentType || "",
             sourceText: aiBlock.translated_text || "",
           });
           i += 2;

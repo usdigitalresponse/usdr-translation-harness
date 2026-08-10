@@ -290,7 +290,10 @@
 
   var saveTimer = null;
 
-  var DEFAULT_PROMPT_URL = 'https://docs.google.com/document/d/1gKwAkp8RjmN0QjUJwXD_cmVAnO27THVw5KPitNtzvhM/edit?tab=t.0#heading=h.jj3x0twkwyk';
+  var PROMPT_URLS = {
+    public_flyer: 'https://docs.google.com/document/d/1gKwAkp8RjmN0QjUJwXD_cmVAnO27THVw5KPitNtzvhM/edit?tab=t.0#heading=h.jj3x0twkwyk',
+  };
+  var DEFAULT_PROMPT_URL = PROMPT_URLS.public_flyer;
   var promptUrl = DEFAULT_PROMPT_URL;
 
   // ── Utilities ─────────────────────────────────────────────────────────
@@ -923,6 +926,12 @@
     reviewPos = 0;
     showingAltId = null;
     expandedReviewedId = null;
+
+    var ct = DATA.contentType || 'public_flyer';
+    if (PROMPT_URLS[ct]) {
+      DEFAULT_PROMPT_URL = PROMPT_URLS[ct];
+      promptUrl = DEFAULT_PROMPT_URL;
+    }
 
     render();
     loadPromptUrl();

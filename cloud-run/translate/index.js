@@ -72,8 +72,8 @@ async function translate(req, res) {
     return;
   }
 
-  const { extractionFileId, sourceFileId, sourceFileName, model, provider } =
-    input;
+  const { extractionFileId, sourceFileId, sourceFileName, model, provider,
+    contentType = "public_flyer" } = input;
 
   let prompt, promptMetrics;
   try {
@@ -129,6 +129,7 @@ async function translate(req, res) {
         ...parsed,
         sourceFileId,
         extractionFileId,
+        contentType,
         provider,
         model,
       };
