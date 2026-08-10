@@ -8,7 +8,7 @@ const DRIVE_FILE_URL_PREFIX = "https://drive.google.com/file/d/";
 const DOCS_URL_PREFIX = "https://docs.google.com/document/d/";
 const DOC_ID_NOT_AVAILABLE = "Document ID not available";
 const TRANSLATION_FILE_ID_NOT_AVAILABLE = "Translation file ID not available";
-const COLUMN_RANGE = "!A:I";
+const COLUMN_RANGE = "!A:J";
 
 /**
  * Append terminology decisions to the derived glossary Google Sheet,
@@ -19,7 +19,7 @@ const COLUMN_RANGE = "!A:I";
  *   ModelFlagged — changed text overlaps with a model-flagged phrase
  *   OtherChanges — everything else (grammar, short words, incidental)
  *
- * Columns per tab: timestamp, reviewerEmail, aiTerm, reviewerTerm, blockId, reviewSignal, sourceText, docUrl, translationJsonUrl
+ * Columns per tab: timestamp, reviewerEmail, aiTerm, reviewerTerm, blockId, reviewSignal, sourceText, docUrl, translationJsonUrl, contentType
  *
  * @param {Array<Object>} decisions
  * @param {string} sheetId - Google Sheet ID for the derived glossary
@@ -47,6 +47,7 @@ async function writeDecisions(decisions, sheetId, auth) {
       d.sourceText || "",
       looksLikeId(d.documentId) ? DOCS_URL_PREFIX + d.documentId : DOC_ID_NOT_AVAILABLE,
       looksLikeId(d.translationFileId) ? DRIVE_FILE_URL_PREFIX + d.translationFileId : TRANSLATION_FILE_ID_NOT_AVAILABLE,
+      d.contentType || "",
     ];
     tabGroups[tab].push(row);
   }

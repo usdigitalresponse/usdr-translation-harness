@@ -4,6 +4,11 @@ const path = require("path");
 const { loadDoc, loadSheet, loadExtractionJson } = require("./loaders");
 
 const CONTENT_PLACEHOLDER = "[Paste content to be translated in the area below]";
+const DEFAULT_CONTENT_TYPE = "public_flyer";
+const PROMPT_DOC_ENV_VARS = {
+  public_flyer: "TRANSLATION_PROMPT_DOC_ID",
+  content_type_two: "TRANSLATION_PROMPT_DOC_ID_CONTENT_TYPE_TWO",
+};
 const CHARS_PER_TOKEN_ESTIMATE = 4;
 const PDF_EXTRACTION_CONTEXT = fs.readFileSync(
   path.join(__dirname, "extraction-context.md"),
@@ -101,12 +106,13 @@ function formatGlossary(glossaryRows) {
  *   3. Extraction JSON (full structured output from the extract function)
  *   4. Glossary (terminology reference with approved translations and constraints)
  */
-async function buildTranslationPrompt(extractionFileId) {
+async function buildTranslationPrompt(extractionFileId, contentType) {
   console.log("Loading extraction JSON...");
   const extractionJson = await loadExtractionJson(extractionFileId);
 
-  console.log("Loading base prompt from Google Doc...");
-  const basePrompt = await loadDoc("TRANSLATION_PROMPT_DOC_ID");
+  const promptEnvVar = PROMPT_DOC_ENV_VARS[contentType] || PROMPT_DOC_ENV_VARS[DEFAULT_CONTENT_TYPE];
+  console.log("Loading base prompt from Google Doc (%s)...", promptEnvVar);
+  const basePrompt = await loadDoc(promptEnvVar);
 
   let glossaryText = "";
   try {

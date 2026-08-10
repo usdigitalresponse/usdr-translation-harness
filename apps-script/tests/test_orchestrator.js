@@ -106,7 +106,6 @@ describe("getConfig", () => {
 
     var config = ctx.getConfig();
 
-    expect(config.INPUT_FOLDER_ID).toBe("folder-123");
     expect(config.EXTRACT_URL).toBe("https://extract.example.com");
     expect(config.PLAIN_LANGUAGE_EVAL_URL).toBe("https://pl-eval.example.com");
     expect(config.PROCESSING_LOG_SHEET_ID).toBe("sheet-456");
@@ -122,10 +121,10 @@ describe("getConfig", () => {
 
   test("lists all missing property names", () => {
     var ctx = loadOrchestrator({
-      PropertiesService: mockScriptProperties({ INPUT_FOLDER_ID: "x" }),
+      PropertiesService: mockScriptProperties({ EXTRACT_FUNCTION_URL: "x" }),
     });
 
-    expect(() => ctx.getConfig()).toThrow("EXTRACT_FUNCTION_URL");
+    expect(() => ctx.getConfig()).toThrow("PLAIN_LANGUAGE_EVAL_FUNCTION_URL");
     expect(() => ctx.getConfig()).toThrow("PROCESSING_LOG_SHEET_ID");
   });
 });

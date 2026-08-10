@@ -72,12 +72,12 @@ async function translate(req, res) {
     return;
   }
 
-  const { extractionFileId, sourceFileId, sourceFileName, model, provider } =
-    input;
+  const { extractionFileId, sourceFileId, sourceFileName, model, provider,
+    contentType = "public_flyer" } = input;
 
   let prompt, promptMetrics;
   try {
-    ({ prompt, promptMetrics } = await buildTranslationPrompt(extractionFileId));
+    ({ prompt, promptMetrics } = await buildTranslationPrompt(extractionFileId, contentType));
   } catch (err) {
     res
       .status(StatusCodes.INTERNAL_SERVER_ERROR)
@@ -129,6 +129,7 @@ async function translate(req, res) {
         ...parsed,
         sourceFileId,
         extractionFileId,
+        contentType,
         provider,
         model,
       };
