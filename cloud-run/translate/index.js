@@ -77,7 +77,7 @@ async function translate(req, res) {
 
   let prompt, promptMetrics;
   try {
-    ({ prompt, promptMetrics } = await buildTranslationPrompt(extractionFileId));
+    ({ prompt, promptMetrics } = await buildTranslationPrompt(extractionFileId, contentType));
   } catch (err) {
     res
       .status(StatusCodes.INTERNAL_SERVER_ERROR)

@@ -21,6 +21,7 @@
   ],
   "urlFetchWhitelist": [
     "https://capture-feedback-<GCP_PROJECT_NUMBER>.us-central1.run.app/",
+    "https://eval-quality-<GCP_PROJECT_NUMBER>.us-central1.run.app/",
     "https://www.googleapis.com/drive/v3/files/"
   ],
   "addOns": {

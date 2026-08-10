@@ -68,7 +68,8 @@ def call_claude(prompt, *, model="claude-opus-4-8", max_tokens=DEFAULT_MAX_TOKEN
         }
 
     response = client.messages.create(**kwargs)
-    return response.content[0].text, _claude_usage(response)
+    text_block = next(b for b in response.content if b.type == "text")
+    return text_block.text, _claude_usage(response)
 
 
 def call_gemini(prompt, *, model="gemini-3.5-flash", output_schema=None):

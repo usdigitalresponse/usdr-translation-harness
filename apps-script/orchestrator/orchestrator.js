@@ -35,8 +35,9 @@ var COL = {
   MODEL: 8,
 };
 
+var CONTENT_TYPE_TWO = "content_type_two";
+
 var REQUIRED_CONFIG_KEYS = [
-  "INPUT_FOLDER_ID",
   "EXTRACT_FUNCTION_URL",
   "PLAIN_LANGUAGE_EVAL_FUNCTION_URL",
   "PROCESSING_LOG_SHEET_ID",
@@ -52,7 +53,6 @@ function getConfig() {
   }
 
   return {
-    INPUT_FOLDER_ID: props.getProperty("INPUT_FOLDER_ID"),
     EXTRACT_URL: props.getProperty("EXTRACT_FUNCTION_URL"),
     PLAIN_LANGUAGE_EVAL_URL: props.getProperty("PLAIN_LANGUAGE_EVAL_FUNCTION_URL"),
     PROCESSING_LOG_SHEET_ID: props.getProperty("PROCESSING_LOG_SHEET_ID"),
@@ -145,31 +145,28 @@ function getInputFiles(folder) {
   return allFiles;
 }
 
-function watchForNewFiles() {
-  var config;
-  try {
-    config = getConfig();
-  } catch (e) {
-    Logger.log("Configuration error: %s", e.message);
+var INPUT_FOLDERS = [
+  { propertyKey: "INPUT_FOLDER_ID", contentType: DEFAULT_CONTENT_TYPE },
+  { propertyKey: "INPUT_FOLDER_ID_CONTENT_TYPE_TWO", contentType: CONTENT_TYPE_TWO },
+];
+
+function processFolder(folderConfig, config, processed) {
+  var props = PropertiesService.getScriptProperties();
+  var folderId = props.getProperty(folderConfig.propertyKey);
+  if (!folderId) {
+    Logger.log("No %s set — skipping", folderConfig.propertyKey);
     return;
   }
 
   var folder;
   try {
-    folder = DriveApp.getFolderById(config.INPUT_FOLDER_ID);
+    folder = DriveApp.getFolderById(folderId);
   } catch (e) {
-    Logger.log("Cannot access input folder %s: %s", config.INPUT_FOLDER_ID, e.message);
+    Logger.log("Cannot access folder %s (%s): %s", folderConfig.propertyKey, folderId, e.message);
     return;
   }
 
   var allFiles = getInputFiles(folder);
-  var processed;
-  try {
-    processed = getProcessedFileIds(config.PROCESSING_LOG_SHEET_ID);
-  } catch (e) {
-    Logger.log("Cannot read processing log sheet %s: %s", config.PROCESSING_LOG_SHEET_ID, e.message);
-    return;
-  }
 
   for (var i = 0; i < allFiles.length; i++) {
     var file = allFiles[i];
@@ -178,7 +175,7 @@ function watchForNewFiles() {
     if (!processed.extract.has(fid)) {
       var extractStart = Date.now();
       try {
-        var extractResult = callCloudRunFunction(file, config.EXTRACT_URL, "Extract", DEFAULT_CONTENT_TYPE);
+        var extractResult = callCloudRunFunction(file, config.EXTRACT_URL, "Extract", folderConfig.contentType);
         extractResult.durationMs = Date.now() - extractStart;
         logProcessingResult(config.PROCESSING_LOG_SHEET_ID, file, extractResult, STATUS.TRIGGERED, STATUS.FAILED);
       } catch (e) {
@@ -194,7 +191,7 @@ function watchForNewFiles() {
     if (!processed.plEval.has(fid)) {
       var evalStart = Date.now();
       try {
-        var evalResult = callCloudRunFunction(file, config.PLAIN_LANGUAGE_EVAL_URL, "Plain Language Eval");
+        var evalResult = callCloudRunFunction(file, config.PLAIN_LANGUAGE_EVAL_URL, "Plain Language Eval", folderConfig.contentType);
         evalResult.durationMs = Date.now() - evalStart;
         logProcessingResult(config.PROCESSING_LOG_SHEET_ID, file, evalResult, STATUS.PL_EVAL_TRIGGERED, STATUS.PL_EVAL_FAILED);
       } catch (e) {
@@ -206,6 +203,28 @@ function watchForNewFiles() {
         }, STATUS.PL_EVAL_TRIGGERED, STATUS.PL_EVAL_FAILED);
       }
     }
+  }
+}
+
+function watchForNewFiles() {
+  var config;
+  try {
+    config = getConfig();
+  } catch (e) {
+    Logger.log("Configuration error: %s", e.message);
+    return;
+  }
+
+  var processed;
+  try {
+    processed = getProcessedFileIds(config.PROCESSING_LOG_SHEET_ID);
+  } catch (e) {
+    Logger.log("Cannot read processing log sheet %s: %s", config.PROCESSING_LOG_SHEET_ID, e.message);
+    return;
+  }
+
+  for (var i = 0; i < INPUT_FOLDERS.length; i++) {
+    processFolder(INPUT_FOLDERS[i], config, processed);
   }
 }
 
