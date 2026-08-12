@@ -8,4 +8,7 @@ sacrebleu>=2.4.0
 rouge-score>=0.1.2
 python-dotenv>=1.0.0
 jsonschema>=4.20.0
+# Local-dev only: read a golden-set .xlsx export for the drift eval. The
+# deployed drift function reads the golden set from the Google Sheet instead.
+openpyxl>=3.1.0
 pytest>=8.0.0

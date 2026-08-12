@@ -1,52 +1,85 @@
-# Orchestrator
+# Orchestrator (Apps Script)
 
-Watches a Google Drive input folder for new files and calls the Extract Cloud Run function. Supports PDFs, Google Docs, and DOCX files.
+Standalone Apps Script project that drives the pipeline's entry point and one of
+its automated eval triggers.
 
-## Configuration notes
+Two responsibilities:
 
-**Timezone:** Set to `America/New_York` in `appsscript.json` for the Maryland deployment.
+1. **Drive folder watcher** — on a 5-minute time trigger, `watchForNewFiles`
+   scans the input folder(s) for PDFs / Google Docs / DOCX and fires the Extract
+   and Plain-Language Eval Cloud Run functions (fire-and-forget, `202`), logging
+   each attempt to the Processing Log sheet.
+2. **Model-change detection** — an installable `onEdit` trigger on the model
+   config sheet (`onConfigEdit`) fires the **Drift eval** whenever an edit
+   changes the active model(s) it depends on.
+3. **Weekly drift cadence** — a weekly time trigger (`runWeeklyDrift`) fires the
+   same Drift eval on a schedule, and backstops config changes made outside the
+   Sheet UI (which the `onEdit` trigger can't see).
 
-**Exception logging:** `STACKDRIVER` routes Apps Script errors to Cloud Logging in the linked GCP project (viewable in GCP Console → Logging → Log Explorer). This requires the Apps Script project to be linked to a GCP project under Project Settings → Google Cloud Platform Project. Centralizes logs alongside Cloud Run function logs and supports log-based alerts.
+## Script Properties
 
-**OAuth scopes:**
-- `auth/drive` — read files and watch the input folder
-- `auth/spreadsheets` — read/write the processing log Google Sheet
-- `auth/script.external_request` — call the Extract Cloud Run function via `UrlFetchApp`
-- `auth/script.scriptapp` — create and manage time-based triggers
-- `openid` + `auth/userinfo.email` — generate an identity token for authenticated Cloud Run invocation
+Set under Project Settings → Script Properties (values come from the repo `.env`).
 
-## Required Script Properties
-
-Set these in the Script Editor under Project Settings → Script Properties:
-
-| Property | Description |
-|---|---|
-| `INPUT_FOLDER_ID` | Google Drive folder ID the orchestrator watches for new files (PDFs, Google Docs, DOCX) |
-| `EXTRACT_FUNCTION_URL` | Deployed Extract Cloud Run function URL |
-| `PROCESSING_LOG_SHEET_ID` | Google Sheet ID for the processing log (must have a tab named `ProcessingLog` with headers: `fileId`, `fileName`, `processedAt`, `status`, `durationMs`, `errorDetail`, `extractionFileId`, `provider`, `model`). Share with the Cloud Run service account as Editor so Extract can write back to it. |
-
-## Processing log statuses
-
-| Status | Written by | Meaning |
+| Property | Used by | Description |
 |---|---|---|
-| `triggered` | Orchestrator | Extract function was called; processing in background |
-| `complete` | Extract | Orchestrator's row updated after all extractions finish |
-| `extracted` | Extract | One row per model extraction with the output file ID |
-| `failed` | Orchestrator | Extract function call returned an error |
-
-When multiple extract models are active, a single PDF produces multiple `extracted` rows (one per model). Google Docs and DOCX files produce a single `extracted` row with `provider: passthrough` / `model: text` since no LLM is needed. A saved filter view sorted by `fileId` then `processedAt` groups related rows together.
-
-## Retry behavior
-
-Files that failed extraction are automatically retried on subsequent trigger runs. The orchestrator skips any file that has at least one non-`failed` log entry — files that only have `failed` entries (or no log entry at all) will be re-processed.
-
-To stop retrying a specific file, manually edit its status in the ProcessingLog sheet to `complete`. To stop retrying all failed files, filter the sheet for `failed` rows and bulk-update them to `complete`.
-
-> **TODO (confirm with Maryland):** Verify this automatic retry behavior is acceptable, or whether they'd prefer a manual retry workflow.
+| `INPUT_FOLDER_ID` | watcher | Drive folder watched for incoming files |
+| `INPUT_FOLDER_ID_CONTENT_TYPE_TWO` | watcher | Optional second input folder (different content type) |
+| `EXTRACT_FUNCTION_URL` | watcher | Extract Cloud Run URL |
+| `PLAIN_LANGUAGE_EVAL_FUNCTION_URL` | watcher | Plain-Language Eval Cloud Run URL |
+| `PROCESSING_LOG_SHEET_ID` | watcher | Processing Log sheet (tab `ProcessingLog`) |
+| `MODEL_CONFIG_SHEET_ID` | model-change | The model config spreadsheet (tab `Config`) to watch |
+| `EVAL_DRIFT_FUNCTION_URL` | model-change, weekly | Drift eval Cloud Run URL to POST |
+| `LAST_ACTIVE_MODEL_SIGNATURE` | model-change | Managed automatically — the last-seen active-model fingerprint (do not set by hand) |
 
 ## Setup
 
-1. Create an Apps Script project at [script.google.com](https://script.google.com)
-2. Link it to the GCP project under Project Settings
-3. Update `.clasp.json` with the script ID
-4. Run `clasp push` to deploy
+Push the code (`clasp push`), then from the Apps Script editor run each setup
+function once and approve the OAuth consent:
+
+- **`createTimeTrigger`** — installs the 5-minute `watchForNewFiles` trigger.
+- **`createConfigTrigger`** — installs the `onConfigEdit` trigger on
+  `MODEL_CONFIG_SHEET_ID` and seeds the baseline signature. Requires the
+  installing account to have access to the config sheet; the trigger then fires
+  on edits by anyone and runs as that account. Prefer a shared/service account
+  over a personal one so it survives staff changes.
+- **`createDriftWeeklyTrigger`** — installs the weekly `runWeeklyDrift` time
+  trigger (Mondays ~09:00, script timezone).
+
+Each `create…Trigger` removes any existing trigger for its handler before
+creating a new one, so re-running them won't stack duplicates.
+
+## How model-change detection works
+
+`onConfigEdit` doesn't inspect the edited cell. On any edit to the config sheet
+it recomputes a **signature** of the active models in the `translate` and `eval`
+roles (the only roles the drift eval exercises) — a sorted
+`role:provider:model` join — and compares it to the stored
+`LAST_ACTIVE_MODEL_SIGNATURE`:
+
+- **unchanged** → no-op (unrelated edits and multi-cell edits are ignored);
+- **changed** → POST `{ "trigger": "model_change" }` to the drift function with a
+  Cloud Run identity token, and record the new signature **only on success** so a
+  transient failure retries on the next edit.
+
+Only human edits made in the Sheet UI fire an installable `onEdit`; a config
+change made programmatically via the Sheets API would **not** trigger it (the
+weekly scheduled drift run is the backstop for that case).
+
+## Cross-component interfaces
+
+| Caller | Callee | Contract |
+|---|---|---|
+| Orchestrator | Extract | `POST { fileId, fileName, mimeType }` → `202` |
+| Orchestrator | Plain-Language Eval | `POST { fileId, fileName, mimeType, contentType }` → `202` |
+| Orchestrator | Eval: Drift | `POST { trigger: "model_change" \| "weekly" }` → `202` (fire-and-forget) |
+
+## Testing
+
+Pure logic (config parsing, dedup sets, the model signature) is covered by Jest:
+
+```sh
+cd apps-script && npm test
+```
+
+Manual/integration functions live in `test-helpers.js` (run from the Apps Script
+editor against real Google services).
