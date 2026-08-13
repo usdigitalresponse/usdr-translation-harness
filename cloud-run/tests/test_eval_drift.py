@@ -371,7 +371,7 @@ class TestGoldenSetParsing:
         monkeypatch.setenv("GOLDEN_SOURCE_COLUMN", "English")
         monkeypatch.setenv("GOLDEN_REFERENCE_COLUMN", "Spanish")
         rows = [
-            ["Agency ", "English ", "Spanish ", "Karla Notes "],
+            ["Agency ", "English ", "Spanish ", "Notes "],
             ["FAMLI", "Hello", "Hola", "ignore me"],
         ]
         examples = _rows_to_golden_examples(rows)
@@ -381,10 +381,10 @@ class TestGoldenSetParsing:
         assert examples[0]["source_language"] == "English"
         assert examples[0]["target_language"] == "Spanish"
 
-    def test_ignores_unmapped_columns_like_karla_notes(self, monkeypatch):
+    def test_ignores_unmapped_columns(self, monkeypatch):
         monkeypatch.setenv("GOLDEN_SOURCE_COLUMN", "English")
         monkeypatch.setenv("GOLDEN_REFERENCE_COLUMN", "Spanish")
-        rows = [["English", "Spanish", "Karla Notes"], ["Hi", "Hola", "note"]]
+        rows = [["English", "Spanish", "Notes"], ["Hi", "Hola", "note"]]
         example = _rows_to_golden_examples(rows)[0]
         assert set(example.keys()) == {
             "id", "source_language", "target_language", "source_text", "reference_translation",
@@ -396,7 +396,7 @@ class TestLoadGoldenSetLocal:
         from eval.drift.drift_loaders import load_golden_set
         csv_path = tmp_path / "golden.csv"
         csv_path.write_text(
-            "English,Spanish,Karla Notes\nHello,Hola,ignore\nGoodbye,Adios,ignore\n",
+            "English,Spanish,Notes\nHello,Hola,ignore\nGoodbye,Adios,ignore\n",
             encoding="utf-8",
         )
         monkeypatch.setenv("GOLDEN_SET_LOCAL_PATH", str(csv_path))
@@ -412,7 +412,7 @@ class TestLoadGoldenSetLocal:
         from eval.drift.drift_loaders import load_golden_set
         wb = openpyxl.Workbook()
         ws = wb.active
-        ws.append(["English", "Spanish", "Karla Notes"])
+        ws.append(["English", "Spanish", "Notes"])
         ws.append(["Hello", "Hola", "ignore"])
         xlsx_path = tmp_path / "golden.xlsx"
         wb.save(xlsx_path)
