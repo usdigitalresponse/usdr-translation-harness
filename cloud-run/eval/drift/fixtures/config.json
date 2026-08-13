@@ -1,0 +1,7 @@
+{
+  "models": [
+    { "role": "translate", "provider": "anthropic", "model": "claude-opus-4-8", "active": true },
+    { "role": "translate", "provider": "google", "model": "gemini-3.5-flash", "active": false },
+    { "role": "eval", "provider": "anthropic", "model": "claude-opus-4-8", "active": true }
+  ]
+}

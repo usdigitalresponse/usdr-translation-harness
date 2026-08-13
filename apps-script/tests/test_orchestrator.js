@@ -43,6 +43,19 @@ function mockScriptProperties(props) {
   };
 }
 
+function mockScriptPropertiesRW(initial) {
+  var store = Object.assign({}, initial || {});
+  var propsObj = {
+    getProperty: jest.fn(function (k) { return k in store ? store[k] : null; }),
+    setProperty: jest.fn(function (k, v) { store[k] = v; }),
+  };
+  return {
+    getScriptProperties: jest.fn().mockReturnValue(propsObj),
+    _props: propsObj,
+    _store: store,
+  };
+}
+
 function mockSheet(rows) {
   var sheet = {
     getDataRange: jest.fn().mockReturnValue({
@@ -437,5 +450,183 @@ describe("watchForNewFiles", () => {
       "Configuration error: %s",
       expect.stringContaining("Missing required script properties")
     );
+  });
+});
+
+var CONFIG_HEADER = ["role", "provider", "model", "active"];
+var CONFIG_ROWS = [
+  CONFIG_HEADER,
+  ["translate", "anthropic", "claude-opus-4-8", "YES"],
+  ["translate", "google", "gemini-3.5-flash", "NO"],   // inactive → excluded
+  ["eval", "anthropic", "claude-opus-4-8", "YES"],
+  ["extract", "anthropic", "claude-sonnet-4-6", "YES"], // non-drift role → excluded
+];
+// Sorted, active, drift-relevant roles only.
+var EXPECTED_SIGNATURE =
+  "eval:anthropic:claude-opus-4-8|translate:anthropic:claude-opus-4-8";
+
+var TRIGGER_PROPS = {
+  MODEL_CONFIG_SHEET_ID: "cfg-sheet",
+  EVAL_DRIFT_FUNCTION_URL: "https://drift.example.com",
+};
+
+function acceptedFetch() {
+  return jest.fn().mockReturnValue({
+    getResponseCode: jest.fn().mockReturnValue(202),
+    getContentText: jest.fn().mockReturnValue('{"status":"accepted"}'),
+  });
+}
+
+describe("activeModelSignature_", () => {
+  test("fingerprints only active, drift-relevant models, sorted", () => {
+    var ctx = loadOrchestrator({ SpreadsheetApp: mockSheet(CONFIG_ROWS) });
+    expect(ctx.activeModelSignature_("cfg-sheet")).toBe(EXPECTED_SIGNATURE);
+  });
+
+  test("returns empty string when only a header row", () => {
+    var ctx = loadOrchestrator({ SpreadsheetApp: mockSheet([CONFIG_HEADER]) });
+    expect(ctx.activeModelSignature_("cfg-sheet")).toBe("");
+  });
+
+  test("throws when required columns are missing", () => {
+    var ctx = loadOrchestrator({
+      SpreadsheetApp: mockSheet([["role", "provider"], ["translate", "anthropic"]]),
+    });
+    expect(() => ctx.activeModelSignature_("cfg-sheet")).toThrow("role/provider/model/active");
+  });
+
+  test("is order-insensitive to columns", () => {
+    var reordered = [
+      ["active", "model", "provider", "role"],
+      ["YES", "claude-opus-4-8", "anthropic", "translate"],
+    ];
+    var ctx = loadOrchestrator({ SpreadsheetApp: mockSheet(reordered) });
+    expect(ctx.activeModelSignature_("cfg-sheet")).toBe("translate:anthropic:claude-opus-4-8");
+  });
+});
+
+describe("callDriftEval_", () => {
+  test("succeeds on 202 and sends trigger + identity token", () => {
+    var fetchMock = acceptedFetch();
+    var ctx = loadOrchestrator({ UrlFetchApp: { fetch: fetchMock } });
+
+    var result = ctx.callDriftEval_("https://drift.example.com", "model_change");
+
+    expect(result.success).toBe(true);
+    var options = fetchMock.mock.calls[0][1];
+    expect(JSON.parse(options.payload).trigger).toBe("model_change");
+    expect(options.headers.Authorization).toBe("Bearer fake-token");
+  });
+
+  test("fails on non-202 with error detail", () => {
+    var ctx = loadOrchestrator({
+      UrlFetchApp: {
+        fetch: jest.fn().mockReturnValue({
+          getResponseCode: jest.fn().mockReturnValue(500),
+          getContentText: jest.fn().mockReturnValue("boom"),
+        }),
+      },
+    });
+
+    var result = ctx.callDriftEval_("https://drift.example.com", "model_change");
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("HTTP 500");
+  });
+});
+
+describe("onConfigEdit", () => {
+  test("skips when trigger properties are unset", () => {
+    var fetchMock = acceptedFetch();
+    var ctx = loadOrchestrator({
+      PropertiesService: mockScriptPropertiesRW({}),
+      UrlFetchApp: { fetch: fetchMock },
+    });
+
+    ctx.onConfigEdit({});
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("no-op when the active model set is unchanged", () => {
+    var fetchMock = acceptedFetch();
+    var props = mockScriptPropertiesRW(
+      Object.assign({}, TRIGGER_PROPS, { LAST_ACTIVE_MODEL_SIGNATURE: EXPECTED_SIGNATURE })
+    );
+    var ctx = loadOrchestrator({
+      PropertiesService: props,
+      SpreadsheetApp: mockSheet(CONFIG_ROWS),
+      UrlFetchApp: { fetch: fetchMock },
+    });
+
+    ctx.onConfigEdit({});
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("triggers drift and stores the new signature when the set changes", () => {
+    var fetchMock = acceptedFetch();
+    var props = mockScriptPropertiesRW(
+      Object.assign({}, TRIGGER_PROPS, { LAST_ACTIVE_MODEL_SIGNATURE: "stale-sig" })
+    );
+    var ctx = loadOrchestrator({
+      PropertiesService: props,
+      SpreadsheetApp: mockSheet(CONFIG_ROWS),
+      UrlFetchApp: { fetch: fetchMock },
+    });
+
+    ctx.onConfigEdit({});
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe("https://drift.example.com");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].payload).trigger).toBe("model_change");
+    expect(props._props.setProperty).toHaveBeenCalledWith(
+      "LAST_ACTIVE_MODEL_SIGNATURE", EXPECTED_SIGNATURE
+    );
+  });
+
+  test("does not store the signature when the drift call fails", () => {
+    var failingFetch = jest.fn().mockReturnValue({
+      getResponseCode: jest.fn().mockReturnValue(500),
+      getContentText: jest.fn().mockReturnValue("boom"),
+    });
+    var props = mockScriptPropertiesRW(
+      Object.assign({}, TRIGGER_PROPS, { LAST_ACTIVE_MODEL_SIGNATURE: "stale-sig" })
+    );
+    var ctx = loadOrchestrator({
+      PropertiesService: props,
+      SpreadsheetApp: mockSheet(CONFIG_ROWS),
+      UrlFetchApp: { fetch: failingFetch },
+    });
+
+    ctx.onConfigEdit({});
+
+    expect(failingFetch).toHaveBeenCalledTimes(1);
+    expect(props._props.setProperty).not.toHaveBeenCalled();
+    expect(props._store.LAST_ACTIVE_MODEL_SIGNATURE).toBe("stale-sig");
+  });
+});
+
+describe("runWeeklyDrift", () => {
+  test("POSTs the drift eval with the weekly trigger", () => {
+    var fetchMock = acceptedFetch();
+    var ctx = loadOrchestrator({
+      PropertiesService: mockScriptProperties({ EVAL_DRIFT_FUNCTION_URL: "https://drift.example.com" }),
+      UrlFetchApp: { fetch: fetchMock },
+    });
+
+    ctx.runWeeklyDrift();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe("https://drift.example.com");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].payload).trigger).toBe("weekly");
+  });
+
+  test("skips when EVAL_DRIFT_FUNCTION_URL is unset", () => {
+    var fetchMock = acceptedFetch();
+    var ctx = loadOrchestrator({
+      PropertiesService: mockScriptProperties({}),
+      UrlFetchApp: { fetch: fetchMock },
+    });
+
+    ctx.runWeeklyDrift();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
