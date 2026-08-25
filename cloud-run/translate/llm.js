@@ -16,7 +16,7 @@ const SCHEMA_PATHS = {
 };
 
 const DEFAULT_MAX_TOKENS = 65536;
-const LLM_TIMEOUT_MS = 240_000;
+const LLM_TIMEOUT_MS = 600_000;
 
 function loadTranslationSchema(provider) {
   const schemaPath = SCHEMA_PATHS[provider];
@@ -26,7 +26,7 @@ function loadTranslationSchema(provider) {
   return JSON.parse(fs.readFileSync(schemaPath, "utf-8"));
 }
 
-async function callClaude(prompt, { model, maxTokens = DEFAULT_MAX_TOKENS, outputSchema } = {}) {
+async function callClaude(prompt, { model, maxTokens = DEFAULT_MAX_TOKENS, outputSchema, effort } = {}) {
   const client = new Anthropic({ timeout: LLM_TIMEOUT_MS });
   const kwargs = {
     model,
@@ -34,13 +34,17 @@ async function callClaude(prompt, { model, maxTokens = DEFAULT_MAX_TOKENS, outpu
     messages: [{ role: "user", content: prompt }],
   };
 
-  if (outputSchema) {
-    kwargs.output_config = {
-      format: {
+  if (outputSchema || effort) {
+    kwargs.output_config = {};
+    if (outputSchema) {
+      kwargs.output_config.format = {
         type: "json_schema",
         schema: outputSchema,
-      },
-    };
+      };
+    }
+    if (effort) {
+      kwargs.output_config.effort = effort;
+    }
   }
 
   const response = await client.messages.create(kwargs);
@@ -76,13 +80,13 @@ async function callGemini(prompt, { model, outputSchema } = {}) {
   return { text: response.text, usage, stop_reason: finishReason };
 }
 
-async function callLlm(provider, model, prompt) {
+async function callLlm(provider, model, prompt, { effort } = {}) {
   const outputSchema = loadTranslationSchema(provider);
   const start = Date.now();
 
   let result;
   if (provider === PROVIDER_ANTHROPIC) {
-    result = await callClaude(prompt, { model, outputSchema });
+    result = await callClaude(prompt, { model, outputSchema, effort });
   } else if (provider === PROVIDER_GOOGLE) {
     result = await callGemini(prompt, { model, outputSchema });
   } else {

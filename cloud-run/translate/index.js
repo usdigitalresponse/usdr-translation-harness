@@ -3,7 +3,7 @@ const { StatusCodes } = require("http-status-codes");
 
 const { buildTranslationPrompt } = require("./prompt-assembly");
 const { callLlm } = require("./llm");
-const { loadConfig, writeOutput, logTranslationResult, stripExtension } = require("./loaders");
+const { loadConfig, loadStatuteUrls, writeOutput, logTranslationResult, stripExtension } = require("./loaders");
 const { createTranslationDoc } = require("./doc-writer");
 const { withRetry } = require("./retry");
 const { notifyDocCreated, notifyDocFailed } = require("./notifier");
@@ -73,11 +73,11 @@ async function translate(req, res) {
   }
 
   const { extractionFileId, sourceFileId, sourceFileName, model, provider,
-    contentType = "public_flyer" } = input;
+    contentType = "public_flyer", includeStatutes = true } = input;
 
   let prompt, promptMetrics;
   try {
-    ({ prompt, promptMetrics } = await buildTranslationPrompt(extractionFileId, contentType));
+    ({ prompt, promptMetrics } = await buildTranslationPrompt(extractionFileId, contentType, { includeStatutes }));
   } catch (err) {
     res
       .status(StatusCodes.INTERNAL_SERVER_ERROR)
@@ -107,11 +107,12 @@ async function translate(req, res) {
   }
 
   const baseName = stripExtension(sourceFileName);
+  const statuteUrls = includeStatutes ? loadStatuteUrls() : {};
 
   const results = await Promise.allSettled(
-    activeModels.map(async ({ provider, model }) => {
+    activeModels.map(async ({ provider, model, effort }) => {
       console.log(`Calling ${provider} (${model})...`);
-      const { text: translationJson, usage, stop_reason } = await callLlm(provider, model, prompt);
+      const { text: translationJson, usage, stop_reason } = await callLlm(provider, model, prompt, { effort: effort || undefined });
       console.log(`${provider} (${model}) complete (%d in / %d out tokens, stop_reason=%s), writing output...`,
         usage.input_tokens, usage.output_tokens, stop_reason);
       const outputFileName = `${baseName}_${provider}_${model}.json`;
@@ -132,6 +133,7 @@ async function translate(req, res) {
         contentType,
         provider,
         model,
+        ...(Object.keys(statuteUrls).length && { statute_urls: statuteUrls }),
       };
       const fileId = await writeOutput(outputFileName, outputData);
       return { provider, model, outputFileId: fileId, outputFileName, translationJson: outputData, usage };

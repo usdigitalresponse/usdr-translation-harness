@@ -79,9 +79,28 @@
               "required": ["term", "translation", "status", "note"],
               "additionalProperties": false
             }
+          },
+          "statute_references": {
+            "type": "array",
+            "description": "Statutory provisions from Title 8.3 relevant to this block's content. Only include when the source text directly relates to a specific provision.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "section": {
+                  "type": "string",
+                  "description": "The statute section identifier, e.g. '§ 8.3-701. Claims for Benefits'"
+                },
+                "relevance": {
+                  "type": "string",
+                  "description": "How this statute informed the translation of this block"
+                }
+              },
+              "required": ["section", "relevance"],
+              "additionalProperties": false
+            }
           }
         },
-        "required": ["id", "original_text", "translated_text", "alt_translations", "terms_flagged_for_clarification", "back_translation_of_key_phrases", "glossary_cross_check"],
+        "required": ["id", "original_text", "translated_text", "alt_translations", "terms_flagged_for_clarification", "back_translation_of_key_phrases", "glossary_cross_check", "statute_references"],
         "additionalProperties": false
       }
     },

@@ -2,10 +2,11 @@ const fs = require("fs");
 const path = require("path");
 
 const { google } = require("googleapis");
+const { Storage } = require("@google-cloud/storage");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const FIXTURES_DIR = path.join(__dirname, "fixtures");
-const MODEL_CONFIG_SHEET_RANGE = "Config!A:E";
+const MODEL_CONFIG_SHEET_RANGE = "Config!A:F";
 const ACTIVE_YES = "YES";
 const MIN_SHEET_ROWS = 2;
 const COL_ACTIVE = "active";
@@ -159,6 +160,64 @@ async function loadExtractionJson(fileId) {
 }
 
 /**
+ * Load statute reference files from a GCS bucket.
+ *
+ * Reads all files under the configured prefix, sorted by filename.
+ * Each file's first line is treated as the section title (e.g.
+ * "# Subtitle 7 — Benefits"); the rest is the statute text.
+ */
+async function loadStatutes() {
+  const bucketName = process.env.STATUTES_GCS_BUCKET;
+  const prefix = process.env.STATUTES_GCS_PREFIX || "statutes/md-labor-emply-t8.3/";
+
+  if (!bucketName) {
+    const localDir = path.join(FIXTURES_DIR, "statutes");
+    if (!fs.existsSync(localDir)) {
+      return [];
+    }
+    return fs
+      .readdirSync(localDir)
+      .filter((f) => f.endsWith(".txt") || f.endsWith(".md"))
+      .sort()
+      .map((f) => {
+        const content = fs.readFileSync(path.join(localDir, f), "utf-8");
+        return parseStatuteFile(f, content);
+      });
+  }
+
+  const storage = new Storage();
+  const [files] = await storage.bucket(bucketName).getFiles({ prefix });
+
+  const statuteFiles = files
+    .filter((f) => f.name !== prefix && !f.name.endsWith("/"))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const results = [];
+  for (const file of statuteFiles) {
+    const [content] = await file.download();
+    results.push(parseStatuteFile(file.name, content.toString("utf-8")));
+  }
+  return results;
+}
+
+function parseStatuteFile(filename, content) {
+  const lines = content.split("\n");
+  const firstLine = lines[0] || "";
+  const section = firstLine.replace(/^#+\s*/, "").trim() || path.basename(filename, path.extname(filename));
+  const body = lines.slice(1).join("\n").trim();
+  return { section, body, filename: path.basename(filename) };
+}
+
+const STATUTE_URLS_FIXTURE = path.join(FIXTURES_DIR, "statute-urls.json");
+
+function loadStatuteUrls() {
+  if (!fs.existsSync(STATUTE_URLS_FIXTURE)) {
+    return {};
+  }
+  return JSON.parse(fs.readFileSync(STATUTE_URLS_FIXTURE, "utf-8"));
+}
+
+/**
  * Write translation output to Drive, or to a local fixtures/output directory
  * when DRIVE_TRANSLATION_JSON_FOLDER_ID is not set.
  */
@@ -249,6 +308,9 @@ module.exports = {
   loadSheet,
   loadConfig,
   loadExtractionJson,
+  loadStatutes,
+  loadStatuteUrls,
+  parseStatuteFile,
   writeOutput,
   logTranslationResult,
   formatTimestamp,

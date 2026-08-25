@@ -215,6 +215,54 @@
     .stage { text-align: center; color: var(--ink-soft); padding: 56px 16px; font-size: 12.5px; }
     .stage strong { display: block; color: var(--ink); font-size: 13px; margin-bottom: 6px; }
     .stage .hint  { color: var(--ink-faint); margin-top: 8px; font-size: 12px; }
+
+    /* ---------- Card-inline statute drawer ---------- */
+    .card-statutes-toggle {
+      display: flex; align-items: center; gap: 5px;
+      background: none; border: none; cursor: pointer; padding: 0;
+      margin-top: 12px; font-size: 11.5px; font-weight: 600;
+      color: #7a9466;
+    }
+    .card-statutes-toggle:hover { color: #3b4f2a; }
+    .card-statutes-toggle .chevron { font-size: 9px; color: #7a9466; }
+    .card-statutes-drawer {
+      margin-top: 8px; background: #f0f4ec; border: 1px solid #c5d4b8;
+      border-radius: 7px; padding: 9px 10px;
+    }
+    .card-statutes-context {
+      font-size: 10.5px; color: #7a9466; font-style: italic;
+      margin-bottom: 6px; line-height: 1.4;
+    }
+    .card-statute-item { padding: 5px 0; }
+    .card-statute-item + .card-statute-item { border-top: 1px solid #c5d4b8; }
+    .card-statute-section { font-size: 11.5px; font-weight: 600; color: #3b4f2a; }
+    .card-statute-relevance {
+      font-size: 11px; color: var(--ink-soft); line-height: 1.4; margin-top: 1px;
+    }
+
+    /* ---------- Statute reference rows (full list) ---------- */
+    .statute-row { padding: 8px 0; border-top: 1px solid var(--line); }
+    .statute-row:first-child { border-top: none; }
+    .statute-section-label {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-size: 12px; font-weight: 600; color: #3b4f2a; margin-bottom: 3px;
+    }
+    .statute-badge {
+      font-size: 9px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase;
+      color: #5a7247; background: #f0f4ec; border: 1px solid #c5d4b8;
+      border-radius: 3px; padding: 1px 5px; line-height: 1.4;
+    }
+    .statute-link {
+      color: #3b4f2a; text-decoration: none; border-bottom: 1px dotted #7a9466;
+    }
+    .statute-link:hover { color: #5a7247; border-bottom-style: solid; }
+    .card-statute-link {
+      color: #3b4f2a; text-decoration: none; border-bottom: 1px dotted #7a9466;
+    }
+    .card-statute-link:hover { color: #5a7247; border-bottom-style: solid; }
+    .statute-relevance {
+      font-size: 11px; color: var(--ink-faint); margin-top: 2px; word-break: break-word;
+    }
     
 
     .modal-overlay {
@@ -271,6 +319,10 @@
     key: 'glossary_cross_check',
     f: { original: 'term', current: 'translation', note: 'note' }
   };
+  var STATUTE_SECTION = {
+    key: 'statute_references',
+    f: { section: 'section', relevance: 'relevance' }
+  };
 
   var DATA         = null;
   var SOURCE_FILE_ID = null;
@@ -286,6 +338,8 @@
   var needsReviewOpen = true;
   var reviewedOpen    = false;
   var referenceOpen   = false;
+  var statutesOpen    = false;
+  var statuteDrawerOpen = false;
   var manageOpen      = false;
 
   var saveTimer = null;
@@ -336,6 +390,33 @@
     });
   }
 
+  function allStatuteItems() {
+    if (!DATA || !DATA.blocks) return [];
+    var seen = {};
+    var items = [];
+    DATA.blocks.forEach(function(block) {
+      asArray(block[STATUTE_SECTION.key]).forEach(function(raw) {
+        var d = coerce(raw);
+        var sec = pickVal(d, STATUTE_SECTION.f.section);
+        if (sec && !seen[sec]) {
+          seen[sec] = true;
+          items.push({ section: sec, relevance: pickVal(d, STATUTE_SECTION.f.relevance) });
+        }
+      });
+    });
+    return items;
+  }
+
+  function statutesForBlock(blockIndex) {
+    if (!DATA || !DATA.blocks || blockIndex == null) return [];
+    var block = DATA.blocks[blockIndex];
+    if (!block) return [];
+    return asArray(block[STATUTE_SECTION.key]).map(function(raw) {
+      var d = coerce(raw);
+      return { section: pickVal(d, STATUTE_SECTION.f.section), relevance: pickVal(d, STATUTE_SECTION.f.relevance) };
+    });
+  }
+
   function reviewablePool() {
     return REVIEW_ITEMS.filter(function(it) {
       return STATUS[it.id] !== 'accepted' && STATUS[it.id] !== 'alternative' && STATUS[it.id] !== 'fixed';
@@ -367,6 +448,7 @@
       ? new Date(DATA.timestamp).toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : '';
 
     var refItems = referenceItems();
+    var statItems = allStatuteItems();
 
     var html = '<div class="top">'
       + '<div class="title-row"><h1>AI Suggestions - Spanish</h1>'
@@ -419,6 +501,17 @@
     html += '<div id="referenceBody" style="display:' + (referenceOpen ? 'block' : 'none') + ';">';
     html += renderReferenceList(refItems);
     html += '</div>';
+
+    if (statItems.length) {
+      html += '<div class="divider"></div>';
+      html += '<button class="sec-toggle" id="statutesToggle">'
+        + '<span>Legal references (' + statItems.length + ')</span>'
+        + '<span class="chevron' + (statutesOpen ? ' open' : '') + '" id="statutesChevron">&#9656;</span>'
+        + '</button>';
+      html += '<div id="statutesBody" style="display:' + (statutesOpen ? 'block' : 'none') + ';">';
+      html += renderStatuteList(statItems);
+      html += '</div>';
+    }
 
     html += '</div>'; // .scroll
 
@@ -488,6 +581,9 @@
       html += '<div class="note-box"><div class="note-label">Clarification needed</div><div class="note-val">' + esc(note) + '</div></div>';
       html += '<div id="actionArea">' + renderClarificationActions() + '</div>';
     }
+
+    var blockIdx = pickVal(it.data, 'block_index');
+    html += renderCardStatuteDrawer(blockIdx);
 
     html += '</div>';
     return html;
@@ -583,6 +679,57 @@
     }).join('');
   }
 
+  // ── Render: statute list (full deduped) ──────────────────────────────────
+  function statuteUrl(section) {
+    var urls = (DATA && DATA.statute_urls) || {};
+    return urls[section] || '';
+  }
+
+  function renderStatuteList(items) {
+    if (!items.length) return '<div class="empty-sec">None.</div>';
+    return items.map(function(it) {
+      var url = statuteUrl(it.section);
+      var label = url
+        ? '<a href="' + esc(url) + '" target="_blank" rel="noopener" class="statute-link">' + esc(it.section) + '</a>'
+        : esc(it.section);
+      return '<div class="statute-row">'
+        + '<div class="statute-section-label">'
+        +   '<span class="statute-badge">Title 8.3</span>'
+        +   label
+        + '</div>'
+        + (it.relevance ? '<div class="statute-relevance">' + esc(it.relevance) + '</div>' : '')
+        + '</div>';
+    }).join('');
+  }
+
+  function renderCardStatuteDrawer(blockIndex) {
+    var stats = statutesForBlock(blockIndex);
+    if (!stats.length) return '';
+
+    var html = '<button class="card-statutes-toggle" id="statuteDrawerToggle">'
+      + '<span class="chevron' + (statuteDrawerOpen ? ' open' : '') + '">&#9656;</span>'
+      + 'Statutes for this section (' + stats.length + ')'
+      + '</button>';
+
+    if (statuteDrawerOpen) {
+      html += '<div class="card-statutes-drawer">'
+        + '<div class="card-statutes-context">These statutes informed the translation of this section of the document, not just this specific term.</div>';
+      stats.forEach(function(s) {
+        var url = statuteUrl(s.section);
+        var label = url
+          ? '<a href="' + esc(url) + '" target="_blank" rel="noopener" class="card-statute-link">' + esc(s.section) + '</a>'
+          : esc(s.section);
+        html += '<div class="card-statute-item">'
+          + '<div class="card-statute-section">' + label + '</div>'
+          + (s.relevance ? '<div class="card-statute-relevance">' + esc(s.relevance) + '</div>' : '')
+          + '</div>';
+      });
+      html += '</div>';
+    }
+
+    return html;
+  }
+
   // ── Actions: resolving a card ────────────────────────────────────────────
   function resolve(id, status) {
     releaseHighlight();
@@ -665,6 +812,12 @@
     var referenceToggle = document.getElementById('referenceToggle');
     if (referenceToggle) referenceToggle.onclick = function() {
       referenceOpen = !referenceOpen;
+      render();
+    };
+
+    var statutesToggle = document.getElementById('statutesToggle');
+    if (statutesToggle) statutesToggle.onclick = function() {
+      statutesOpen = !statutesOpen;
       render();
     };
 
@@ -769,6 +922,12 @@
 
       var needsWorkBtn = document.getElementById('needsWorkBtn');
       if (needsWorkBtn) needsWorkBtn.onclick = function() { markNeedsWork(it); };
+
+      var statuteDrawerToggle = document.getElementById('statuteDrawerToggle');
+      if (statuteDrawerToggle) statuteDrawerToggle.onclick = function() {
+        statuteDrawerOpen = !statuteDrawerOpen;
+        render();
+      };
     }
 
     // Reviewed rows
@@ -927,6 +1086,7 @@
     reviewPos = 0;
     showingAltId = null;
     expandedReviewedId = null;
+    statuteDrawerOpen = false;
 
     var ct = DATA.contentType || 'public_flyer';
     if (PROMPT_URLS[ct]) {

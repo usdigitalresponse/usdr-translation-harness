@@ -122,8 +122,10 @@ function getSidebarData() {
       terms_flagged_for_clarification: sections.terms_flagged_for_clarification,
       back_translation_of_key_phrases: sections.back_translation_of_key_phrases,
       glossary_cross_check: sections.glossary_cross_check,
+      blocks: blocks,
       metadata: json.metadata || null,
       sourceFileId: json.sourceFileId || null,
+      statute_urls: json.statute_urls || {},
     },
     checks: rawChecks ? JSON.parse(rawChecks) : {},
   };
