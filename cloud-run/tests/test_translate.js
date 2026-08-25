@@ -4,6 +4,7 @@ const { translate, parseInput } = require("../translate/index.js");
 const {
   formatGlossaryEntry,
   formatGlossary,
+  formatStatutes,
   buildTranslationPrompt,
   GLOSSARY_COLUMNS,
 } = require("../translate/prompt-assembly.js");
@@ -22,6 +23,8 @@ jest.mock("../translate/loaders.js", () => {
     loadSheet: jest.fn(),
     loadExtractionJson: jest.fn(),
     loadConfig: jest.fn(),
+    loadStatutes: jest.fn().mockResolvedValue([]),
+    loadStatuteUrls: jest.fn().mockReturnValue({}),
     writeOutput: jest.fn(),
     logTranslationResult: jest.fn().mockResolvedValue(),
     stripExtension: (fileName) => path.parse(fileName).name,
@@ -44,6 +47,7 @@ const {
   loadSheet,
   loadExtractionJson,
   loadConfig,
+  loadStatutes,
   writeOutput,
   logTranslationResult,
 } = require("../translate/loaders.js");
@@ -197,7 +201,7 @@ describe("translate", () => {
       res
     );
 
-    expect(callLlm).toHaveBeenCalledWith("anthropic", "claude-sonnet-4-6", expect.any(String));
+    expect(callLlm).toHaveBeenCalledWith("anthropic", "claude-sonnet-4-6", expect.any(String), { effort: undefined });
     expect(writeOutput).toHaveBeenCalledWith("test_anthropic_claude-sonnet-4-6.json", {
       translated_text: "Hola",
       sourceFileId: "src456",
@@ -468,6 +472,30 @@ describe("formatGlossary", () => {
   });
 });
 
+// --- formatStatutes ---
+
+describe("formatStatutes", () => {
+  test("returns empty string for null", () => {
+    expect(formatStatutes(null)).toBe("");
+  });
+
+  test("returns empty string for empty array", () => {
+    expect(formatStatutes([])).toBe("");
+  });
+
+  test("wraps each statute in section-tagged XML", () => {
+    const statutes = [
+      { section: "Subtitle 1 — Definitions; General Provisions", body: "§ 8.3-101. Definitions.", filename: "subtitle-01-definitions.md" },
+      { section: "Subtitle 7 — Benefits", body: "§ 8.3-701. Eligibility for benefits.", filename: "subtitle-07-benefits.md" },
+    ];
+    const result = formatStatutes(statutes);
+    expect(result).toContain('<statute section="Subtitle 1 — Definitions; General Provisions">');
+    expect(result).toContain("§ 8.3-101. Definitions.");
+    expect(result).toContain('<statute section="Subtitle 7 — Benefits">');
+    expect(result).toContain("</statute>");
+  });
+});
+
 // --- buildTranslationPrompt ---
 
 describe("buildTranslationPrompt", () => {
@@ -542,15 +570,67 @@ describe("buildTranslationPrompt", () => {
     loadSheet.mockResolvedValue([
       { [GLOSSARY_COLUMNS.ENGLISH_TERM]: "term" },
     ]);
+    loadStatutes.mockResolvedValue([
+      { section: "Subtitle 7 — Benefits", body: "§ 8.3-701. Eligibility for benefits.", filename: "subtitle-07-benefits.md" },
+    ]);
 
     const { prompt } = await buildTranslationPrompt("file123");
 
     const contextIdx = prompt.indexOf("<extraction_context>");
     const extractionIdx = prompt.indexOf("<extraction>");
     const glossaryIdx = prompt.indexOf("<glossary>");
+    const statutesIdx = prompt.indexOf("<statutes>");
 
     expect(contextIdx).toBeLessThan(extractionIdx);
     expect(extractionIdx).toBeLessThan(glossaryIdx);
+    expect(glossaryIdx).toBeLessThan(statutesIdx);
+  });
+
+  test("includes statutes when loadStatutes returns data", async () => {
+    loadExtractionJson.mockResolvedValue({ blocks: [] });
+    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadSheet.mockResolvedValue([]);
+    loadStatutes.mockResolvedValue([
+      { section: "Subtitle 7 — Benefits", body: "§ 8.3-701. Eligibility for benefits.", filename: "subtitle-07-benefits.md" },
+    ]);
+
+    const { prompt, promptMetrics } = await buildTranslationPrompt("file123");
+
+    expect(prompt).toContain("<statutes>");
+    expect(prompt).toContain('<statute section="Subtitle 7 — Benefits">');
+    expect(prompt).toContain("§ 8.3-701. Eligibility for benefits.");
+    expect(promptMetrics.statutes_tokens).toBeGreaterThan(0);
+  });
+
+  test("omits statutes when includeStatutes is false", async () => {
+    loadExtractionJson.mockResolvedValue({ blocks: [] });
+    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadSheet.mockResolvedValue([]);
+    loadStatutes.mockResolvedValue([
+      { section: "Subtitle 7 — Benefits", body: "§ 8.3-701. Eligibility for benefits.", filename: "subtitle-07-benefits.md" },
+    ]);
+
+    const { prompt } = await buildTranslationPrompt("file123", undefined, { includeStatutes: false });
+
+    expect(prompt).not.toContain("<statutes>");
+    expect(loadStatutes).not.toHaveBeenCalled();
+  });
+
+  test("continues without statutes when loading fails", async () => {
+    loadExtractionJson.mockResolvedValue({ blocks: [] });
+    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadSheet.mockResolvedValue([]);
+    loadStatutes.mockRejectedValue(new Error("GCS bucket not found"));
+
+    const warnSpy = jest.spyOn(console, "warn").mockImplementation();
+
+    const { prompt } = await buildTranslationPrompt("file123");
+
+    expect(prompt).toContain("<extraction>");
+    expect(prompt).not.toContain("<statutes>");
+    expect(warnSpy).toHaveBeenCalled();
+
+    warnSpy.mockRestore();
   });
 });
 
@@ -582,9 +662,34 @@ describe("loadTranslationSchema", () => {
   });
 });
 
-// --- formatTimestamp ---
+// --- parseStatuteFile ---
 
-const { formatTimestamp } = jest.requireActual("../translate/loaders.js");
+const { parseStatuteFile, formatTimestamp } = jest.requireActual("../translate/loaders.js");
+
+describe("parseStatuteFile", () => {
+  test("extracts section title from markdown heading", () => {
+    const content = "# Subtitle 7 — Benefits\n\n§ 8.3-701. Eligibility for benefits.";
+    const result = parseStatuteFile("subtitle-07-benefits.md", content);
+    expect(result.section).toBe("Subtitle 7 — Benefits");
+    expect(result.body).toBe("§ 8.3-701. Eligibility for benefits.");
+    expect(result.filename).toBe("subtitle-07-benefits.md");
+  });
+
+  test("uses first line as section when no markdown heading", () => {
+    const content = "Subtitle 7 — Benefits\n\n§ 8.3-701. Eligibility for benefits.";
+    const result = parseStatuteFile("subtitle-07-benefits.md", content);
+    expect(result.section).toBe("Subtitle 7 — Benefits");
+    expect(result.body).toBe("§ 8.3-701. Eligibility for benefits.");
+  });
+
+  test("handles empty content", () => {
+    const result = parseStatuteFile("subtitle-07-benefits.md", "");
+    expect(result.section).toBe("subtitle-07-benefits");
+    expect(result.body).toBe("");
+  });
+});
+
+// --- formatTimestamp ---
 
 describe("formatTimestamp", () => {
   test("produces MM/DD/YYYY HH:MM with no comma", () => {

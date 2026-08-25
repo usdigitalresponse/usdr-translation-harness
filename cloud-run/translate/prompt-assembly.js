@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const { loadDoc, loadSheet, loadExtractionJson } = require("./loaders");
+const { loadDoc, loadSheet, loadExtractionJson, loadStatutes } = require("./loaders");
 
 const CONTENT_PLACEHOLDER = "[Paste content to be translated in the area below]";
 const DEFAULT_CONTENT_TYPE = "public_flyer";
@@ -82,6 +82,19 @@ function formatGlossaryEntry(row) {
 }
 
 /**
+ * Format statute entries into a single text block with section-level XML tags.
+ */
+function formatStatutes(statutes) {
+  if (!statutes?.length) {
+    return "";
+  }
+
+  return statutes
+    .map((s) => `<statute section="${s.section}">\n${s.body}\n</statute>`)
+    .join("\n\n");
+}
+
+/**
  * Format glossary rows into a text block for inclusion in the translation prompt.
  * Returns an empty string if the glossary is empty or has no valid entries.
  */
@@ -106,7 +119,7 @@ function formatGlossary(glossaryRows) {
  *   3. Extraction JSON (full structured output from the extract function)
  *   4. Glossary (terminology reference with approved translations and constraints)
  */
-async function buildTranslationPrompt(extractionFileId, contentType) {
+async function buildTranslationPrompt(extractionFileId, contentType, { includeStatutes = true } = {}) {
   console.log("Loading extraction JSON...");
   const extractionJson = await loadExtractionJson(extractionFileId);
 
@@ -125,6 +138,22 @@ async function buildTranslationPrompt(extractionFileId, contentType) {
     console.warn("Could not load glossary, proceeding without:", err.message);
   }
 
+  let statutesText = "";
+  if (includeStatutes) {
+    try {
+      console.log("Loading statutes...");
+      const statutes = await loadStatutes();
+      statutesText = formatStatutes(statutes);
+      if (statutes.length) {
+        console.log(`Statutes loaded (${statutes.length} sections)`);
+      } else {
+        console.log("No statute files found, proceeding without");
+      }
+    } catch (err) {
+      console.warn("Could not load statutes, proceeding without:", err.message);
+    }
+  }
+
   const promptBase = basePrompt.replace(CONTENT_PLACEHOLDER, "").trimEnd();
 
   const extractionContext = extractionJson.sourceType === "text"
@@ -141,16 +170,24 @@ async function buildTranslationPrompt(extractionFileId, contentType) {
     prompt += `\n\n<glossary>\n${glossaryText}\n</glossary>`;
   }
 
+  if (statutesText) {
+    prompt += `\n\n<statutes>\n${statutesText}\n</statutes>`;
+  }
+
   const promptTokenEstimate = Math.ceil(promptBase.length / CHARS_PER_TOKEN_ESTIMATE);
   const extractionTokenEstimate = Math.ceil(extractionStr.length / CHARS_PER_TOKEN_ESTIMATE);
   const glossaryTokenEstimate = glossaryText
     ? Math.ceil(glossaryText.length / CHARS_PER_TOKEN_ESTIMATE)
+    : 0;
+  const statutesTokenEstimate = statutesText
+    ? Math.ceil(statutesText.length / CHARS_PER_TOKEN_ESTIMATE)
     : 0;
 
   const promptMetrics = {
     prompt_template_tokens: promptTokenEstimate,
     extraction_tokens: extractionTokenEstimate,
     glossary_tokens: glossaryTokenEstimate,
+    statutes_tokens: statutesTokenEstimate,
     total_prompt_chars: prompt.length,
   };
 
@@ -164,5 +201,6 @@ module.exports = {
   GLOSSARY_SHEET_COLUMNS,
   formatGlossaryEntry,
   formatGlossary,
+  formatStatutes,
   buildTranslationPrompt,
 };

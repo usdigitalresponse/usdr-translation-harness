@@ -17,6 +17,9 @@ scratch-done/
 node_modules/
 cloud-run/.venv/
 cloud-run/*/fixtures/output/
+cloud-run/translate/fixtures/statutes/
+cloud-run/monitoring/token-usage-report.html
+cloud-run/monitoring/token-usage-report.sh
 
 # clasp credentials (not the project config .clasp.json, which should be committed)
 .clasprc.json
