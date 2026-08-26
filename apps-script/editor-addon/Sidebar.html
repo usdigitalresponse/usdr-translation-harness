@@ -171,6 +171,12 @@
       text-decoration: underline; cursor: pointer; padding: 0;
     }
     .fixed-manually-link:hover { color: var(--ink-soft); }
+    .always-show-row { text-align: center; margin-top: 10px; }
+    .always-show-link {
+      background: none; border: none; color: var(--ink-faint); font-size: 11px;
+      text-decoration: underline; cursor: pointer; padding: 0;
+    }
+    .always-show-link:hover { color: var(--ink-soft); }
 
     .all-done {
       border: 1px solid var(--line); border-radius: 10px; padding: 14px;
@@ -330,6 +336,7 @@
   var STATUS       = {};   // id -> 'accepted' | 'alternative' | 'fixed'
   var FLAGGED      = {};   // id -> true  (clarification items marked "needs work")
   var NO_HL        = {};   // id -> true  (not directly highlightable)
+  var alwaysShowAlt = false;
 
   var reviewPos          = 0;
   var showingAltId       = null;
@@ -436,7 +443,7 @@
   function scheduleSave() {
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(function() {
-      google.script.run.saveSidebarChecks({ status: STATUS, flagged: FLAGGED });
+      google.script.run.saveSidebarChecks({ status: STATUS, flagged: FLAGGED, alwaysShowAlt: alwaysShowAlt });
     }, 350);
   }
 
@@ -590,7 +597,8 @@
   }
 
   function renderTranslationActions(it) {
-    if (showingAltId !== it.id) {
+    var showAlt = showingAltId === it.id || alwaysShowAlt;
+    if (!showAlt) {
       return '<div class="btn-row">'
         + '<button class="btn primary" id="looksGoodBtn">Looks good</button>'
         + '<button class="btn" id="suggestAltBtn">Suggest alternative</button>'
@@ -599,12 +607,16 @@
     }
     var alt       = pickVal(it.data, it.f.alt);
     var rationale = pickVal(it.data, it.f.rationale);
+    var alwaysBtn = !alwaysShowAlt
+      ? '<div class="always-show-row"><button class="always-show-link" id="alwaysShowAltBtn">Always show alternatives</button></div>'
+      : '';
     return '<div class="alt-box"><div class="alt-label">Suggested alternative</div><div class="alt-val">' + esc(alt) + '</div></div>'
       + (rationale ? '<div class="rationale">' + esc(rationale) + '</div>' : '')
       + '<div class="btn-row">'
       + '<button class="btn primary" id="useAltBtn">Use alternative</button>'
       + '<button class="btn" id="keepOrigBtn">Keep original</button>'
-      + '</div>';
+      + '</div>'
+      + alwaysBtn;
   }
 
   function renderClarificationActions() {
@@ -920,6 +932,9 @@
       var keepOrigBtn = document.getElementById('keepOrigBtn');
       if (keepOrigBtn) keepOrigBtn.onclick = function() { resolve(it.id, 'accepted'); };
 
+      var alwaysShowAltBtn = document.getElementById('alwaysShowAltBtn');
+      if (alwaysShowAltBtn) alwaysShowAltBtn.onclick = function() { alwaysShowAlt = true; scheduleSave(); render(); };
+
       var needsWorkBtn = document.getElementById('needsWorkBtn');
       if (needsWorkBtn) needsWorkBtn.onclick = function() { markNeedsWork(it); };
 
@@ -1080,6 +1095,7 @@
     var checks = res.checks || {};
     STATUS  = checks.status  || {};
     FLAGGED = checks.flagged || {};
+    alwaysShowAlt = checks.alwaysShowAlt || false;
 
     NO_HL = {};
     REVIEW_ITEMS = buildReviewItems();
