@@ -423,3 +423,153 @@ function createDriftWeeklyTrigger() {
 
   Logger.log("Installed weekly drift trigger (Mondays ~%s:00)", DRIFT_WEEKLY_HOUR);
 }
+
+// -----------------------------------------------------------------------------
+// Archive utility
+//
+// Moves files untouched for 24+ hours from a source folder to an archive
+// folder. Folder pairs are stored in a ARCHIVE_CONFIGS script property as JSON.
+//
+// Setup:  run setupArchiveFolder("sourceId", "archiveId", "my-label") once per
+//         folder pair from the Script Editor. It stores the config and installs
+//         a daily 6 PM trigger (idempotent — safe to re-run).
+// Remove: run removeArchiveFolder("my-label") to drop a pair.
+// Manual: run runArchive() to archive immediately without waiting for trigger.
+// -----------------------------------------------------------------------------
+
+var ARCHIVE_CONFIGS_KEY = "ARCHIVE_CONFIGS";
+var ARCHIVE_TRIGGER_HANDLER = "runArchive";
+var ARCHIVE_HOUR = 18; // 6 PM in script timezone (America/New_York)
+var STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+
+function getArchiveConfigs_() {
+  var raw = PropertiesService.getScriptProperties().getProperty(ARCHIVE_CONFIGS_KEY);
+  return raw ? JSON.parse(raw) : [];
+}
+
+function saveArchiveConfigs_(configs) {
+  PropertiesService.getScriptProperties().setProperty(ARCHIVE_CONFIGS_KEY, JSON.stringify(configs));
+}
+
+function setupArchiveFolder(sourceFolderId, archiveFolderId, label) {
+  if (!sourceFolderId || !archiveFolderId || !label) {
+    throw new Error("All three arguments required: sourceFolderId, archiveFolderId, label");
+  }
+
+  // Validate folder access before saving.
+  try {
+    DriveApp.getFolderById(sourceFolderId);
+  } catch (e) {
+    throw new Error("Cannot access source folder " + sourceFolderId + ": " + e.message);
+  }
+  try {
+    DriveApp.getFolderById(archiveFolderId);
+  } catch (e) {
+    throw new Error("Cannot access archive folder " + archiveFolderId + ": " + e.message);
+  }
+
+  var configs = getArchiveConfigs_();
+  var existing = configs.findIndex(function (c) { return c.label === label; });
+  var entry = {
+    sourceFolderId: sourceFolderId,
+    archiveFolderId: archiveFolderId,
+    label: label,
+  };
+
+  if (existing !== -1) {
+    configs[existing] = entry;
+    Logger.log("Updated archive config '%s'", label);
+  } else {
+    configs.push(entry);
+    Logger.log("Added archive config '%s'", label);
+  }
+  saveArchiveConfigs_(configs);
+
+  // Ensure exactly one daily trigger exists.
+  var triggers = ScriptApp.getProjectTriggers();
+  var hasArchiveTrigger = triggers.some(function (t) {
+    return t.getHandlerFunction() === ARCHIVE_TRIGGER_HANDLER;
+  });
+  if (!hasArchiveTrigger) {
+    ScriptApp.newTrigger(ARCHIVE_TRIGGER_HANDLER)
+      .timeBased()
+      .atHour(ARCHIVE_HOUR)
+      .everyDays(1)
+      .create();
+    Logger.log("Installed daily archive trigger at ~%s:00", ARCHIVE_HOUR);
+  }
+
+  Logger.log(
+    "Archive config ready: '%s' — source %s → archive %s",
+    label, sourceFolderId, archiveFolderId
+  );
+}
+
+function removeArchiveFolder(label) {
+  var configs = getArchiveConfigs_();
+  var filtered = configs.filter(function (c) { return c.label !== label; });
+  if (filtered.length === configs.length) {
+    Logger.log("No archive config found with label '%s'", label);
+    return;
+  }
+
+  saveArchiveConfigs_(filtered);
+  Logger.log("Removed archive config '%s'", label);
+
+  // If no configs remain, remove the trigger too.
+  if (filtered.length === 0) {
+    var triggers = ScriptApp.getProjectTriggers();
+    for (var i = 0; i < triggers.length; i++) {
+      if (triggers[i].getHandlerFunction() === ARCHIVE_TRIGGER_HANDLER) {
+        ScriptApp.deleteTrigger(triggers[i]);
+        Logger.log("Removed archive trigger (no configs remain)");
+      }
+    }
+  }
+}
+
+function runArchive() {
+  var configs = getArchiveConfigs_();
+  if (configs.length === 0) {
+    Logger.log("No archive folder configs — nothing to do");
+    return;
+  }
+
+  var cutoff = new Date(Date.now() - STALE_THRESHOLD_MS);
+
+  for (var i = 0; i < configs.length; i++) {
+    var cfg = configs[i];
+    try {
+      archiveFolder_(cfg.sourceFolderId, cfg.archiveFolderId, cfg.label, cutoff);
+    } catch (e) {
+      Logger.log("Archive error for '%s': %s", cfg.label, e.message);
+    }
+  }
+}
+
+function archiveFolder_(sourceFolderId, archiveFolderId, label, cutoff) {
+  var files = DriveApp.getFolderById(sourceFolderId).getFiles();
+  var moved = 0;
+
+  while (files.hasNext()) {
+    var file = files.next();
+    if (file.getDateCreated() > cutoff) {
+      continue;
+    }
+
+    // Use Advanced Drive service for the move — reliable on Shared Drives.
+    Drive.Files.update(
+      {},
+      file.getId(),
+      null,
+      {
+        addParents: archiveFolderId,
+        removeParents: sourceFolderId,
+        supportsAllDrives: true,
+      }
+    );
+    moved++;
+  }
+
+  Logger.log("Archive '%s': moved %s file(s)", label, moved);
+}
