@@ -1,6 +1,6 @@
 const DOC_BASE_URL = "https://docs.google.com/document/d/";
 
-async function notifyDocCreated({ sourceFileName, provider, model, docId }) {
+async function notifyDocCreated({ sourceFileName, provider, model, docId, submittedByEmail }) {
   const webhookUrl = process.env.GOOGLE_CHAT_WEBHOOK_URL;
   if (!webhookUrl) return;
 
@@ -9,7 +9,7 @@ async function notifyDocCreated({ sourceFileName, provider, model, docId }) {
   await postToChat(webhookUrl, text);
 }
 
-async function notifyDocFailed({ sourceFileName, provider, model, error }) {
+async function notifyDocFailed({ sourceFileName, provider, model, error, submittedByEmail }) {
   const webhookUrl = process.env.GOOGLE_CHAT_WEBHOOK_URL;
   if (!webhookUrl) return;
 
