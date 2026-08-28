@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -10,6 +11,8 @@ load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 
 import anthropic
 from google import genai
+
+logging.getLogger("google_genai.models").setLevel(logging.ERROR)
 
 PROVIDER_ANTHROPIC = "anthropic"
 PROVIDER_GOOGLE = "google"

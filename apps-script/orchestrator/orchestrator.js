@@ -97,10 +97,21 @@ function logProcessingResult(sheetId, file, result, successStatus, failedStatus)
 function callCloudRunFunction(file, url, label, contentType) {
   var token = ScriptApp.getIdentityToken();
 
+  var submittedByEmail = "";
+  try {
+    var meta = Drive.Files.get(file.getId(), { fields: "lastModifyingUser" });
+    if (meta.lastModifyingUser) {
+      submittedByEmail = meta.lastModifyingUser.emailAddress || "";
+    }
+  } catch (e) {
+    Logger.log("Could not get lastModifyingUser for %s: %s", file.getName(), e.message);
+  }
+
   var payload = {
     fileId: file.getId(),
     fileName: file.getName(),
     mimeType: file.getMimeType(),
+    submittedByEmail: submittedByEmail,
   };
   if (contentType) {
     payload.contentType = contentType;
