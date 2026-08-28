@@ -12,6 +12,7 @@ function loadOrchestrator(globals) {
     Logger: { log: jest.fn() },
     PropertiesService: { getScriptProperties: jest.fn() },
     DriveApp: { getFolderById: jest.fn() },
+    Drive: mockDriveAdvancedService({}),
     SpreadsheetApp: { openById: jest.fn() },
     UrlFetchApp: { fetch: jest.fn() },
     ScriptApp: {
@@ -96,6 +97,19 @@ function makeFile(id, name, mimeType) {
     getName: jest.fn().mockReturnValue(name),
     getMimeType: jest.fn().mockReturnValue(mimeType || "application/pdf"),
     getSize: jest.fn().mockReturnValue(1024),
+  };
+}
+
+function mockDriveAdvancedService(emailsByFileId) {
+  return {
+    Files: {
+      get: jest.fn().mockImplementation(function (fileId) {
+        var email = emailsByFileId && emailsByFileId[fileId];
+        return {
+          lastModifyingUser: email ? { emailAddress: email } : null,
+        };
+      }),
+    },
   };
 }
 
@@ -296,6 +310,43 @@ describe("callCloudRunFunction", () => {
     expect(payload.fileId).toBe("file-1");
     expect(payload.fileName).toBe("test.pdf");
     expect(payload.mimeType).toBe("application/pdf");
+  });
+
+  test("includes submittedByEmail from Drive Advanced Service", () => {
+    var fetchMock = jest.fn().mockReturnValue({
+      getResponseCode: jest.fn().mockReturnValue(202),
+      getContentText: jest.fn().mockReturnValue(""),
+    });
+    var ctx = loadOrchestrator({
+      UrlFetchApp: { fetch: fetchMock },
+      Drive: mockDriveAdvancedService({ "file-1": "uploader@example.com" }),
+    });
+    var file = makeFile("file-1", "test.pdf");
+
+    ctx.callCloudRunFunction(file, "https://extract.example.com", "Extract");
+
+    var options = fetchMock.mock.calls[0][1];
+    var payload = JSON.parse(options.payload);
+    expect(payload.submittedByEmail).toBe("uploader@example.com");
+  });
+
+  test("sends empty submittedByEmail when Drive.Files.get fails", () => {
+    var fetchMock = jest.fn().mockReturnValue({
+      getResponseCode: jest.fn().mockReturnValue(202),
+      getContentText: jest.fn().mockReturnValue(""),
+    });
+    var brokenDrive = { Files: { get: jest.fn().mockImplementation(function () { throw new Error("no access"); }) } };
+    var ctx = loadOrchestrator({
+      UrlFetchApp: { fetch: fetchMock },
+      Drive: brokenDrive,
+    });
+    var file = makeFile("file-1", "test.pdf");
+
+    ctx.callCloudRunFunction(file, "https://extract.example.com", "Extract");
+
+    var options = fetchMock.mock.calls[0][1];
+    var payload = JSON.parse(options.payload);
+    expect(payload.submittedByEmail).toBe("");
   });
 
   test("sends identity token in authorization header", () => {
