@@ -257,7 +257,7 @@ def log_extraction_result(file_id, file_name, extraction_result):
     )
 
 
-def publish_extraction_complete(file_id, file_name, extraction_results, content_type="public_flyer", submitted_by_email=""):
+def publish_extraction_complete(file_id, file_name, extraction_results, content_type="public_flyer"):
     topic_name = os.environ.get(PUBSUB_TOPIC_ENV_VAR)
     if not topic_name:
         logger.info("No %s set — skipping Pub/Sub publish", PUBSUB_TOPIC_ENV_VAR)
@@ -273,7 +273,6 @@ def publish_extraction_complete(file_id, file_name, extraction_results, content_
             "model": result["model"],
             "provider": result["provider"],
             "contentType": content_type,
-            "submittedByEmail": submitted_by_email,
         }
         data = json.dumps(message).encode("utf-8")
         try:
@@ -291,7 +290,7 @@ def publish_extraction_complete(file_id, file_name, extraction_results, content_
             )
 
 
-def run_text_extraction(file_id, file_name, mime_type, content_type="public_flyer", submitted_by_email=""):
+def run_text_extraction(file_id, file_name, mime_type, content_type="public_flyer"):
     """Text passthrough path for Google Docs and DOCX files."""
     logger.info("Text extraction for %s (MIME: %s)", file_name, mime_type)
 
@@ -332,10 +331,10 @@ def run_text_extraction(file_id, file_name, mime_type, content_type="public_flye
     except Exception:
         logger.exception("Failed to log extraction result to processing sheet")
 
-    publish_extraction_complete(file_id, file_name, [enriched], content_type, submitted_by_email)
+    publish_extraction_complete(file_id, file_name, [enriched], content_type)
 
 
-def run_pdf_extraction(file_id, file_name, content_type="public_flyer", submitted_by_email=""):
+def run_pdf_extraction(file_id, file_name, content_type="public_flyer"):
     """LLM-based extraction pipeline for PDF files."""
     config = load_config()
     active_models = get_active_models(config, EXTRACT_ROLE)
@@ -392,13 +391,13 @@ def run_pdf_extraction(file_id, file_name, content_type="public_flyer", submitte
             log_structured(STATUS_FAILED, provider, model, file_id, file_name,
                            error="Extraction parse/validation failed")
 
-    publish_extraction_complete(file_id, file_name, extraction_results, content_type, submitted_by_email)
+    publish_extraction_complete(file_id, file_name, extraction_results, content_type)
 
 
 SUPPORTED_MIME_TYPES = {MIME_PDF} | TEXT_MIME_TYPES
 
 
-def run_extraction(file_id, file_name, mime_type, content_type="public_flyer", submitted_by_email=""):
+def run_extraction(file_id, file_name, mime_type, content_type="public_flyer"):
     if mime_type not in SUPPORTED_MIME_TYPES:
         logger.error("Unsupported MIME type '%s' for %s", mime_type, file_name)
         log_structured(STATUS_FAILED, PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
@@ -406,9 +405,9 @@ def run_extraction(file_id, file_name, mime_type, content_type="public_flyer", s
         return
 
     if mime_type in TEXT_MIME_TYPES:
-        run_text_extraction(file_id, file_name, mime_type, content_type, submitted_by_email)
+        run_text_extraction(file_id, file_name, mime_type, content_type)
     else:
-        run_pdf_extraction(file_id, file_name, content_type, submitted_by_email)
+        run_pdf_extraction(file_id, file_name, content_type)
 
 
 @functions_framework.http
@@ -418,14 +417,13 @@ def extract(request):
     file_name = body.get("fileName")
     mime_type = body.get("mimeType", MIME_PDF)
     content_type = body.get("contentType", "public_flyer")
-    submitted_by_email = body.get("submittedByEmail", "")
 
     logger.info("Received request: fileId=%s, fileName=%s, mimeType=%s", file_id, file_name, mime_type)
 
     if not file_id:
         return json.dumps({"error": "Provide fileId"}), HTTPStatus.BAD_REQUEST
 
-    thread = threading.Thread(target=run_extraction, args=(file_id, file_name, mime_type, content_type, submitted_by_email))
+    thread = threading.Thread(target=run_extraction, args=(file_id, file_name, mime_type, content_type))
     thread.start()
 
     return json.dumps({

@@ -73,8 +73,7 @@ async function translate(req, res) {
   }
 
   const { extractionFileId, sourceFileId, sourceFileName, model, provider,
-    contentType = "public_flyer", includeStatutes = true,
-    submittedByEmail = "" } = input;
+    contentType = "public_flyer", includeStatutes = true } = input;
 
   let prompt, promptMetrics;
   try {
@@ -134,7 +133,6 @@ async function translate(req, res) {
         contentType,
         provider,
         model,
-        ...(submittedByEmail && { submittedByEmail }),
         ...(Object.keys(statuteUrls).length && { statute_urls: statuteUrls }),
       };
       const fileId = await writeOutput(outputFileName, outputData);
@@ -201,11 +199,11 @@ async function translate(req, res) {
       );
       t.docId = docId;
       console.log(`Created translation doc ${docId} for ${t.provider}/${t.model}`);
-      await notifyDocCreated({ sourceFileName, provider: t.provider, model: t.model, docId, submittedByEmail });
+      await notifyDocCreated({ sourceFileName, provider: t.provider, model: t.model, docId });
     } catch (err) {
       console.error(`Failed to create doc for ${t.provider}/${t.model}:`, err.message);
       t.docError = err.message;
-      await notifyDocFailed({ sourceFileName, provider: t.provider, model: t.model, error: err.message, submittedByEmail });
+      await notifyDocFailed({ sourceFileName, provider: t.provider, model: t.model, error: err.message });
     }
   }
 
