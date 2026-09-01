@@ -257,7 +257,7 @@
     ],
     cultural: [
       { n: 5, d: 'Fully uses standard masculine generic, uses Latin American Spanish, and is culturally respectful.' },
-      { n: 4, d: 'Minor instanced of misgendered terms. Missed opportunity for cultural equivalent. One regionalism not broadly understood.' },
+      { n: 4, d: 'Minor instances of misgendered terms. Missed opportunity for cultural equivalent. One regionalism not broadly understood.' },
       { n: 3, d: 'Some use of misgendered terms. Missed opportunities for cultural equivalents.' },
       { n: 2, d: 'Frequent use of misgendered or regionally-inappropriate terms. Uses overly-literal translations.'},
       { n: 1, d: 'Offensive use of exclusive or inappropriate terms.' }
@@ -521,9 +521,6 @@
         : 'No additional detail provided.';
       var inner = hasLists
         ? '<div class="subdim-toggles">'
-            // + subdimToggle('Strengths', strengths)
-            // + subdimToggle('Issues', issues)
-            // + subdimToggle('Recommendations', recs)
             + recsChecklist_(recs, d.key)
           + '</div>'
         : '';
