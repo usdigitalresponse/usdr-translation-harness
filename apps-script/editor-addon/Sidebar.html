@@ -140,6 +140,13 @@
     }
     .field-label { font-size: 11px; color: var(--ink-faint); margin-bottom: 2px; }
     .field-val   { font-size: 13px; color: var(--ink); margin-bottom: 10px; word-break: break-word; white-space: pre-wrap; }
+    .occurrence-badge {
+      font-size: 11px; color: var(--ink-soft); margin: -6px 0 8px;
+    }
+    .hl-match-count {
+      font-size: 11px; color: var(--accent); margin-bottom: 6px;
+    }
+    .hl-match-count:empty { display: none; }
 
 
     .note-box {
@@ -156,6 +163,30 @@
     .rationale { font-size: 12px; color: var(--ink-soft); margin-bottom: 12px; word-break: break-word; white-space: pre-wrap; }
 
     .btn-row { display: flex; gap: 8px; }
+    .btn-row + .btn-row { margin-top: 8px; }
+
+    .ux-options { display: flex; flex-direction: column; gap: 6px; }
+    .ux-option {
+      border: 1px solid var(--line); border-radius: 8px;
+      background: var(--raise); overflow: hidden;
+    }
+    .ux-option-toggle {
+      width: 100%; display: flex; align-items: center; justify-content: space-between;
+      background: none; border: none; cursor: pointer; padding: 8px 10px;
+      font-family: var(--font-body); font-size: 11.5px; font-weight: 600; color: var(--ink-soft);
+    }
+    .ux-option-toggle:hover { color: var(--ink); }
+    .ux-option-label { flex: 1; text-align: left; }
+    .ux-option-body { padding: 0 10px 10px; }
+    .ux-option-body.collapsed { display: none; }
+
+    .block-checklist { margin-bottom: 10px; }
+    .block-check-item {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 12px; color: var(--ink); padding: 4px 0; cursor: pointer;
+    }
+    .block-check-item input[type="checkbox"] { accent-color: var(--accent); }
+    .block-check-label { font-family: var(--font-body); font-variant-numeric: tabular-nums; }
     .btn {
       flex: 1; font-size: 12.5px; font-weight: 600; padding: 8px 10px;
       border-radius: 7px; border: 1px solid var(--line); background: var(--paper);
@@ -424,6 +455,22 @@
     });
   }
 
+  /**
+   * Count how many blocks in the full translation data contain this phrase
+   * in their translated text column.
+   */
+  function countOccurrences(translationPhrase) {
+    if (!DATA || !DATA.blocks || !translationPhrase) return { count: 1, blockIds: [] };
+    var phrase = translationPhrase.trim();
+    var ids = [];
+    DATA.blocks.forEach(function(block) {
+      if ((block.translated_text || '').indexOf(phrase) !== -1) {
+        ids.push(block.id || '');
+      }
+    });
+    return { count: Math.max(ids.length, 1), blockIds: ids };
+  }
+
   function reviewablePool() {
     return REVIEW_ITEMS.filter(function(it) {
       return STATUS[it.id] !== 'accepted' && STATUS[it.id] !== 'alternative' && STATUS[it.id] !== 'fixed';
@@ -580,8 +627,12 @@
     html += '<div class="field-label">Original</div><div class="field-val">' + esc(original) + '</div>';
 
     if (it.type === 'translation') {
+      var occ = countOccurrences(current);
       html += '<div class="field-label">Current translation</div><div class="field-val">' + esc(current) + '</div>';
-      html += '<div id="actionArea">' + renderTranslationActions(it) + '</div>';
+      if (occ.count > 1) {
+        html += '<div class="occurrence-badge">Appears in ' + occ.count + ' sections</div>';
+      }
+      html += '<div id="actionArea">' + renderTranslationActions(it, occ) + '</div>';
     } else {
       var note = pickVal(it.data, it.f.note);
       html += '<div class="field-label">Translation</div><div class="field-val">' + esc(current) + '</div>';
@@ -596,7 +647,9 @@
     return html;
   }
 
-  function renderTranslationActions(it) {
+  function renderTranslationActions(it, occ) {
+    var occurrences = occ.count || 1;
+    var blockIds = occ.blockIds || [];
     var showAlt = showingAltId === it.id || alwaysShowAlt;
     if (!showAlt) {
       return '<div class="btn-row">'
@@ -610,12 +663,60 @@
     var alwaysBtn = !alwaysShowAlt
       ? '<div class="always-show-row"><button class="always-show-link" id="alwaysShowAltBtn">Always show alternatives</button></div>'
       : '';
+    var altButtons;
+    if (occurrences > 1) {
+      var thisBlockId = pickVal(it.data, 'block_id');
+      altButtons = '<div class="ux-options">'
+        + '<div class="ux-option">'
+        +   '<button class="ux-option-toggle" id="optionAToggle">'
+        +     '<span class="ux-option-label">Option A: Quick replace</span>'
+        +     '<span class="chevron open">&#9654;</span>'
+        +   '</button>'
+        +   '<div class="ux-option-body" id="optionABody">'
+        +     '<div class="btn-row">'
+        +       '<button class="btn primary" id="useAltBtn">Use in this block (' + esc(thisBlockId) + ')</button>'
+        +     '</div>'
+        +     '<div class="btn-row">'
+        +       '<button class="btn primary" id="useAltAllBtn">Use everywhere (' + occurrences + ')</button>'
+        +     '</div>'
+        +     '<div class="btn-row">'
+        +       '<button class="btn" id="keepOrigBtn">Keep original</button>'
+        +     '</div>'
+        +   '</div>'
+        + '</div>'
+        + '<div class="ux-option">'
+        +   '<button class="ux-option-toggle" id="optionBToggle">'
+        +     '<span class="ux-option-label">Option B: Choose blocks</span>'
+        +     '<span class="chevron">&#9654;</span>'
+        +   '</button>'
+        +   '<div class="ux-option-body collapsed" id="optionBBody">'
+        +     '<div class="block-checklist">'
+        +       blockIds.map(function(bid) {
+                  var checked = bid === thisBlockId ? ' checked' : '';
+                  return '<label class="block-check-item">'
+                    + '<input type="checkbox" value="' + esc(bid) + '"' + checked + '>'
+                    + '<span class="block-check-label">' + esc(bid) + '</span>'
+                    + '</label>';
+                }).join('')
+        +     '</div>'
+        +     '<div class="btn-row">'
+        +       '<button class="btn primary" id="useAltSelectedBtn">Use in selected blocks</button>'
+        +     '</div>'
+        +     '<div class="btn-row">'
+        +       '<button class="btn" id="keepOrigBtnB">Keep original</button>'
+        +     '</div>'
+        +   '</div>'
+        + '</div>'
+        + '</div>';
+    } else {
+      altButtons = '<div class="btn-row">'
+        + '<button class="btn primary" id="useAltBtn">Use alternative</button>'
+        + '<button class="btn" id="keepOrigBtn">Keep original</button>'
+        + '</div>';
+    }
     return '<div class="alt-box"><div class="alt-label">Suggested alternative</div><div class="alt-val">' + esc(alt) + '</div></div>'
       + (rationale ? '<div class="rationale">' + esc(rationale) + '</div>' : '')
-      + '<div class="btn-row">'
-      + '<button class="btn primary" id="useAltBtn">Use alternative</button>'
-      + '<button class="btn" id="keepOrigBtn">Keep original</button>'
-      + '</div>'
+      + altButtons
       + alwaysBtn;
   }
 
@@ -753,9 +854,10 @@
     render();
   }
 
-  function useAlternative(it) {
+  function useAlternative(it, replaceAll) {
     var current = pickVal(it.data, it.f.current);
     var alt     = pickVal(it.data, it.f.alt);
+    var blockId = pickVal(it.data, 'block_id');
     var area = document.getElementById('actionArea');
     if (area) area.innerHTML = '<div style="text-align:center;font-size:12px;color:var(--ink-soft);padding:8px 0;">Updating the doc…</div>';
 
@@ -772,7 +874,7 @@
         render();
         alert('Replace failed: ' + (err && err.message ? err.message : err));
       })
-      .replaceTranslationInDoc(current, alt, pickVal(it.data, 'block_index'));
+      .replaceTranslationInDoc(current, alt, blockId, Array.isArray(replaceAll) ? replaceAll : !!replaceAll);
   }
 
   function markNeedsWork(it) {
@@ -787,10 +889,34 @@
   // ── Highlight state (click a card / reference row to highlight it) ─────
   var _activeEl = null, _activeOriginal = '', _activeTranslation = '';
 
+  function collectVariants(originalText, translationText) {
+    var transVariants = [];
+    var origVariants = [];
+    var seenTrans = {};
+    var seenOrig = {};
+    seenTrans[translationText] = true;
+    seenOrig[originalText] = true;
+    REVIEW_ITEMS.forEach(function(item) {
+      if (item.type !== 'translation') return;
+      var orig = pickVal(item.data, item.f.original);
+      var trans = pickVal(item.data, item.f.current);
+      if (orig === originalText && trans && !seenTrans[trans]) {
+        seenTrans[trans] = true;
+        transVariants.push(trans);
+      }
+      if (trans === translationText && orig && !seenOrig[orig]) {
+        seenOrig[orig] = true;
+        origVariants.push(orig);
+      }
+    });
+    return { transVariants: transVariants, origVariants: origVariants };
+  }
+
   function activateHighlight(el, originalText, translationText, id) {
     if (NO_HL[id]) return;
     _activeEl = el; _activeOriginal = originalText; _activeTranslation = translationText;
     el.classList.add('highlighting');
+    var v = collectVariants(originalText, translationText);
     google.script.run
       .withSuccessHandler(function(result) {
         if (result && result.original === 'not_found' && result.translation === 'not_found') {
@@ -798,7 +924,7 @@
           setTimeout(function() { el.style.borderColor = ''; }, 800);
         }
       })
-      .paintHighlight(originalText, translationText);
+      .paintHighlight(originalText, translationText, v.transVariants, v.origVariants);
   }
 
   function releaseHighlight() {
@@ -927,10 +1053,48 @@
       if (fixedManuallyBtn) fixedManuallyBtn.onclick = function() { resolve(it.id, 'fixed'); };
 
       var useAltBtn = document.getElementById('useAltBtn');
-      if (useAltBtn) useAltBtn.onclick = function() { useAlternative(it); };
+      if (useAltBtn) useAltBtn.onclick = function() { useAlternative(it, false); };
+
+      var useAltAllBtn = document.getElementById('useAltAllBtn');
+      if (useAltAllBtn) useAltAllBtn.onclick = function() { useAlternative(it, true); };
 
       var keepOrigBtn = document.getElementById('keepOrigBtn');
       if (keepOrigBtn) keepOrigBtn.onclick = function() { resolve(it.id, 'accepted'); };
+
+      var keepOrigBtnB = document.getElementById('keepOrigBtnB');
+      if (keepOrigBtnB) keepOrigBtnB.onclick = function() { resolve(it.id, 'accepted'); };
+
+      var useAltSelectedBtn = document.getElementById('useAltSelectedBtn');
+      if (useAltSelectedBtn) useAltSelectedBtn.onclick = function() {
+        var checks = document.querySelectorAll('.block-checklist input[type="checkbox"]:checked');
+        var ids = [];
+        checks.forEach(function(cb) { ids.push(cb.value); });
+        if (ids.length === 0) { alert('Select at least one block.'); return; }
+        useAlternative(it, ids);
+      };
+
+      var optionAToggle = document.getElementById('optionAToggle');
+      var optionBToggle = document.getElementById('optionBToggle');
+      if (optionAToggle) optionAToggle.onclick = function() {
+        var bodyA = document.getElementById('optionABody');
+        var bodyB = document.getElementById('optionBBody');
+        bodyA.classList.toggle('collapsed');
+        optionAToggle.querySelector('.chevron').classList.toggle('open');
+        if (!bodyA.classList.contains('collapsed')) {
+          bodyB.classList.add('collapsed');
+          optionBToggle.querySelector('.chevron').classList.remove('open');
+        }
+      };
+      if (optionBToggle) optionBToggle.onclick = function() {
+        var bodyA = document.getElementById('optionABody');
+        var bodyB = document.getElementById('optionBBody');
+        bodyB.classList.toggle('collapsed');
+        optionBToggle.querySelector('.chevron').classList.toggle('open');
+        if (!bodyB.classList.contains('collapsed')) {
+          bodyA.classList.add('collapsed');
+          optionAToggle.querySelector('.chevron').classList.remove('open');
+        }
+      };
 
       var alwaysShowAltBtn = document.getElementById('alwaysShowAltBtn');
       if (alwaysShowAltBtn) alwaysShowAltBtn.onclick = function() { alwaysShowAlt = true; scheduleSave(); render(); };

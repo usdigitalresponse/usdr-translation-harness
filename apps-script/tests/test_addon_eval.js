@@ -44,15 +44,16 @@ function mockTable(rows) {
         getText: () => rows[r][c],
         getNumChildren: () => 0,
       }),
+      getNumCells: () => rows[r].length,
     }),
   };
 }
 
 function loadAddon(globals = {}) {
   const table = globals._table !== undefined ? globals._table : mockTable([
-    ["English", "Spanish"],
-    ["Hello", "Hola"],
-    ["Goodbye", "Adiós"],
+    ["Block", "English", "Spanish"],
+    ["b01", "Hello", "Hola"],
+    ["b02", "Goodbye", "Adiós"],
   ]);
 
   const documentProps = globals._documentProps || {};
@@ -151,9 +152,9 @@ describe("extractDocBlocks_", () => {
   test("trims whitespace and drops fully empty rows", () => {
     const s = loadAddon({
       _table: mockTable([
-        ["English", "Spanish"],
-        ["  Hello  ", "  Hola  "],
-        ["", "   "],
+        ["Block", "English", "Spanish"],
+        ["b01", "  Hello  ", "  Hola  "],
+        ["b02", "", "   "],
       ]),
     });
     const blocks = s.extractDocBlocks_();
@@ -167,7 +168,7 @@ describe("extractDocBlocks_", () => {
   });
 
   test("returns empty when the table has only a header", () => {
-    const s = loadAddon({ _table: mockTable([["English", "Spanish"]]) });
+    const s = loadAddon({ _table: mockTable([["Block", "English", "Spanish"]]) });
     expect(s.extractDocBlocks_()).toEqual([]);
   });
 });

@@ -10,7 +10,7 @@ function translationJson(blocks) {
 
 /**
  * Build a mock table where cells track their text and support replaceText.
- * rows is an array of [col0, col1] string pairs.
+ * rows is an array of [blockId, original, translated] triples.
  */
 function mockTable(rows) {
   const cells = rows.map((row) =>
@@ -38,6 +38,7 @@ function mockTable(rows) {
     getNumRows: () => rows.length,
     getRow: (r) => ({
       getCell: (c) => cells[r][c],
+      getNumCells: () => cells[r].length,
     }),
     _cells: cells,
   };
@@ -255,56 +256,72 @@ describe("getSidebarData flattening", () => {
 // ── replaceTranslationInDoc ─────────────────────────────────────────────
 
 describe("replaceTranslationInDoc", () => {
-  test("replaces in the target row (blockIndex) first", () => {
+  test("replaces in the target row by block ID", () => {
     const table = mockTable([
-      ["English", "Spanish"],
-      ["Hello", "Hola"],
-      ["Goodbye", "Adiós"],
+      ["Block", "English", "Spanish"],
+      ["b01", "Hello", "Hola"],
+      ["b02", "Goodbye", "Adiós"],
     ]);
     const env = loadAddon({ _table: table });
 
-    const result = env.replaceTranslationInDoc("Hola", "Buenos días", 0);
+    const result = env.replaceTranslationInDoc("Hola", "Buenos días", "b01", false);
     expect(result.replaced).toBe(true);
     expect(result.count).toBe(1);
-    expect(table._cells[1][1]._text).toBe("Buenos días");
-    expect(table._cells[2][1].replaceText).not.toHaveBeenCalled();
+    expect(table._cells[1][2]._text).toBe("Buenos días");
+    expect(table._cells[2][2].replaceText).not.toHaveBeenCalled();
   });
 
-  test("falls back to scanning all rows when target row doesn't match", () => {
+  test("does not replace when block ID does not match any row", () => {
     const table = mockTable([
-      ["English", "Spanish"],
-      ["Hello", "Hola"],
-      ["Goodbye", "Adiós"],
+      ["Block", "English", "Spanish"],
+      ["b01", "Hello", "Hola"],
+      ["b02", "Goodbye", "Adiós"],
     ]);
     const env = loadAddon({ _table: table });
 
-    const result = env.replaceTranslationInDoc("Adiós", "Hasta luego", 0);
+    const result = env.replaceTranslationInDoc("Hola", "Buenos días", "b99", false);
+    expect(result.replaced).toBe(false);
+  });
+
+  test("replaceAll replaces in every row that contains the text", () => {
+    const table = mockTable([
+      ["Block", "English", "Spanish"],
+      ["b01", "Hello", "Hola amigos"],
+      ["b02", "Goodbye", "Adiós"],
+      ["b03", "Welcome", "Hola amigos bienvenidos"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    const result = env.replaceTranslationInDoc("Hola amigos", "Buenos días", "b01", true);
     expect(result.replaced).toBe(true);
-    expect(table._cells[2][1]._text).toBe("Hasta luego");
+    expect(result.count).toBe(2);
+    expect(result.blockIds).toEqual(["b01", "b03"]);
+    expect(table._cells[1][2]._text).toBe("Buenos días");
+    expect(table._cells[3][2]._text).toBe("Buenos días bienvenidos");
   });
 
   test("returns not-replaced for empty or identical inputs", () => {
     const table = mockTable([
-      ["English", "Spanish"],
-      ["Hello", "Hola"],
+      ["Block", "English", "Spanish"],
+      ["b01", "Hello", "Hola"],
     ]);
     const env = loadAddon({ _table: table });
 
-    expect(env.replaceTranslationInDoc("", "alt", 0).replaced).toBe(false);
-    expect(env.replaceTranslationInDoc("Hola", "", 0).replaced).toBe(false);
-    expect(env.replaceTranslationInDoc("Hola", "Hola", 0).replaced).toBe(false);
+    expect(env.replaceTranslationInDoc("", "alt", "b01", false).replaced).toBe(false);
+    expect(env.replaceTranslationInDoc("Hola", "", "b01", false).replaced).toBe(false);
+    expect(env.replaceTranslationInDoc("Hola", "Hola", "b01", false).replaced).toBe(false);
   });
 
   test("escapes regex special characters in the search text", () => {
     const table = mockTable([
-      ["English", "Spanish"],
-      ["Price", "$100 (USD)"],
+      ["Block", "English", "Spanish"],
+      ["b01", "Price", "$100 (USD)"],
     ]);
     const env = loadAddon({ _table: table });
 
-    const result = env.replaceTranslationInDoc("$100 (USD)", "$100 (dólares)", 0);
+    const result = env.replaceTranslationInDoc("$100 (USD)", "$100 (dólares)", "b01", false);
     expect(result.replaced).toBe(true);
-    expect(table._cells[1][1]._text).toBe("$100 (dólares)");
+    expect(table._cells[1][2]._text).toBe("$100 (dólares)");
   });
 
   test("falls back to body search when there is no table", () => {
@@ -351,8 +368,8 @@ describe("checkItemsExist", () => {
   test("returns empty when all items are found in the doc", () => {
     const env = setup(
       [
-        ["English", "Spanish"],
-        ["Hello world", "Hola mundo"],
+        ["Block", "English", "Spanish"],
+        ["b01", "Hello world", "Hola mundo"],
       ],
       [
         {
@@ -371,8 +388,8 @@ describe("checkItemsExist", () => {
   test("detects orphan when original phrase is missing from doc", () => {
     const env = setup(
       [
-        ["English", "Spanish"],
-        ["Different text", "Texto diferente"],
+        ["Block", "English", "Spanish"],
+        ["b01", "Different text", "Texto diferente"],
       ],
       [
         {
@@ -391,8 +408,8 @@ describe("checkItemsExist", () => {
   test("detects orphan when translation is missing from doc", () => {
     const env = setup(
       [
-        ["English", "Spanish"],
-        ["Hello world", "Changed by reviewer"],
+        ["Block", "English", "Spanish"],
+        ["b01", "Hello world", "Changed by reviewer"],
       ],
       [
         {
@@ -411,8 +428,8 @@ describe("checkItemsExist", () => {
   test("checks clarification items using original_text field", () => {
     const env = setup(
       [
-        ["English", "Spanish"],
-        ["Benefits info", "Información de beneficios"],
+        ["Block", "English", "Spanish"],
+        ["b01", "Benefits info", "Información de beneficios"],
       ],
       [
         {
@@ -431,9 +448,9 @@ describe("checkItemsExist", () => {
   test("indexes orphans across multiple blocks correctly", () => {
     const env = setup(
       [
-        ["English", "Spanish"],
-        ["Hello", "Hola"],
-        ["Goodbye", "Adiós"],
+        ["Block", "English", "Spanish"],
+        ["b01", "Hello", "Hola"],
+        ["b02", "Goodbye", "Adiós"],
       ],
       [
         {
@@ -454,5 +471,160 @@ describe("checkItemsExist", () => {
     const orphans = env.checkItemsExist();
     expect(orphans["alt_translations::0"]).toBeUndefined();
     expect(orphans["alt_translations::1"]).toBe(true);
+  });
+});
+
+// ── paintHighlight ─────────────────────────────────────────────────────
+
+/**
+ * Build a mock table where each cell's text element is stable (same object
+ * on every getChild call) so setBackgroundColor calls can be inspected.
+ */
+function highlightTable(rows) {
+  const cells = rows.map((row) =>
+    row.map((text) => {
+      const textEl = {
+        getText: () => text,
+        setBackgroundColor: jest.fn(),
+      };
+      const cell = {
+        _text: text,
+        _textEl: textEl,
+        getText: () => text,
+        getNumChildren: () => 1,
+        getChild: () => ({
+          getType: () => "PARAGRAPH",
+          asText: () => textEl,
+        }),
+      };
+      return cell;
+    })
+  );
+
+  return {
+    getNumRows: () => rows.length,
+    getRow: (r) => ({
+      getCell: (c) => cells[r][c],
+      getNumCells: () => cells[r].length,
+    }),
+    _cells: cells,
+  };
+}
+
+describe("paintHighlight", () => {
+  test("highlights matching English and Spanish in yellow", () => {
+    const table = highlightTable([
+      ["Block", "English", "Spanish"],
+      ["b01", "financial support", "manutención económica"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    const result = env.paintHighlight("financial support", "manutención económica", [], []);
+    expect(result.original).toBe("found");
+    expect(result.translation).toBe("found");
+    expect(result.matchedBlockIds).toEqual(["b01"]);
+    // English cell highlighted in yellow
+    expect(table._cells[1][1]._textEl.setBackgroundColor).toHaveBeenCalledWith(0, 16, "#FFD700");
+    // Spanish cell highlighted in yellow
+    expect(table._cells[1][2]._textEl.setBackgroundColor).toHaveBeenCalledWith(0, 20, "#FFD700");
+  });
+
+  test("highlights all rows where English matches", () => {
+    const table = highlightTable([
+      ["Block", "English", "Spanish"],
+      ["b01", "financial support from parents", "manutención económica de los padres"],
+      ["b02", "receive financial support", "recibir apoyo económico"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    const result = env.paintHighlight("financial support", "manutención económica", ["apoyo económico"], []);
+    expect(result.matchedBlockIds).toEqual(["b01", "b02"]);
+    // Both English cells get yellow on the phrase
+    expect(table._cells[1][1]._textEl.setBackgroundColor).toHaveBeenCalledWith(0, 16, "#FFD700");
+    expect(table._cells[2][1]._textEl.setBackgroundColor).toHaveBeenCalledWith(8, 24, "#FFD700");
+    // b01 Spanish matches card's translation → yellow
+    expect(table._cells[1][2]._textEl.setBackgroundColor).toHaveBeenCalledWith(0, 20, "#FFD700");
+    // b02 Spanish has variant → first alt color (light blue)
+    // "recibir apoyo económico" — "apoyo económico" starts at 8, length 15, end index 22
+    expect(table._cells[2][2]._textEl.setBackgroundColor).toHaveBeenCalledWith(8, 22, "#A8D8FF");
+  });
+
+  test("assigns distinct colors to different variant translations", () => {
+    const table = highlightTable([
+      ["Block", "English", "Spanish"],
+      ["b01", "financial support", "manutención económica"],
+      ["b02", "financial support", "apoyo económico"],
+      ["b03", "financial support", "soporte financiero"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    env.paintHighlight("financial support", "manutención económica",
+      ["apoyo económico", "soporte financiero"], []);
+    // b01 yellow (matches card)
+    expect(table._cells[1][2]._textEl.setBackgroundColor).toHaveBeenCalledWith(0, 20, "#FFD700");
+    // b02 first variant color
+    expect(table._cells[2][2]._textEl.setBackgroundColor).toHaveBeenCalledWith(0, 14, "#A8D8FF");
+    // b03 second variant color
+    expect(table._cells[3][2]._textEl.setBackgroundColor).toHaveBeenCalledWith(0, 17, "#C5B4E3");
+  });
+
+  test("does not highlight rows where neither column matches", () => {
+    const table = highlightTable([
+      ["Block", "English", "Spanish"],
+      ["b01", "financial support", "manutención económica"],
+      ["b02", "child care", "cuidado infantil"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    const result = env.paintHighlight("financial support", "manutención económica", [], []);
+    expect(result.matchedBlockIds).toEqual(["b01"]);
+    expect(table._cells[2][1]._textEl.setBackgroundColor).not.toHaveBeenCalled();
+    expect(table._cells[2][2]._textEl.setBackgroundColor).not.toHaveBeenCalled();
+  });
+
+  test("highlights variant English phrases when Spanish matches", () => {
+    const table = highlightTable([
+      ["Block", "English", "Spanish"],
+      ["b01", "financial support", "apoyo económico"],
+      ["b02", "economic assistance", "apoyo económico"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    const result = env.paintHighlight("financial support", "apoyo económico",
+      [], ["economic assistance"]);
+    expect(result.matchedBlockIds).toEqual(["b01", "b02"]);
+    // b01 English yellow (matches card)
+    expect(table._cells[1][1]._textEl.setBackgroundColor).toHaveBeenCalledWith(0, 16, "#FFD700");
+    // b02 English variant color
+    expect(table._cells[2][1]._textEl.setBackgroundColor).toHaveBeenCalledWith(0, 18, "#A8D8FF");
+    // Both Spanish cells yellow
+    expect(table._cells[1][2]._textEl.setBackgroundColor).toHaveBeenCalledWith(0, 14, "#FFD700");
+    expect(table._cells[2][2]._textEl.setBackgroundColor).toHaveBeenCalledWith(0, 14, "#FFD700");
+  });
+
+  test("works on old 2-column docs without block ID column", () => {
+    const table = highlightTable([
+      ["English", "Spanish"],
+      ["financial support", "manutención económica"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    const result = env.paintHighlight("financial support", "manutención económica", [], []);
+    expect(result.original).toBe("found");
+    expect(result.translation).toBe("found");
+    expect(result.matchedBlockIds).toEqual(["b1"]);
+  });
+
+  test("returns not_found when no rows match", () => {
+    const table = highlightTable([
+      ["Block", "English", "Spanish"],
+      ["b01", "child care", "cuidado infantil"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    const result = env.paintHighlight("financial support", "manutención económica", [], []);
+    expect(result.original).toBe("not_found");
+    expect(result.translation).toBe("not_found");
+    expect(result.matchedBlockIds).toEqual([]);
   });
 });

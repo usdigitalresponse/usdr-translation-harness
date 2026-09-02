@@ -7,7 +7,13 @@ const BODY_FONT = "Arial";
 const HEADER_FONT_SIZE_PT = 10;
 const BODY_FONT_SIZE_PT = 10;
 const TITLE_FONT_SIZE_PT = 16;
-const COLUMN_WIDTH_PT = 234;
+const TABLE_COLUMNS = 3;
+const BLOCK_ID_COLUMN_WIDTH_PT = 50;
+const TEXT_COLUMN_WIDTH_PT = 209;
+const COL_BLOCK_ID = 0;
+const COL_ORIGINAL = 1;
+const COL_TRANSLATED = 2;
+const HEADER_LABEL_BLOCK_ID = "Block";
 const HEADER_LABEL_ORIGINAL = "Original Text (English)";
 const HEADER_LABEL_TRANSLATED = "Translated Text (Spanish)";
 const EMPTY_TRANSLATION_TEMPLATE = "No translatable content was returned by {provider}/{model}.";
@@ -19,11 +25,11 @@ const BODY_START_INDEX = 1;
  *
  * Table layout (one content row per extraction block):
  *
- *   | Original Text (English) | Translated Text (Spanish) |
- *   |-------------------------|---------------------------|
- *   | block b01 original      | block b01 translation     |
- *   | block b02 original      | block b02 translation     |
- *   | ...                     | ...                       |
+ *   | Block | Original Text (English) | Translated Text (Spanish) |
+ *   |-------|-------------------------|---------------------------|
+ *   | b01   | block b01 original      | block b01 translation     |
+ *   | b02   | block b02 original      | block b02 translation     |
+ *   | ...   | ...                     | ...                       |
  *
  * Returns the created document's file ID.
  */
@@ -147,7 +153,7 @@ async function insertStructure(docs, documentId, title, tableRows) {
   requests.push({
     insertTable: {
       rows: tableRows,
-      columns: 2,
+      columns: TABLE_COLUMNS,
       location: { index: cursor },
     },
   });
@@ -180,17 +186,17 @@ async function populateAndFormat(docs, documentId, blocks) {
   // so earlier insertions don't shift later insertion points.
   for (let row = blocks.length; row >= 0; row--) {
     const isHeader = row === 0;
-    for (let col = 1; col >= 0; col--) {
+    const headers = [HEADER_LABEL_BLOCK_ID, HEADER_LABEL_ORIGINAL, HEADER_LABEL_TRANSLATED];
+
+    for (let col = TABLE_COLUMNS - 1; col >= 0; col--) {
       let text;
       if (isHeader) {
-        text = col === 0
-          ? HEADER_LABEL_ORIGINAL
-          : HEADER_LABEL_TRANSLATED;
+        text = headers[col];
       } else {
         const block = blocks[row - 1];
-        text = col === 0
-          ? (block.original_text || "")
-          : (block.translated_text || "");
+        if (col === COL_BLOCK_ID) text = block.id || "";
+        else if (col === COL_ORIGINAL) text = block.original_text || "";
+        else text = block.translated_text || "";
       }
 
       if (text) {
@@ -222,7 +228,7 @@ async function populateAndFormat(docs, documentId, blocks) {
   const formatRequests = [];
 
   // Header row text formatting
-  for (let col = 0; col < 2; col++) {
+  for (let col = 0; col < TABLE_COLUMNS; col++) {
     const { start, end } = updatedCells[0][col];
     if (end > start) {
       formatRequests.push({
@@ -241,7 +247,7 @@ async function populateAndFormat(docs, documentId, blocks) {
 
   // Body cell text formatting
   for (let row = 1; row < updatedCells.length; row++) {
-    for (let col = 0; col < 2; col++) {
+    for (let col = 0; col < TABLE_COLUMNS; col++) {
       const { start, end } = updatedCells[row][col];
       if (end > start) {
         formatRequests.push({
@@ -269,7 +275,7 @@ async function populateAndFormat(docs, documentId, blocks) {
           columnIndex: 0,
         },
         rowSpan: 1,
-        columnSpan: 2,
+        columnSpan: TABLE_COLUMNS,
       },
       tableCellStyle: {
         backgroundColor: { color: { rgbColor: HEADER_BG } },
@@ -278,15 +284,16 @@ async function populateAndFormat(docs, documentId, blocks) {
     },
   });
 
-  // Equal column widths
-  for (let col = 0; col < 2; col++) {
+  // Column widths: narrow block ID, equal text columns
+  const columnWidths = [BLOCK_ID_COLUMN_WIDTH_PT, TEXT_COLUMN_WIDTH_PT, TEXT_COLUMN_WIDTH_PT];
+  for (let col = 0; col < TABLE_COLUMNS; col++) {
     formatRequests.push({
       updateTableColumnProperties: {
         tableStartLocation: { index: tableStart },
         columnIndices: [col],
         tableColumnProperties: {
           widthType: "FIXED_WIDTH",
-          width: { magnitude: COLUMN_WIDTH_PT, unit: "PT" },
+          width: { magnitude: columnWidths[col], unit: "PT" },
         },
         fields: "widthType,width",
       },

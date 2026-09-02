@@ -10,6 +10,11 @@ var DOC_PROPERTY_KEY = "usdr_translation_review";
 var SIDEBAR_CHECKS_KEY = "SIDEBAR_CHECKS";
 var SIDEBAR_OPENED_AT_KEY = "SIDEBAR_OPENED_AT";
 var HIGHLIGHT_COLOR = "#FFD700";
+var HIGHLIGHT_COLORS_ALT = ["#A8D8FF", "#C5B4E3", "#A8E6CF", "#FFB7B2", "#FFDAA5"];
+var COL_BLOCK_ID = 0;
+var COL_ORIGINAL = 1;
+var COL_TRANSLATED = 2;
+var TABLE_COLUMNS = 3;
 var DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 var PL_EVAL_FOLDER_ID = "1Sa5r8G4YMo0Hn02rCjyClixN0jCgbQ5U";
 
@@ -146,7 +151,7 @@ function saveSidebarChecks(checks) {
 
 /**
  * Find the first table element in the document body.
- * Translation output docs have a single two-column table (English | Spanish).
+ * Translation output docs have a three-column table (Block ID | English | Spanish).
  * @param {GoogleAppsScript.Document.Body} [body] - Document body, defaults to active doc
  * @returns {GoogleAppsScript.Document.Table|null}
  */
@@ -158,6 +163,18 @@ function getFirstTable_(body) {
     }
   }
   return null;
+}
+
+/**
+ * Return column indices for the table layout. Old docs have 2 columns
+ * (English | Spanish); new docs have 3 (Block ID | English | Spanish).
+ */
+function getColumnLayout_(table) {
+  var numCols = table.getRow(0).getNumCells();
+  if (numCols >= TABLE_COLUMNS) {
+    return { blockId: COL_BLOCK_ID, original: COL_ORIGINAL, translated: COL_TRANSLATED, total: TABLE_COLUMNS };
+  }
+  return { blockId: -1, original: 0, translated: 1, total: 2 };
 }
 
 function escapeRegex_(str) {
@@ -194,6 +211,17 @@ function paintInCell_(cell, needle, color) {
   return found;
 }
 
+function paintEntireCell_(cell, color) {
+  for (var p = 0; p < cell.getNumChildren(); p++) {
+    var child = cell.getChild(p);
+    if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
+      var textEl = child.asText();
+      var len = textEl.getText().length;
+      if (len > 0) textEl.setBackgroundColor(0, len - 1, color);
+    }
+  }
+}
+
 function findInCell_(cell, needle) {
   for (var p = 0; p < cell.getNumChildren(); p++) {
     var child = cell.getChild(p);
@@ -209,44 +237,86 @@ function findInCell_(cell, needle) {
 }
 
 /**
- * Highlight an original phrase and its translation in the document table.
- * Called by the sidebar when the reviewer clicks a review card or reference row.
- * Searches all content rows (skipping the header) and sets the cursor to
- * the first match in the English column.
+ * Highlight an original phrase and its translation across ALL matching rows.
+ * Returns which block IDs matched so the sidebar can show occurrence count.
+ * Sets the cursor to the first match in the English column.
  * @param {string} originalText - English phrase to highlight
  * @param {string} translationText - Spanish phrase to highlight
- * @returns {{ original: string, translation: string }} "found" or "not_found" per column
+ * @returns {{ matchedBlockIds: string[], original: string, translation: string }}
  */
-function paintHighlight(originalText, translationText) {
+function paintHighlight(originalText, translationText, transVariants, origVariants) {
   var table = getFirstTable_();
-  var result = { original: "not_found", translation: "not_found" };
+  var result = { original: "not_found", translation: "not_found", matchedBlockIds: [] };
   if (!table || table.getNumRows() < 2) return result;
 
+  var cols = getColumnLayout_(table);
   var origTrimmed = (originalText || "").trim();
   var transTrimmed = (translationText || "").trim();
+  var tVariants = transVariants || [];
+  var oVariants = origVariants || [];
 
-  // Search all content rows (skip header at row 0)
+  // Build color maps: each variant phrase gets its own alt color
+  var transColorMap = {};
+  for (var v = 0; v < tVariants.length; v++) {
+    transColorMap[tVariants[v]] = HIGHLIGHT_COLORS_ALT[v % HIGHLIGHT_COLORS_ALT.length];
+  }
+  var origColorMap = {};
+  for (var v = 0; v < oVariants.length; v++) {
+    origColorMap[oVariants[v]] = HIGHLIGHT_COLORS_ALT[v % HIGHLIGHT_COLORS_ALT.length];
+  }
+
+  var firstHitSet = false;
+
   for (var row = 1; row < table.getNumRows(); row++) {
-    var engCell = table.getRow(row).getCell(0);
-    var spaCell = table.getRow(row).getCell(1);
+    var tableRow = table.getRow(row);
+    var engCell = tableRow.getCell(cols.original);
+    var spaCell = tableRow.getCell(cols.translated);
+    var engText = engCell.getChild(0) ? engCell.getChild(0).asText().getText() : "";
+    var spaText = spaCell.getChild(0) ? spaCell.getChild(0).asText().getText() : "";
 
-    if (origTrimmed && result.original === "not_found") {
-      if (paintInCell_(engCell, origTrimmed, HIGHLIGHT_COLOR)) {
-        result.original = "found";
-        var hit = findInCell_(engCell, origTrimmed);
-        if (hit) {
-          try {
-            var doc = DocumentApp.getActiveDocument();
-            doc.setSelection(doc.newRange().addElement(hit.textEl, hit.start, hit.end).build());
-          } catch (e) { /* non-fatal */ }
+    var engMatches = origTrimmed && engText.indexOf(origTrimmed) !== -1;
+    var spaMatches = transTrimmed && spaText.indexOf(transTrimmed) !== -1;
+
+    if (!engMatches && !spaMatches) continue;
+
+    var blockId = cols.blockId >= 0 ? tableRow.getCell(cols.blockId).getText().trim() : ("b" + row);
+    result.matchedBlockIds.push(blockId);
+
+    if (engMatches) {
+      paintInCell_(engCell, origTrimmed, HIGHLIGHT_COLOR);
+      result.original = "found";
+      if (spaMatches) {
+        paintInCell_(spaCell, transTrimmed, HIGHLIGHT_COLOR);
+        result.translation = "found";
+      } else {
+        for (var vi = 0; vi < tVariants.length; vi++) {
+          if (spaText.indexOf(tVariants[vi]) !== -1) {
+            paintInCell_(spaCell, tVariants[vi], transColorMap[tVariants[vi]]);
+            break;
+          }
+        }
+      }
+    } else {
+      // spaMatches is true
+      paintInCell_(spaCell, transTrimmed, HIGHLIGHT_COLOR);
+      result.translation = "found";
+      for (var vi = 0; vi < oVariants.length; vi++) {
+        if (engText.indexOf(oVariants[vi]) !== -1) {
+          paintInCell_(engCell, oVariants[vi], origColorMap[oVariants[vi]]);
+          break;
         }
       }
     }
 
-    if (transTrimmed && result.translation === "not_found") {
-      if (paintInCell_(spaCell, transTrimmed, HIGHLIGHT_COLOR)) {
-        result.translation = "found";
+    if (!firstHitSet && engMatches) {
+      var hit = findInCell_(engCell, origTrimmed);
+      if (hit) {
+        try {
+          var doc = DocumentApp.getActiveDocument();
+          doc.setSelection(doc.newRange().addElement(hit.textEl, hit.start, hit.end).build());
+        } catch (e) { /* non-fatal */ }
       }
+      firstHitSet = true;
     }
   }
 
@@ -262,12 +332,13 @@ function clearHighlight(originalText, translationText) {
   var table = getFirstTable_();
   if (!table || table.getNumRows() < 2) return;
 
+  var cols = getColumnLayout_(table);
   var origTrimmed = (originalText || "").trim();
   var transTrimmed = (translationText || "").trim();
 
   for (var row = 1; row < table.getNumRows(); row++) {
-    if (origTrimmed) paintInCell_(table.getRow(row).getCell(0), origTrimmed, null);
-    if (transTrimmed) paintInCell_(table.getRow(row).getCell(1), transTrimmed, null);
+    if (origTrimmed) paintInCell_(table.getRow(row).getCell(cols.original), origTrimmed, null);
+    if (transTrimmed) paintInCell_(table.getRow(row).getCell(cols.translated), transTrimmed, null);
   }
 }
 
@@ -278,8 +349,9 @@ function clearHighlight(originalText, translationText) {
 function clearAllHighlights() {
   var table = getFirstTable_();
   if (!table) return;
+  var cols = getColumnLayout_(table);
   for (var row = 1; row < table.getNumRows(); row++) {
-    for (var col = 0; col < 2; col++) {
+    for (var col = 0; col < cols.total; col++) {
       var cell = table.getRow(row).getCell(col);
       for (var p = 0; p < cell.getNumChildren(); p++) {
         var child = cell.getChild(p);
@@ -305,11 +377,12 @@ function getDocTextForHighlightCheck() {
   var table = getFirstTable_();
   if (!table || table.getNumRows() < 2) return { english: "", spanish: "" };
 
+  var cols = getColumnLayout_(table);
   var english = [];
   var spanish = [];
   for (var row = 1; row < table.getNumRows(); row++) {
-    english.push(table.getRow(row).getCell(0).getText());
-    spanish.push(table.getRow(row).getCell(1).getText());
+    english.push(table.getRow(row).getCell(cols.original).getText());
+    spanish.push(table.getRow(row).getCell(cols.translated).getText());
   }
   return { english: english.join("\n"), spanish: spanish.join("\n") };
 }
@@ -414,20 +487,32 @@ function replaceInCell_(cell, currentText, pattern, replacement) {
 }
 
 /**
+ * Find the table row index for a given block ID.
+ * @param {GoogleAppsScript.Document.Table} table
+ * @param {string} blockId
+ * @returns {number} 1-based row index, or -1 if not found
+ */
+function findRowByBlockId_(table, cols, blockId) {
+  if (cols.blockId < 0) return -1;
+  for (var row = 1; row < table.getNumRows(); row++) {
+    if (table.getRow(row).getCell(cols.blockId).getText().trim() === blockId) {
+      return row;
+    }
+  }
+  return -1;
+}
+
+/**
  * Replace a translation phrase in the document with an alternative.
- * Called by the sidebar's "Use alternative" button.
- *
- * Strategy: tries the exact table row first (blockIndex + 1, since row 0
- * is the header), then falls back to searching all rows. Falls back to a
- * full-body search if no table is found.
  *
  * @param {string} currentText - The current translation text to replace
  * @param {string} altText - The alternative translation to insert
- * @param {number} blockIndex - Zero-based block index from getSidebarData()
- * @returns {{ replaced: boolean, count: number }}
+ * @param {string} blockId - Block ID to target for single-block replace
+ * @param {boolean} replaceAll - If true, replace in every row that contains currentText
+ * @returns {{ replaced: boolean, count: number, blockIds: string[] }}
  */
-function replaceTranslationInDoc(currentText, altText, blockIndex) {
-  var result = { replaced: false, count: 0 };
+function replaceTranslationInDoc(currentText, altText, blockId, replaceAll) {
+  var result = { replaced: false, count: 0, blockIds: [] };
 
   currentText = (currentText || '').trim();
   altText     = (altText || '').trim();
@@ -440,22 +525,31 @@ function replaceTranslationInDoc(currentText, altText, blockIndex) {
   var pattern     = escapeRegex_(currentText);
   var replacement = escapeReplacement_(altText);
 
-  if (table && table.getNumRows() >= 2) {
-    var targetRow = (typeof blockIndex === 'number') ? blockIndex + 1 : -1;
-    if (targetRow >= 1 && targetRow < table.getNumRows()) {
-      var count = replaceInCell_(table.getRow(targetRow).getCell(1), currentText, pattern, replacement);
-      if (count > 0) {
-        result.replaced = true;
-        result.count = count;
-      }
-    }
+  // replaceAll can be: true (all rows), false (single blockId), or an array of block IDs
+  var targetIds = Array.isArray(replaceAll) ? replaceAll : null;
 
-    if (!result.replaced) {
+  if (table && table.getNumRows() >= 2) {
+    var cols = getColumnLayout_(table);
+    if (replaceAll === true || targetIds) {
       for (var row = 1; row < table.getNumRows(); row++) {
-        var count = replaceInCell_(table.getRow(row).getCell(1), currentText, pattern, replacement);
+        var tableRow = table.getRow(row);
+        var rowBlockId = cols.blockId >= 0 ? tableRow.getCell(cols.blockId).getText().trim() : ("b" + row);
+        if (targetIds && targetIds.indexOf(rowBlockId) < 0) continue;
+        var count = replaceInCell_(tableRow.getCell(cols.translated), currentText, pattern, replacement);
         if (count > 0) {
           result.replaced = true;
           result.count += count;
+          result.blockIds.push(rowBlockId);
+        }
+      }
+    } else {
+      var targetRow = blockId ? findRowByBlockId_(table, cols, blockId) : -1;
+      if (targetRow >= 1) {
+        var count = replaceInCell_(table.getRow(targetRow).getCell(cols.translated), currentText, pattern, replacement);
+        if (count > 0) {
+          result.replaced = true;
+          result.count = count;
+          result.blockIds.push(blockId);
         }
       }
     }
@@ -566,21 +660,22 @@ function appendSection_(body, title, items, headers, fields) {
 var EVAL_FUNCTION_URL_KEY = "EVAL_QUALITY_FUNCTION_URL";
 
 /**
- * Read the English/Spanish table into blocks for the eval function.
- * Mirrors the layout the highlighting helpers assume: column 0 English,
- * column 1 Spanish, row 0 a header.
+ * Read the Block ID / English / Spanish table into blocks for the eval function.
  */
 function extractDocBlocks_() {
   var table = getFirstTable_();
   if (!table || table.getNumRows() < 2) return [];
 
+  var cols = getColumnLayout_(table);
   var blocks = [];
   for (var row = 1; row < table.getNumRows(); row++) {
-    var original = table.getRow(row).getCell(0).getText().trim();
-    var translated = table.getRow(row).getCell(1).getText().trim();
+    var tableRow = table.getRow(row);
+    var blockId = cols.blockId >= 0 ? tableRow.getCell(cols.blockId).getText().trim() : ("b" + (row < 10 ? "0" : "") + row);
+    var original = tableRow.getCell(cols.original).getText().trim();
+    var translated = tableRow.getCell(cols.translated).getText().trim();
     if (!original && !translated) continue;
     blocks.push({
-      id: "b" + (row < 10 ? "0" : "") + row,
+      id: blockId,
       original_text: original,
       translated_text: translated,
     });
