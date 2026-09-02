@@ -167,6 +167,11 @@
     .dim-list li { font-size:12px; color:var(--ink-soft); margin-bottom:2px; }
     .dim-comment { font-size:12px; color:var(--ink-soft); white-space:pre-wrap; margin-top:8px; }
     .dim-comment.empty-val { color:var(--ink-faint); font-style:italic; }
+    .rec-list { margin-top:6px; }
+    .rec-row { display:flex; align-items:flex-start; gap:7px; padding:3px 0; }
+    .rec-check { flex:0 0 auto; width:12px; height:12px; margin-top:3px; accent-color: var(--ink-faint); cursor:pointer; }
+    .rec-text { font-size:12px; color:var(--ink-soft); line-height:1.45; cursor:pointer; }
+    .rec-row.checked .rec-text { color:var(--ink-faint); text-decoration:line-through; }
     .dim-rubric-link { display:block; margin-top:10px; font-size:11px; color:var(--ink-faint); text-decoration:none; }
     .dim-rubric-link:hover { color:var(--accent); text-decoration:underline; }
 
@@ -186,6 +191,17 @@
     details.debug-item summary::before { content:'\25b8'; margin-right:6px; display:inline-block; font-size:11px; }
     details.debug-item[open] summary::before { transform: rotate(90deg); display:inline-block; }
     .debug-body-inner { padding:0 0 10px; }
+    .code-block-wrap { position:relative; }
+    .copy-btn {
+      position:absolute; top:7px; right:7px; width:26px; height:26px;
+      display:flex; align-items:center; justify-content:center;
+      background:var(--paper); border:1px solid var(--line-soft); border-radius:6px;
+      color:var(--ink-soft); cursor:pointer; padding:0;
+    }
+    .copy-btn:hover { background:var(--line-soft); color:var(--ink); }
+    .copy-btn.copied { color:var(--green-ink); border-color:var(--green-bdr); background:var(--green-bg); }
+    .code-block-wrap pre.json { padding-right:38px; }
+
     pre.json { margin:0; background:var(--code-bg); border:1px solid var(--line-soft); border-radius:7px;
       padding:8px 9px; font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace; font-size:11px;
       line-height:1.45; color:var(--code-ink); white-space:pre-wrap; word-break:break-word; overflow-x:auto; }
@@ -240,10 +256,10 @@
       { n: 1, d: 'Extremely hard to understand. Technical or legalistic language throughout. No attempt at plain language.' }
     ],
     cultural: [
-      { n: 5, d: 'Fully gender-neutral, uses Central American Spanish, and is culturally respectful.' },
-      { n: 4, d: 'Minor uses of gendered terms. Missed opportunity for cultural equivalent. One regionalism not broadly understood.' },
-      { n: 3, d: 'Some use of gendered terms. Missed opportunities for cultural equivalents.' },
-      { n: 2, d: 'Frequent use of gendered or regionally-inappropriate terms. Uses overly-literal translations.'},
+      { n: 5, d: 'Fully uses standard masculine generic, uses Latin American Spanish, and is culturally respectful.' },
+      { n: 4, d: 'Minor instances of misgendered terms. Missed opportunity for cultural equivalent. One regionalism not broadly understood.' },
+      { n: 3, d: 'Some use of misgendered terms. Missed opportunities for cultural equivalents.' },
+      { n: 2, d: 'Frequent use of misgendered or regionally-inappropriate terms. Uses overly-literal translations.'},
       { n: 1, d: 'Offensive use of exclusive or inappropriate terms.' }
     ],
     voice: [
@@ -318,6 +334,33 @@
     var content = items.map(function(it){ return '<div class="dim-comment">' + esc(it) + '</div>'; }).join('');
     return '<details class="subdim"><summary class="subdim-summary">' + esc(label) + '</summary>' + content + '</details>';
   }
+
+  // "recommendations" is a plain array of strings per the schema — one
+  // checkbox per array item, no parsing needed.
+  function recItemText_(item) {
+    return item ? String(item) : '';
+  }
+
+  // Checked state is purely visual/local (a lightweight "I've looked at
+  // this" marker) and isn't persisted anywhere.
+  function recsChecklist_(items, dimKey) {
+    if (!items.length) return '';
+    var rows = items.map(function (it, i) {
+      var text = recItemText_(it);
+      if (!text) return '';
+      var id = 'rec-' + dimKey + '-' + i;
+      return '<div class="rec-row">'
+        +   '<input type="checkbox" class="rec-check" id="' + id + '" '
+        +     'onchange="this.closest(\'.rec-row\').classList.toggle(\'checked\', this.checked)">'
+        +   '<label class="rec-text" for="' + id + '">' + esc(text) + '</label>'
+        + '</div>';
+    }).join('');
+    if (!rows) return '';
+
+    return '<details class="subdim"><summary class="subdim-summary">Recommendations</summary>'
+      + '<div class="rec-list">' + rows + '</div></details>';
+  }
+
 
   function rubricScaleBlock(dimKey, currentVal, colorClass) {
     var levels = RUBRIC_SCALE[dimKey];
@@ -478,12 +521,9 @@
         : 'No additional detail provided.';
       var inner = hasLists
         ? '<div class="subdim-toggles">'
-            + subdimToggle('Strengths', strengths)
-            + subdimToggle('Issues', issues)
-            + subdimToggle('Recommendations', recs)
+            + recsChecklist_(recs, d.key)
           + '</div>'
-        : (comment ? '<div class="dim-comment">' + esc(comment) + '</div>'
-                   : '<div class="dim-comment empty-val">' + emptyMsg + '</div>');
+        : '';
       var mScore = m.scores[d.key];
       var head = multi
         ? '<div class="model-detail-head"><span class="bd-name">' + esc(modelLabel(m)) + '</span>'
@@ -556,14 +596,17 @@
     }
     html += '</section>';
 
+    debugRawText = parsedRaw && Object.keys(parsedRaw).length ? prettyJson(parsedRaw) : (DATA.raw_eval_text || '—');
+
     html += '<section>'
       + '<button class="debug-toggle" id="debugToggle"><span>Debug info</span><span class="chevron">&#9656;</span></button>'
       + '<div class="debug-body" id="debugBody" style="display:none;">'
-      +   '<details class="debug-item"><summary>Source text</summary><div class="debug-body-inner"><div class="text-block">' + esc(DATA.source_text || '—') + '</div></div></details>'
-      +   '<details class="debug-item"><summary>Translated text</summary><div class="debug-body-inner"><div class="text-block">' + esc(DATA.translated_text || '—') + '</div></div></details>'
-      +   '<details class="debug-item"><summary>Full evaluation response</summary><div class="debug-body-inner"><pre class="json">'
-      +     esc(parsedRaw && Object.keys(parsedRaw).length ? prettyJson(parsedRaw) : (DATA.raw_eval_text || '—'))
-      +   '</pre></div></details>'
+      +   '<div class="code-block-wrap">'
+      +     '<button type="button" class="copy-btn" id="copyDebugBtn" title="Copy to clipboard" aria-label="Copy to clipboard">'
+      +       '<svg id="copyIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>'
+      +     '</button>'
+      +     '<pre class="json" id="debugJson">' + esc(debugRawText) + '</pre>'
+      +   '</div>'
       + '</div>'
       + '</section>';
 
@@ -576,6 +619,47 @@
       body.style.display = open ? 'none' : 'block';
       debugToggle.classList.toggle('open', !open);
     });
+
+    var copyDebugBtn = document.getElementById('copyDebugBtn');
+    if (copyDebugBtn) copyDebugBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      copyDebugText();
+    });
+  }
+  
+  function copyDebugText() {
+    var btn = document.getElementById('copyDebugBtn');
+    var icon = document.getElementById('copyIcon');
+    if (!btn) return;
+
+    function showCopied() {
+      btn.classList.add('copied');
+      if (icon) icon.innerHTML = '<polyline points="20 6 9 17 4 12"></polyline>';
+      setTimeout(function() {
+        btn.classList.remove('copied');
+        if (icon) icon.innerHTML = '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>';
+      }, 1500);
+    }
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(debugRawText).then(showCopied, function() {
+        fallbackCopy_(debugRawText, showCopied);
+      });
+    } else {
+      fallbackCopy_(debugRawText, showCopied);
+    }
+  }
+
+  function fallbackCopy_(text, onDone) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+    if (onDone) onDone();
   }
 
   function renderEmpty() {
