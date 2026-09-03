@@ -14,6 +14,10 @@ var HIGHLIGHT_COLORS_ALT = ["#A8D8FF", "#C5B4E3", "#A8E6CF", "#FFB7B2", "#FFDAA5
 var COL_BLOCK_ID = 0;
 var COL_ORIGINAL = 1;
 var COL_TRANSLATED = 2;
+// Doc-local row identifier for two-column documents, which have no ID column.
+// Deliberately NOT the "b01"/"b05a" format extract emits: the table can skip
+// IDs, so a row index cannot reconstruct the real one and must not pretend to.
+var LOCAL_ROW_ID_PREFIX = "row-";
 var TABLE_COLUMNS = 3;
 var DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 var PL_EVAL_FOLDER_ID = "1Sa5r8G4YMo0Hn02rCjyClixN0jCgbQ5U";
@@ -177,6 +181,24 @@ function getColumnLayout_(table) {
   return { blockId: -1, original: 0, translated: 1, total: 2 };
 }
 
+/**
+ * Real block ID for a table row, or "" when the document cannot supply one.
+ *
+ * Two-column documents predate the block ID column. Their IDs are genuinely
+ * unknown: extract emits sequential-with-gaps IDs ("b01", "b02", "b04") plus
+ * sub-item IDs ("b05a"), so a row index cannot reconstruct them. Callers must
+ * treat "" as "cannot target by ID" and fall back to matching on text, rather
+ * than comparing against a synthesized ID that can never match.
+ *
+ * @param {GoogleAppsScript.Document.TableRow} tableRow
+ * @param {{blockId: number}} cols - Layout from getColumnLayout_()
+ * @returns {string} The block ID, or "" if the document has no ID column.
+ */
+function rowBlockId_(tableRow, cols) {
+  if (cols.blockId < 0) return "";
+  return tableRow.getCell(cols.blockId).getText().trim();
+}
+
 function escapeRegex_(str) {
   return str.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
 }
@@ -271,16 +293,16 @@ function paintHighlight(originalText, translationText, transVariants, origVarian
     var tableRow = table.getRow(row);
     var engCell = tableRow.getCell(cols.original);
     var spaCell = tableRow.getCell(cols.translated);
-    var engText = engCell.getChild(0) ? engCell.getChild(0).asText().getText() : "";
-    var spaText = spaCell.getChild(0) ? spaCell.getChild(0).asText().getText() : "";
+    var engText = engCell.getText();
+    var spaText = spaCell.getText();
 
     var engMatches = origTrimmed && engText.indexOf(origTrimmed) !== -1;
     var spaMatches = transTrimmed && spaText.indexOf(transTrimmed) !== -1;
 
     if (!engMatches && !spaMatches) continue;
 
-    var blockId = cols.blockId >= 0 ? tableRow.getCell(cols.blockId).getText().trim() : ("b" + row);
-    result.matchedBlockIds.push(blockId);
+    var blockId = rowBlockId_(tableRow, cols);
+    if (blockId) result.matchedBlockIds.push(blockId);
 
     if (engMatches) {
       paintInCell_(engCell, origTrimmed, HIGHLIGHT_COLOR);
@@ -533,13 +555,13 @@ function replaceTranslationInDoc(currentText, altText, blockId, replaceAll) {
     if (replaceAll === true || targetIds) {
       for (var row = 1; row < table.getNumRows(); row++) {
         var tableRow = table.getRow(row);
-        var rowBlockId = cols.blockId >= 0 ? tableRow.getCell(cols.blockId).getText().trim() : ("b" + row);
-        if (targetIds && targetIds.indexOf(rowBlockId) < 0) continue;
+        var rowBlockId = rowBlockId_(tableRow, cols);
+        if (targetIds && rowBlockId && targetIds.indexOf(rowBlockId) < 0) continue;
         var count = replaceInCell_(tableRow.getCell(cols.translated), currentText, pattern, replacement);
         if (count > 0) {
           result.replaced = true;
           result.count += count;
-          result.blockIds.push(rowBlockId);
+          if (rowBlockId) result.blockIds.push(rowBlockId);
         }
       }
     } else {
@@ -670,7 +692,7 @@ function extractDocBlocks_() {
   var blocks = [];
   for (var row = 1; row < table.getNumRows(); row++) {
     var tableRow = table.getRow(row);
-    var blockId = cols.blockId >= 0 ? tableRow.getCell(cols.blockId).getText().trim() : ("b" + (row < 10 ? "0" : "") + row);
+    var blockId = rowBlockId_(tableRow, cols) || (LOCAL_ROW_ID_PREFIX + row);
     var original = tableRow.getCell(cols.original).getText().trim();
     var translated = tableRow.getCell(cols.translated).getText().trim();
     if (!original && !translated) continue;

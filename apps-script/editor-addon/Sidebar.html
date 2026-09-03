@@ -456,19 +456,24 @@
   }
 
   /**
-   * Count how many blocks in the full translation data contain this phrase
-   * in their translated text column.
+   * Count how many blocks contain this translation phrase, and how many
+   * additional blocks share the same original text with a different translation.
    */
-  function countOccurrences(translationPhrase) {
-    if (!DATA || !DATA.blocks || !translationPhrase) return { count: 1, blockIds: [] };
+  function countOccurrences(translationPhrase, originalPhrase) {
+    if (!DATA || !DATA.blocks || !translationPhrase) return { count: 1, blockIds: [], variantCount: 0 };
     var phrase = translationPhrase.trim();
+    var orig = (originalPhrase || '').trim();
     var ids = [];
+    var variantCount = 0;
     DATA.blocks.forEach(function(block) {
-      if ((block.translated_text || '').indexOf(phrase) !== -1) {
+      var hasTranslation = (block.translated_text || '').indexOf(phrase) !== -1;
+      if (hasTranslation) {
         ids.push(block.id || '');
+      } else if (orig && (block.original_text || '').indexOf(orig) !== -1) {
+        variantCount++;
       }
     });
-    return { count: Math.max(ids.length, 1), blockIds: ids };
+    return { count: Math.max(ids.length, 1), blockIds: ids, variantCount: variantCount };
   }
 
   function reviewablePool() {
@@ -572,6 +577,14 @@
     document.getElementById('root').innerHTML = html;
     wireEvents();
     updateProgress();
+
+    if (_activeId) {
+      var el = document.querySelector('[data-id="' + _activeId + '"]');
+      if (el) {
+        _activeEl = el;
+        el.classList.add('highlighting');
+      }
+    }
   }
 
   function renderEmpty() {
@@ -627,10 +640,14 @@
     html += '<div class="field-label">Original</div><div class="field-val">' + esc(original) + '</div>';
 
     if (it.type === 'translation') {
-      var occ = countOccurrences(current);
+      var occ = countOccurrences(current, original);
       html += '<div class="field-label">Current translation</div><div class="field-val">' + esc(current) + '</div>';
-      if (occ.count > 1) {
-        html += '<div class="occurrence-badge">Appears in ' + occ.count + ' sections</div>';
+      if (occ.count > 1 || occ.variantCount > 0) {
+        var badgeText = 'Appears in ' + occ.count + (occ.count === 1 ? ' section' : ' sections');
+        if (occ.variantCount > 0) {
+          badgeText += ' · ' + occ.variantCount + ' other ' + (occ.variantCount === 1 ? 'section has' : 'sections have') + ' a different translation';
+        }
+        html += '<div class="occurrence-badge">' + badgeText + '</div>';
       }
       html += '<div id="actionArea">' + renderTranslationActions(it, occ) + '</div>';
     } else {
@@ -864,10 +881,29 @@
     google.script.run
       .withSuccessHandler(function(result) {
         if (result && result.replaced) {
+          // The replacement text inherits the old text's highlight, so retarget
+          // the active highlight before resolve() releases it — otherwise
+          // clearHighlight() searches for text that is no longer in the doc and
+          // the new text stays highlighted.
+          if (_activeTranslation === current) _activeTranslation = alt;
           resolve(it.id, 'alternative');
         } else {
-          render();
-          alert('Couldn\'t find "' + current + '" in the document to replace.');
+          google.script.run
+            .withSuccessHandler(function(docText) {
+              var spanish = (docText && docText.spanish) || '';
+              if (spanish.indexOf(alt) !== -1) {
+                if (_activeTranslation === current) _activeTranslation = alt;
+                resolve(it.id, 'alternative');
+              } else {
+                NO_HL[it.id] = true;
+                render();
+              }
+            })
+            .withFailureHandler(function() {
+              render();
+              showErrorBar(‘Couldn\’t find “’ + current + ‘” in the document.’);
+            })
+            .getDocTextForHighlightCheck();
         }
       })
       .withFailureHandler(function(err) {
@@ -887,7 +923,7 @@
   }
 
   // ── Highlight state (click a card / reference row to highlight it) ─────
-  var _activeEl = null, _activeOriginal = '', _activeTranslation = '';
+  var _activeId = null, _activeEl = null, _activeOriginal = '', _activeTranslation = '';
 
   function collectVariants(originalText, translationText) {
     var transVariants = [];
@@ -914,7 +950,7 @@
 
   function activateHighlight(el, originalText, translationText, id) {
     if (NO_HL[id]) return;
-    _activeEl = el; _activeOriginal = originalText; _activeTranslation = translationText;
+    _activeId = id; _activeEl = el; _activeOriginal = originalText; _activeTranslation = translationText;
     el.classList.add('highlighting');
     var v = collectVariants(originalText, translationText);
     google.script.run
@@ -931,7 +967,7 @@
     if (!_activeEl) return;
     _activeEl.classList.remove('highlighting');
     google.script.run.clearHighlight(_activeOriginal, _activeTranslation);
-    _activeEl = null; _activeOriginal = ''; _activeTranslation = '';
+    _activeId = null; _activeEl = null; _activeOriginal = ''; _activeTranslation = '';
   }
 
   function toggleHighlight(el, originalText, translationText, id) {

@@ -612,7 +612,9 @@ describe("paintHighlight", () => {
     const result = env.paintHighlight("financial support", "manutención económica", [], []);
     expect(result.original).toBe("found");
     expect(result.translation).toBe("found");
-    expect(result.matchedBlockIds).toEqual(["b1"]);
+    // Two-column docs have no ID column, and extract's IDs ("b01", "b04",
+    // "b05a") cannot be reconstructed from a row index, so none are reported.
+    expect(result.matchedBlockIds).toEqual([]);
   });
 
   test("returns not_found when no rows match", () => {
