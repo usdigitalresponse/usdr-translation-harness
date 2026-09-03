@@ -233,7 +233,6 @@
     }
     .rr-badge.alt   { background: var(--accent-bg); color: var(--accent); }
     .rr-badge.fixed { background: var(--line-soft); color: var(--ink-soft); }
-    .rr-check      { font-size: 13px; color: var(--ink-faint); }
     .rr-revert     { font-size: 13px; color: var(--ink-soft); cursor: pointer; margin-right: 8px; }
     .rr-revert:hover { color: var(--ink); }
     .reviewed-detail { padding: 0 0 10px; font-size: 12px; color: var(--ink-soft); }
@@ -552,9 +551,9 @@
 
     html += '<div class="divider"></div>';
 
-    // ---- Reference ----
+    // ---- Glossary reference ----
     html += '<button class="sec-toggle" id="referenceToggle">'
-      + '<span>Reference (' + refItems.length + ')</span>'
+      + '<span>Glossary reference (' + refItems.length + ')</span>'
       + '<span class="chevron' + (referenceOpen ? ' open' : '') + '" id="referenceChevron">&#9656;</span>'
       + '</button>';
     html += '<div id="referenceBody" style="display:' + (referenceOpen ? 'block' : 'none') + ';">';
@@ -762,10 +761,11 @@
     var original = pickVal(it.data, it.f.original);
     var isOpen   = expandedReviewedId === it.id;
     var status   = STATUS[it.id];
-    var marker;
+    // Plain "accepted" gets no marker — the row's presence in the reviewed
+    // list already says it was reviewed.
+    var marker = '';
     if (status === 'alternative') marker = '<span class="rr-badge alt">Alternative used</span>';
     else if (status === 'fixed')  marker = '<span class="rr-badge fixed">Fixed manually</span>';
-    else                          marker = '<span class="rr-check">&#10003;</span>';
     var revert = '<span class="rr-revert" data-id="' + esc(it.id) + '" data-action="revert">&#8630;</span>';
 
     var row = '<div class="reviewed-row" data-id="' + esc(it.id) + '" data-action="toggle">'

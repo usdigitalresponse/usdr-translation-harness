@@ -223,6 +223,9 @@
   var DATA = null;
   var manageOpen = false;
 
+  var EVAL_FIRST_RUN_MSG = 'Evaluating the translation…';
+  var EVAL_RERUN_MSG     = 'Re-evaluating the translation…';
+
   var DEFAULT_RUBRIC_URL = 'https://docs.google.com/document/d/1JldVu3T0OCSddWIqL6BVfrD0_HR8hjzS7W8WB7Ukx7E/edit?tab=t.chdst7j0fwjs#heading=h.32t2w6jzxg1e';
   var rubricUrl = DEFAULT_RUBRIC_URL;
 
@@ -286,13 +289,28 @@
     var node = parsedRaw && parsedRaw[rawKey];
     return (node && typeof node === 'object') ? node : null;
   }
+  // A judge that has nothing to say often fills the list with a placeholder
+  // ("None", "N/A", "No changes needed") instead of returning an empty array.
+  // Matched against the whole string so a real entry that merely opens with
+  // "No" — "No longer translate X as Y" — isn't dropped.
+  var NO_CONTENT_RE = /^(none|n\.?\/?a\.?|nil|nothing|not applicable|none (needed|required|necessary)|no (recommendations?|suggestions?|changes?|issues?|fixes|action|actions)( needed| required| necessary)?|[-–—])[.!]?$/i;
+
+  function isPlaceholder_(item) {
+    return NO_CONTENT_RE.test(String(item).trim());
+  }
+
   function extractList_(node, keys) {
     if (!node) return [];
     for (var i = 0; i < keys.length; i++) {
       var v = node[keys[i]];
       if (v === undefined || v === null || v === '') continue;
-      if (Array.isArray(v)) return v.filter(Boolean);
-      return [v];
+      var list = (Array.isArray(v) ? v.filter(Boolean) : [v]).filter(function (item) {
+        return !isPlaceholder_(item);
+      });
+      // A list that was nothing but placeholders counts as absent, so a
+      // later key in `keys` still gets a chance to supply real content.
+      if (!list.length) continue;
+      return list;
     }
     return [];
   }
@@ -401,7 +419,9 @@
 
   function attachTopBarListeners() {
     var refreshIconBtn = document.getElementById('refreshIconBtn');
-    if (refreshIconBtn) refreshIconBtn.addEventListener('click', runRefreshEvaluation);
+    if (refreshIconBtn) refreshIconBtn.addEventListener('click', function() {
+      runEvaluation(EVAL_RERUN_MSG);
+    });
 
     var manageBtn = document.getElementById('manageBtn');
     if (manageBtn) manageBtn.addEventListener('click', function(e) {
@@ -515,11 +535,13 @@
       var issues    = extractList_(node, ['issues','weaknesses','problems','concerns']);
       var recs      = extractList_(node, ['recommendations','recommendation','suggestions','fixes']);
       var comment   = rawComment(node);
-      var hasLists  = strengths.length || issues.length || recs.length;
       var emptyMsg = DATA.detailTrimmed
         ? 'Detail too large to cache — click &#8635; to re-run and view.'
         : 'No additional detail provided.';
-      var inner = hasLists
+      // Recommendations is the only list rendered today (the strengths/issues
+      // toggles are off), so it alone decides whether the container appears —
+      // an empty .subdim-toggles would still add its top margin.
+      var inner = recs.length
         ? '<div class="subdim-toggles">'
             + recsChecklist_(recs, d.key)
           + '</div>'
@@ -686,8 +708,11 @@
     return 'Evaluation error';
   }
 
-  function runRefreshEvaluation() {
-    document.getElementById('content').innerHTML = '<div class="stage">Re-evaluating the translation…<div class="hint">This can take up to a minute.</div></div>';
+  // `statusMsg` separates the first evaluation of a doc from an explicit re-run
+  // via ↻ — on the boot path there is no cached result to re-evaluate.
+  function runEvaluation(statusMsg) {
+    document.getElementById('content').innerHTML = '<div class="stage">' + esc(statusMsg)
+      + '<div class="hint">This can take up to a minute.</div></div>';
     google.script.run
       .withSuccessHandler(function(res) {
         if (res && res.problem) {
@@ -728,7 +753,7 @@
     google.script.run
       .withSuccessHandler(function (res) {
         if (res) { onData(res); }
-        else { runRefreshEvaluation(); }
+        else { runEvaluation(EVAL_FIRST_RUN_MSG); }
       })
       .withFailureHandler(onErr)
       .getEvalData();
