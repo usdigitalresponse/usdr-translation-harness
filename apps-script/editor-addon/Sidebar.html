@@ -576,14 +576,7 @@
     document.getElementById('root').innerHTML = html;
     wireEvents();
     updateProgress();
-
-    if (_activeId) {
-      var el = document.querySelector('[data-id="' + _activeId + '"]');
-      if (el) {
-        _activeEl = el;
-        el.classList.add('highlighting');
-      }
-    }
+    syncHighlightAfterRender();
   }
 
   function renderEmpty() {
@@ -862,7 +855,8 @@
 
   // ── Actions: resolving a card ────────────────────────────────────────────
   function resolve(id, status) {
-    releaseHighlight();
+    releaseHighlightLocal_();
+    _hlDismissedId = null;   // the next card should highlight itself
     STATUS[id] = status;
     showingAltId = null;
     var pool = reviewablePool();
@@ -901,7 +895,7 @@
             })
             .withFailureHandler(function() {
               render();
-              showErrorBar(‘Couldn\’t find “’ + current + ‘” in the document.’);
+              showErrorBar('Couldn\'t find "' + current + '" in the document.');
             })
             .getDocTextForHighlightCheck();
         }
@@ -914,7 +908,8 @@
   }
 
   function markNeedsWork(it) {
-    releaseHighlight();
+    releaseHighlightLocal_();
+    _hlDismissedId = null;
     FLAGGED[it.id] = true;
     var pool = reviewablePool();
     if (pool.length > 1) reviewPos = (reviewPos + 1) % pool.length;
@@ -923,7 +918,12 @@
   }
 
   // ── Highlight state (click a card / reference row to highlight it) ─────
-  var _activeId = null, _activeEl = null, _activeOriginal = '', _activeTranslation = '';
+  var _activeEl = null, _activeOriginal = '', _activeTranslation = '';
+  // Which item is painted in the doc. render() rebuilds the DOM, so _activeEl
+  // goes stale on every re-render; the id survives and lets a re-render tell
+  // "same item, just re-attach the class" from "different item, repaint".
+  var _activeId = null;
+  var _hasPendingClear = false;
 
   function collectVariants(originalText, translationText) {
     var transVariants = [];
@@ -949,8 +949,18 @@
   }
 
   function activateHighlight(el, originalText, translationText, id) {
-    if (NO_HL[id]) return;
-    _activeId = id; _activeEl = el; _activeOriginal = originalText; _activeTranslation = translationText;
+    if (NO_HL[id]) {
+      if (_hasPendingClear) {
+        _hasPendingClear = false;
+        google.script.run.clearAllHighlights();
+      }
+      return;
+    }
+    _hasPendingClear = false;
+    var oldOrig = _activeOriginal;
+    var oldTrans = _activeTranslation;
+    _activeEl = el; _activeId = id;
+    _activeOriginal = originalText; _activeTranslation = translationText;
     el.classList.add('highlighting');
     var v = collectVariants(originalText, translationText);
     google.script.run
@@ -960,19 +970,83 @@
           setTimeout(function() { el.style.borderColor = ''; }, 800);
         }
       })
-      .paintHighlight(originalText, translationText, v.transVariants, v.origVariants);
+      .swapHighlight(oldOrig, oldTrans, originalText, translationText, v.transVariants, v.origVariants);
+  }
+
+  function releaseHighlightLocal_() {
+    if (!_activeEl) return;
+    _activeEl.classList.remove('highlighting');
+    _hasPendingClear = true;
+    _activeEl = null; _activeId = null; _activeOriginal = ''; _activeTranslation = '';
   }
 
   function releaseHighlight() {
     if (!_activeEl) return;
     _activeEl.classList.remove('highlighting');
     google.script.run.clearHighlight(_activeOriginal, _activeTranslation);
-    _activeId = null; _activeEl = null; _activeOriginal = ''; _activeTranslation = '';
+    _activeEl = null; _activeId = null; _activeOriginal = ''; _activeTranslation = '';
   }
 
+  // Card the reviewer clicked to un-highlight. Without this, the next render
+  // would immediately auto-highlight it again and the click would look broken.
+  var _hlDismissedId = null;
+
+  // NO_HL is filled in by an async call after load. Auto-highlight waits for
+  // it, otherwise the first card gets painted before we know whether its text
+  // exists in the doc — and flashes the red "not found" border.
+  var _hlCheckDone = false;
+
   function toggleHighlight(el, originalText, translationText, id) {
-    if (_activeEl === el) { releaseHighlight(); }
-    else { releaseHighlight(); activateHighlight(el, originalText, translationText, id); }
+    if (_activeId === id) {
+      releaseHighlight();
+      _hlDismissedId = id;
+    } else {
+      releaseHighlightLocal_();
+      _hlDismissedId = null;
+      activateHighlight(el, originalText, translationText, id);
+    }
+  }
+
+  // Cards and reference rows are the highlightable rows. Ids are built from a
+  // fixed set of section keys plus an index, so they're safe to interpolate.
+  function highlightRow(id) {
+    return document.querySelector('.review-card[data-id="' + id + '"], .ref-row[data-id="' + id + '"]');
+  }
+
+  // Called at the end of every render(). Two jobs:
+  //   1. render() replaced the DOM, so whatever is painted in the doc needs
+  //      its class and _activeEl re-pointed at the new node.
+  //   2. Failing that, the card on screen takes the highlight, so the
+  //      reviewer always sees the current term in context.
+  function syncHighlightAfterRender() {
+    if (!_hlCheckDone) return;
+
+    if (_activeId) {
+      var active = highlightRow(_activeId);
+      if (active) {
+        // Same item still on screen (this covers a reference row the reviewer
+        // clicked, which must keep the highlight rather than lose it to the
+        // card). Re-attach only — no clear/repaint round-trip to the doc.
+        _activeEl = active;
+        active.classList.add('highlighting');
+        return;
+      }
+      // Its row is gone from the DOM; drop the now-orphaned paint.
+      releaseHighlight();
+    }
+
+    var card = document.getElementById('reviewCard');
+    if (!card) return;
+    var id = card.getAttribute('data-id');
+    if (!id || NO_HL[id] || _hlDismissedId === id) {
+      if (_hasPendingClear) {
+        _hasPendingClear = false;
+        google.script.run.clearAllHighlights();
+      }
+      return;
+    }
+    activateHighlight(card, card.getAttribute('data-original') || '',
+                      card.getAttribute('data-translation') || '', id);
   }
 
   // ── Wiring ────────────────────────────────────────────────────────────
@@ -1065,14 +1139,16 @@
       var prevBtn = document.getElementById('prevBtn');
       var nextBtn = document.getElementById('nextBtn');
       if (prevBtn) prevBtn.onclick = function() {
-        releaseHighlight();
+        releaseHighlightLocal_();
+        _hlDismissedId = null;
         var p = reviewablePool();
         reviewPos = (reviewPos - 1 + p.length) % p.length;
         showingAltId = null;
         render();
       };
       if (nextBtn) nextBtn.onclick = function() {
-        releaseHighlight();
+        releaseHighlightLocal_();
+        _hlDismissedId = null;
         var p = reviewablePool();
         reviewPos = (reviewPos + 1) % p.length;
         showingAltId = null;
@@ -1158,9 +1234,15 @@
       el.addEventListener('click', function(e) {
         e.stopPropagation();
         var id = el.getAttribute('data-id');
+        releaseHighlightLocal_();
+        _hlDismissedId = null;
         delete STATUS[id];
         expandedReviewedId = null;
         scheduleSave();
+        // Reviewing an item again makes it the current card, so it arrives in
+        // front of the reviewer already highlighted in the doc.
+        var pos = reviewablePool().map(function(item) { return item.id; }).indexOf(id);
+        if (pos !== -1) reviewPos = pos;
         render();
       });
     });
@@ -1255,20 +1337,34 @@
   }
 
   // ── Highlight-availability check (on load) ──────────────────────────────
+  function straightenQuotes_(s) {
+    return s.replace(/[‘’′]/g, "'").replace(/[“”″]/g, '"');
+  }
+
   function markUnhighlightableItems(onComplete) {
     google.script.run
       .withSuccessHandler(function(docText) {
         if (!docText) { if (onComplete) onComplete(); return; }
-        var english = (docText.english || '').normalize('NFC');
-        var spanish = (docText.spanish || '').normalize('NFC');
+        var english = straightenQuotes_((docText.english || '').normalize('NFC'));
+        var spanish = straightenQuotes_((docText.spanish || '').normalize('NFC'));
         NO_HL = {};
+
+        // Empty doc text means the check itself came up short — the add-on
+        // couldn't read the translation table — not that every phrase is
+        // missing from the document. Flagging everything here would mark all
+        // cards "Highlighting not available" and silently disable the feature
+        // for the whole doc. Leave NO_HL empty and let a real paint attempt
+        // report what it actually finds.
+        if (!english && !spanish) { if (onComplete) onComplete(); return; }
 
         function checkList(items) {
           items.forEach(function(it) {
             var origPhrase  = String(pickVal(it.data, it.f.original)).trim();
             var transPhrase = String(pickVal(it.data, it.f.current)).trim();
-            var origOk  = !origPhrase  || english.indexOf(origPhrase.normalize('NFC'))  !== -1;
-            var transOk = !transPhrase || spanish.indexOf(transPhrase.normalize('NFC')) !== -1;
+            var origNorm  = straightenQuotes_(origPhrase.normalize('NFC'));
+            var transNorm = straightenQuotes_(transPhrase.normalize('NFC'));
+            var origOk  = !origPhrase  || english.indexOf(origNorm)  !== -1;
+            var transOk = !transPhrase || spanish.indexOf(transNorm) !== -1;
             if (!origOk || !transOk) NO_HL[it.id] = true;
           });
         }
@@ -1298,6 +1394,8 @@
     alwaysShowAlt = checks.alwaysShowAlt || false;
 
     NO_HL = {};
+    _hlCheckDone = false;
+    _hlDismissedId = null;
     REVIEW_ITEMS = buildReviewItems();
     reviewPos = 0;
     showingAltId = null;
@@ -1313,6 +1411,7 @@
     render();
     loadPromptUrl();
     markUnhighlightableItems(function() {
+      _hlCheckDone = true;
       render();
     });
   }
@@ -1333,7 +1432,7 @@
   function unhighlightOnClose() {
     if (_activeEl) {
       _activeEl.classList.remove('highlighting');
-      _activeEl = null; _activeOriginal = ''; _activeTranslation = '';
+      _activeEl = null; _activeId = null; _activeOriginal = ''; _activeTranslation = '';
     }
     google.script.run
       .withFailureHandler(function() { /* silent — sidebar is closing anyway */ })

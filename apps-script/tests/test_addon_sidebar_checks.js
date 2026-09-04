@@ -630,3 +630,389 @@ describe("paintHighlight", () => {
     expect(result.matchedBlockIds).toEqual([]);
   });
 });
+
+// ── clearHighlightColumns_ ─────────────────────────────────────────────
+
+describe("clearHighlightColumns_", () => {
+  test("clears background from English and Spanish columns in 3-col doc", () => {
+    const table = highlightTable([
+      ["Block", "English", "Spanish"],
+      ["b01", "financial support", "apoyo financiero"],
+      ["b02", "child care", "cuidado infantil"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    // Pre-paint something so there's color to clear
+    env.paintHighlight("financial support", "apoyo financiero", [], []);
+    // Verify paint happened
+    expect(table._cells[1][1]._textEl.setBackgroundColor).toHaveBeenCalled();
+
+    // Clear all mocks so we can check clearHighlightColumns_ calls in isolation
+    table._cells.forEach((row) => row.forEach((c) => c._textEl.setBackgroundColor.mockClear()));
+
+    env.clearHighlightColumns_();
+
+    // Both content columns of both data rows should be cleared
+    // paintEntireCell_ calls setBackgroundColor(0, len-1, null)
+    expect(table._cells[1][1]._textEl.setBackgroundColor).toHaveBeenCalledWith(0, expect.any(Number), null);
+    expect(table._cells[1][2]._textEl.setBackgroundColor).toHaveBeenCalledWith(0, expect.any(Number), null);
+    expect(table._cells[2][1]._textEl.setBackgroundColor).toHaveBeenCalledWith(0, expect.any(Number), null);
+    expect(table._cells[2][2]._textEl.setBackgroundColor).toHaveBeenCalledWith(0, expect.any(Number), null);
+  });
+
+  test("does not touch Block ID column", () => {
+    const table = highlightTable([
+      ["Block", "English", "Spanish"],
+      ["b01", "financial support", "apoyo financiero"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    env.clearHighlightColumns_();
+
+    // Block ID column (index 0) should not be touched
+    expect(table._cells[1][0]._textEl.setBackgroundColor).not.toHaveBeenCalled();
+  });
+
+  test("handles 2-column docs without crash", () => {
+    const table = highlightTable([
+      ["English", "Spanish"],
+      ["Hello", "Hola"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    env.clearHighlightColumns_();
+
+    // English (col 0) and Spanish (col 1) should be cleared
+    expect(table._cells[1][0]._textEl.setBackgroundColor).toHaveBeenCalledWith(0, expect.any(Number), null);
+    expect(table._cells[1][1]._textEl.setBackgroundColor).toHaveBeenCalledWith(0, expect.any(Number), null);
+  });
+
+  test("no-ops when table has only a header row", () => {
+    const table = highlightTable([
+      ["Block", "English", "Spanish"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    // Should not throw
+    env.clearHighlightColumns_();
+  });
+});
+
+// ── swapHighlight ──────────────────────────────────────────────────────
+
+describe("swapHighlight", () => {
+  test("clears all columns then paints the new phrase", () => {
+    const table = highlightTable([
+      ["Block", "English", "Spanish"],
+      ["b01", "financial support", "apoyo financiero"],
+      ["b02", "child care", "cuidado infantil"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    // Paint the first term
+    env.paintHighlight("financial support", "apoyo financiero", [], []);
+
+    // Now swap to the second term
+    const result = env.swapHighlight(
+      "financial support", "apoyo financiero",
+      "child care", "cuidado infantil",
+      [], []
+    );
+
+    // The new term should be found and painted
+    expect(result.original).toBe("found");
+    expect(result.translation).toBe("found");
+
+    // The old term's cells should have been cleared (null) by clearHighlightColumns_
+    // then the new term's cells should end up with the highlight color
+    // The new term's cells should end up with the highlight color as the last call
+    const newOrigCalls = table._cells[2][1]._textEl.setBackgroundColor.mock.calls;
+    const lastCall = newOrigCalls[newOrigCalls.length - 1];
+    expect(lastCall[2]).toBe("#FFD700");
+  });
+
+  test("returns paintHighlight result for the new phrase", () => {
+    const table = highlightTable([
+      ["Block", "English", "Spanish"],
+      ["b01", "Hello", "Hola"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    const result = env.swapHighlight("", "", "Hello", "Hola", [], []);
+    expect(result.original).toBe("found");
+    expect(result.translation).toBe("found");
+    expect(result.matchedBlockIds).toEqual(["b01"]);
+  });
+
+  test("returns not_found when new phrase is absent", () => {
+    const table = highlightTable([
+      ["Block", "English", "Spanish"],
+      ["b01", "Hello", "Hola"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    const result = env.swapHighlight("Hello", "Hola", "Goodbye", "Adiós", [], []);
+    expect(result.original).toBe("not_found");
+    expect(result.translation).toBe("not_found");
+  });
+
+  test("works with empty old state (first highlight)", () => {
+    const table = highlightTable([
+      ["Block", "English", "Spanish"],
+      ["b01", "Hello", "Hola"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    const result = env.swapHighlight("", "", "Hello", "Hola", [], []);
+    expect(result.original).toBe("found");
+    expect(result.translation).toBe("found");
+  });
+});
+
+// ── replaceTranslationInDoc — 2-column fallback ──────────────────────────
+
+describe("replaceTranslationInDoc — 2-column docs", () => {
+  test("falls back to text matching when doc has no block ID column", () => {
+    const table = mockTable([
+      ["English", "Spanish"],
+      ["Hello", "Hola"],
+      ["Goodbye", "Adiós"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    const result = env.replaceTranslationInDoc("Hola", "Buenos días", "b01", false);
+    expect(result.replaced).toBe(true);
+    expect(result.count).toBe(1);
+    expect(table._cells[1][1]._text).toBe("Buenos días");
+  });
+
+  test("replaceAll works on 2-column docs without block IDs", () => {
+    const table = mockTable([
+      ["English", "Spanish"],
+      ["Hello", "Hola amigos"],
+      ["Welcome", "Hola amigos bienvenidos"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    const result = env.replaceTranslationInDoc("Hola amigos", "Buenos días", "", true);
+    expect(result.replaced).toBe(true);
+    expect(result.count).toBe(2);
+    expect(result.blockIds).toEqual([]);
+  });
+});
+
+// ── replaceTranslationInDoc — selective block ID array ───────────────────
+
+describe("replaceTranslationInDoc — block ID array", () => {
+  test("replaces only in the specified block IDs", () => {
+    const table = mockTable([
+      ["Block", "English", "Spanish"],
+      ["b01", "Hello", "Hola"],
+      ["b02", "Hi", "Hola"],
+      ["b03", "Hey", "Hola"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    const result = env.replaceTranslationInDoc("Hola", "Buenos días", "b01", ["b01", "b03"]);
+    expect(result.replaced).toBe(true);
+    expect(result.count).toBe(2);
+    expect(result.blockIds).toEqual(["b01", "b03"]);
+    expect(table._cells[1][2]._text).toBe("Buenos días");
+    expect(table._cells[2][2]._text).toBe("Hola");
+    expect(table._cells[3][2]._text).toBe("Buenos días");
+  });
+});
+
+// ── rowBlockId_ ──────────────────────────────────────────────────────────
+
+describe("rowBlockId_", () => {
+  test("returns the block ID from a 3-column row", () => {
+    const table = mockTable([
+      ["Block", "English", "Spanish"],
+      ["b01", "Hello", "Hola"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    const cols = env.getColumnLayout_(table);
+    const row = table.getRow(1);
+    expect(env.rowBlockId_(row, cols)).toBe("b01");
+  });
+
+  test("returns empty string for 2-column docs", () => {
+    const table = mockTable([
+      ["English", "Spanish"],
+      ["Hello", "Hola"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    const cols = env.getColumnLayout_(table);
+    const row = table.getRow(1);
+    expect(env.rowBlockId_(row, cols)).toBe("");
+  });
+
+  test("trims whitespace from cell text", () => {
+    const table = mockTable([
+      ["Block", "English", "Spanish"],
+      ["  b05a  ", "Hello", "Hola"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    const cols = env.getColumnLayout_(table);
+    const row = table.getRow(1);
+    expect(env.rowBlockId_(row, cols)).toBe("b05a");
+  });
+});
+
+// ── getDocTextForHighlightCheck ──────────────────────────────────────────
+
+describe("getDocTextForHighlightCheck", () => {
+  test("concatenates text from original and translated columns", () => {
+    const table = highlightTable([
+      ["Block", "English", "Spanish"],
+      ["b01", "Hello world", "Hola mundo"],
+      ["b02", "Goodbye", "Adiós"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    const result = env.getDocTextForHighlightCheck();
+    expect(result.english).toBe("Hello world\nGoodbye");
+    expect(result.spanish).toBe("Hola mundo\nAdiós");
+  });
+
+  test("returns empty strings when table has no data rows", () => {
+    const table = highlightTable([
+      ["Block", "English", "Spanish"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    const result = env.getDocTextForHighlightCheck();
+    expect(result.english).toBe("");
+    expect(result.spanish).toBe("");
+  });
+
+  test("returns empty strings when there is no table", () => {
+    const env = loadAddon({ _table: null });
+
+    const result = env.getDocTextForHighlightCheck();
+    expect(result.english).toBe("");
+    expect(result.spanish).toBe("");
+  });
+});
+
+// ── checkItemsExist — Unicode normalization ──────────────────────────────
+
+describe("checkItemsExist — NFC normalization", () => {
+  test("matches composed and decomposed accented characters", () => {
+    const composed = "apoyo económico";
+    const decomposed = "apoyo económico";
+
+    const FILE_ID = "translation-file-1";
+    const json = {
+      blocks: [{
+        id: "b01",
+        original_text: "financial support",
+        translated_text: composed,
+        alt_translations: [{
+          original_phrase: "financial support",
+          primary_translation: composed,
+          alt_translation: "ayuda financiera",
+          rationale: "test",
+        }],
+      }],
+      metadata: {},
+    };
+
+    const table = highlightTable([
+      ["Block", "English", "Spanish"],
+      ["b01", "financial support", decomposed],
+    ]);
+    const env = loadAddon({
+      _table: table,
+      _translationFileId: FILE_ID,
+      _driveFileContents: { [FILE_ID]: JSON.stringify(json) },
+    });
+
+    const orphans = env.checkItemsExist();
+    expect(orphans).toEqual({});
+  });
+
+  test("flags orphan when accented text is genuinely missing", () => {
+    const FILE_ID = "translation-file-1";
+    const json = {
+      blocks: [{
+        id: "b01",
+        original_text: "financial support",
+        translated_text: "apoyo económico",
+        alt_translations: [{
+          original_phrase: "financial support",
+          primary_translation: "apoyo económico",
+          alt_translation: "ayuda financiera",
+          rationale: "test",
+        }],
+      }],
+      metadata: {},
+    };
+
+    const table = highlightTable([
+      ["Block", "English", "Spanish"],
+      ["b01", "financial support", "something completely different"],
+    ]);
+    const env = loadAddon({
+      _table: table,
+      _translationFileId: FILE_ID,
+      _driveFileContents: { [FILE_ID]: JSON.stringify(json) },
+    });
+
+    const orphans = env.checkItemsExist();
+    expect(orphans["alt_translations::0"]).toBe(true);
+  });
+});
+
+// ── Smart quote normalization ──────────────────────────────────────────
+
+describe("checkItemsExist — smart quote normalization", () => {
+  test("matches curly apostrophe in doc against straight apostrophe in JSON", () => {
+    const FILE_ID = "translation-file-1";
+    const json = {
+      blocks: [{
+        id: "b06a",
+        original_text: "driver's license",
+        translated_text: "licencia de conducir",
+        alt_translations: [{
+          original_phrase: "driver's license",
+          primary_translation: "licencia de conducir",
+          alt_translation: "licencia de manejar",
+          rationale: "test",
+        }],
+      }],
+      metadata: {},
+    };
+
+    const table = highlightTable([
+      ["Block", "English", "Spanish"],
+      ["b06a", "driver’s license", "licencia de conducir"],
+    ]);
+    const env = loadAddon({
+      _table: table,
+      _translationFileId: FILE_ID,
+      _driveFileContents: { [FILE_ID]: JSON.stringify(json) },
+    });
+
+    const orphans = env.checkItemsExist();
+    expect(orphans).toEqual({});
+  });
+});
+
+describe("paintHighlight — smart quote normalization", () => {
+  test("highlights cell containing curly apostrophe when needle has straight", () => {
+    const table = highlightTable([
+      ["Block", "English", "Spanish"],
+      ["b06a", "driver’s license", "licencia de conducir"],
+    ]);
+    const env = loadAddon({ _table: table });
+
+    const result = env.paintHighlight("driver's license", "licencia de conducir", [], []);
+    expect(result.original).toBe("found");
+    expect(result.translation).toBe("found");
+  });
+});

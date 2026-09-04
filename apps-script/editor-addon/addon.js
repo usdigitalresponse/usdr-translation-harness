@@ -216,17 +216,18 @@ function escapeReplacement_(str) {
  * @returns {boolean} Whether any occurrence was found
  */
 function paintInCell_(cell, needle, color) {
+  var normalNeedle = straightenQuotes_(needle);
   var found = false;
   for (var p = 0; p < cell.getNumChildren(); p++) {
     var child = cell.getChild(p);
     if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
       var textEl = child.asText();
-      var content = textEl.getText();
-      var idx = content.indexOf(needle);
+      var content = straightenQuotes_(textEl.getText());
+      var idx = content.indexOf(normalNeedle);
       while (idx !== -1) {
         textEl.setBackgroundColor(idx, idx + needle.length - 1, color);
         found = true;
-        idx = content.indexOf(needle, idx + 1);
+        idx = content.indexOf(normalNeedle, idx + 1);
       }
     }
   }
@@ -244,12 +245,17 @@ function paintEntireCell_(cell, color) {
   }
 }
 
+function straightenQuotes_(s) {
+  return s.replace(/[‘’′]/g, "'").replace(/[“”″]/g, '"');
+}
+
 function findInCell_(cell, needle) {
+  var normalNeedle = straightenQuotes_(needle);
   for (var p = 0; p < cell.getNumChildren(); p++) {
     var child = cell.getChild(p);
     if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
       var content = child.asText().getText();
-      var idx = content.indexOf(needle);
+      var idx = straightenQuotes_(content).indexOf(normalNeedle);
       if (idx !== -1) {
         return { textEl: child.asText(), start: idx, end: idx + needle.length - 1 };
       }
@@ -295,9 +301,11 @@ function paintHighlight(originalText, translationText, transVariants, origVarian
     var spaCell = tableRow.getCell(cols.translated);
     var engText = engCell.getText();
     var spaText = spaCell.getText();
+    var engNorm = straightenQuotes_(engText);
+    var spaNorm = straightenQuotes_(spaText);
 
-    var engMatches = origTrimmed && engText.indexOf(origTrimmed) !== -1;
-    var spaMatches = transTrimmed && spaText.indexOf(transTrimmed) !== -1;
+    var engMatches = origTrimmed && engNorm.indexOf(straightenQuotes_(origTrimmed)) !== -1;
+    var spaMatches = transTrimmed && spaNorm.indexOf(straightenQuotes_(transTrimmed)) !== -1;
 
     if (!engMatches && !spaMatches) continue;
 
@@ -312,7 +320,7 @@ function paintHighlight(originalText, translationText, transVariants, origVarian
         result.translation = "found";
       } else {
         for (var vi = 0; vi < tVariants.length; vi++) {
-          if (spaText.indexOf(tVariants[vi]) !== -1) {
+          if (spaNorm.indexOf(straightenQuotes_(tVariants[vi])) !== -1) {
             paintInCell_(spaCell, tVariants[vi], transColorMap[tVariants[vi]]);
             break;
           }
@@ -323,7 +331,7 @@ function paintHighlight(originalText, translationText, transVariants, origVarian
       paintInCell_(spaCell, transTrimmed, HIGHLIGHT_COLOR);
       result.translation = "found";
       for (var vi = 0; vi < oVariants.length; vi++) {
-        if (engText.indexOf(oVariants[vi]) !== -1) {
+        if (engNorm.indexOf(straightenQuotes_(oVariants[vi])) !== -1) {
           paintInCell_(engCell, oVariants[vi], origColorMap[oVariants[vi]]);
           break;
         }
@@ -362,6 +370,30 @@ function clearHighlight(originalText, translationText) {
     if (origTrimmed) paintInCell_(table.getRow(row).getCell(cols.original), origTrimmed, null);
     if (transTrimmed) paintInCell_(table.getRow(row).getCell(cols.translated), transTrimmed, null);
   }
+}
+
+/**
+ * Clear all background highlighting from the English and Spanish columns.
+ * Leaves the Block ID column untouched.
+ */
+function clearHighlightColumns_() {
+  var table = getFirstTable_();
+  if (!table || table.getNumRows() < 2) return;
+  var cols = getColumnLayout_(table);
+  for (var row = 1; row < table.getNumRows(); row++) {
+    paintEntireCell_(table.getRow(row).getCell(cols.original), null);
+    paintEntireCell_(table.getRow(row).getCell(cols.translated), null);
+  }
+}
+
+/**
+ * Combined clear-then-paint in a single server call. Clears all highlighting
+ * from English and Spanish columns, then paints the new phrase pair.
+ * Eliminates the two-round-trip race between clearHighlight and paintHighlight.
+ */
+function swapHighlight(oldOriginal, oldTranslation, newOriginal, newTranslation, transVariants, origVariants) {
+  clearHighlightColumns_();
+  return paintHighlight(newOriginal, newTranslation, transVariants, origVariants);
 }
 
 /**
@@ -436,8 +468,8 @@ function checkItemsExist() {
   if (!res || !res.data) return {};
 
   var docText = getDocTextForHighlightCheck();
-  var english = (docText.english || "").normalize("NFC");
-  var spanish = (docText.spanish || "").normalize("NFC");
+  var english = straightenQuotes_((docText.english || "").normalize("NFC"));
+  var spanish = straightenQuotes_((docText.spanish || "").normalize("NFC"));
   var orphans = {};
 
   var sectionKeys = [
@@ -454,8 +486,8 @@ function checkItemsExist() {
       var origPhrase = (item.original_phrase || item.original_text || "").trim();
       var transPhrase = (item.primary_translation || item.translation || "").trim();
 
-      var origMissing = origPhrase && english.indexOf(origPhrase.normalize("NFC")) === -1;
-      var transMissing = transPhrase && spanish.indexOf(transPhrase.normalize("NFC")) === -1;
+      var origMissing = origPhrase && english.indexOf(straightenQuotes_(origPhrase.normalize("NFC"))) === -1;
+      var transMissing = transPhrase && spanish.indexOf(straightenQuotes_(transPhrase.normalize("NFC"))) === -1;
 
       if (origMissing || transMissing) {
         orphans[key + "::" + i] = true;
@@ -573,6 +605,14 @@ function replaceTranslationInDoc(currentText, altText, blockId, replaceAll) {
           result.count = count;
           result.blockIds.push(blockId);
         }
+      } else if (cols.blockId < 0) {
+        for (var row = 1; row < table.getNumRows(); row++) {
+          var count = replaceInCell_(table.getRow(row).getCell(cols.translated), currentText, pattern, replacement);
+          if (count > 0) {
+            result.replaced = true;
+            result.count += count;
+          }
+        }
       }
     }
   } else {
@@ -583,10 +623,6 @@ function replaceTranslationInDoc(currentText, altText, blockId, replaceAll) {
       result.replaced = true;
       result.count = count;
     }
-  }
-
-  if (result.replaced) {
-    try { clearHighlight('', currentText); } catch (e) { /* non-fatal */ }
   }
 
   return result;

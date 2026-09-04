@@ -6,6 +6,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from http import HTTPStatus
 
+import os
+
 import functions_framework
 import jsonschema
 
@@ -41,7 +43,11 @@ CRITERIA = (
 
 MARKDOWN_JSON_PATTERN = re.compile(r"```(?:json)?\s*\n(.*?)\n\s*```", re.DOTALL)
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+if os.environ.get("K_SERVICE"):
+    import google.cloud.logging
+    google.cloud.logging.Client().setup_logging(log_level=logging.INFO)
+else:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
