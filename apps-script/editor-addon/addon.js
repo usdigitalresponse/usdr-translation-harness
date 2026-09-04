@@ -10,6 +10,15 @@ var DOC_PROPERTY_KEY = "usdr_translation_review";
 var SIDEBAR_CHECKS_KEY = "SIDEBAR_CHECKS";
 var SIDEBAR_OPENED_AT_KEY = "SIDEBAR_OPENED_AT";
 var HIGHLIGHT_COLOR = "#FFD700";
+var HIGHLIGHT_COLORS_ALT = ["#A8D8FF", "#C5B4E3", "#A8E6CF", "#FFB7B2", "#FFDAA5"];
+var COL_BLOCK_ID = 0;
+var COL_ORIGINAL = 1;
+var COL_TRANSLATED = 2;
+// Doc-local row identifier for two-column documents, which have no ID column.
+// Deliberately NOT the "b01"/"b05a" format extract emits: the table can skip
+// IDs, so a row index cannot reconstruct the real one and must not pretend to.
+var LOCAL_ROW_ID_PREFIX = "row-";
+var TABLE_COLUMNS = 3;
 var DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 var PL_EVAL_FOLDER_ID = "1Sa5r8G4YMo0Hn02rCjyClixN0jCgbQ5U";
 
@@ -146,7 +155,7 @@ function saveSidebarChecks(checks) {
 
 /**
  * Find the first table element in the document body.
- * Translation output docs have a single two-column table (English | Spanish).
+ * Translation output docs have a three-column table (Block ID | English | Spanish).
  * @param {GoogleAppsScript.Document.Body} [body] - Document body, defaults to active doc
  * @returns {GoogleAppsScript.Document.Table|null}
  */
@@ -158,6 +167,36 @@ function getFirstTable_(body) {
     }
   }
   return null;
+}
+
+/**
+ * Return column indices for the table layout. Old docs have 2 columns
+ * (English | Spanish); new docs have 3 (Block ID | English | Spanish).
+ */
+function getColumnLayout_(table) {
+  var numCols = table.getRow(0).getNumCells();
+  if (numCols >= TABLE_COLUMNS) {
+    return { blockId: COL_BLOCK_ID, original: COL_ORIGINAL, translated: COL_TRANSLATED, total: TABLE_COLUMNS };
+  }
+  return { blockId: -1, original: 0, translated: 1, total: 2 };
+}
+
+/**
+ * Real block ID for a table row, or "" when the document cannot supply one.
+ *
+ * Two-column documents predate the block ID column. Their IDs are genuinely
+ * unknown: extract emits sequential-with-gaps IDs ("b01", "b02", "b04") plus
+ * sub-item IDs ("b05a"), so a row index cannot reconstruct them. Callers must
+ * treat "" as "cannot target by ID" and fall back to matching on text, rather
+ * than comparing against a synthesized ID that can never match.
+ *
+ * @param {GoogleAppsScript.Document.TableRow} tableRow
+ * @param {{blockId: number}} cols - Layout from getColumnLayout_()
+ * @returns {string} The block ID, or "" if the document has no ID column.
+ */
+function rowBlockId_(tableRow, cols) {
+  if (cols.blockId < 0) return "";
+  return tableRow.getCell(cols.blockId).getText().trim();
 }
 
 function escapeRegex_(str) {
@@ -177,29 +216,46 @@ function escapeReplacement_(str) {
  * @returns {boolean} Whether any occurrence was found
  */
 function paintInCell_(cell, needle, color) {
+  var normalNeedle = straightenQuotes_(needle);
   var found = false;
   for (var p = 0; p < cell.getNumChildren(); p++) {
     var child = cell.getChild(p);
     if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
       var textEl = child.asText();
-      var content = textEl.getText();
-      var idx = content.indexOf(needle);
+      var content = straightenQuotes_(textEl.getText());
+      var idx = content.indexOf(normalNeedle);
       while (idx !== -1) {
         textEl.setBackgroundColor(idx, idx + needle.length - 1, color);
         found = true;
-        idx = content.indexOf(needle, idx + 1);
+        idx = content.indexOf(normalNeedle, idx + 1);
       }
     }
   }
   return found;
 }
 
+function paintEntireCell_(cell, color) {
+  for (var p = 0; p < cell.getNumChildren(); p++) {
+    var child = cell.getChild(p);
+    if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
+      var textEl = child.asText();
+      var len = textEl.getText().length;
+      if (len > 0) textEl.setBackgroundColor(0, len - 1, color);
+    }
+  }
+}
+
+function straightenQuotes_(s) {
+  return s.replace(/[‘’′]/g, "'").replace(/[“”″]/g, '"');
+}
+
 function findInCell_(cell, needle) {
+  var normalNeedle = straightenQuotes_(needle);
   for (var p = 0; p < cell.getNumChildren(); p++) {
     var child = cell.getChild(p);
     if (child.getType() === DocumentApp.ElementType.PARAGRAPH) {
       var content = child.asText().getText();
-      var idx = content.indexOf(needle);
+      var idx = straightenQuotes_(content).indexOf(normalNeedle);
       if (idx !== -1) {
         return { textEl: child.asText(), start: idx, end: idx + needle.length - 1 };
       }
@@ -209,44 +265,88 @@ function findInCell_(cell, needle) {
 }
 
 /**
- * Highlight an original phrase and its translation in the document table.
- * Called by the sidebar when the reviewer clicks a review card or reference row.
- * Searches all content rows (skipping the header) and sets the cursor to
- * the first match in the English column.
+ * Highlight an original phrase and its translation across ALL matching rows.
+ * Returns which block IDs matched so the sidebar can show occurrence count.
+ * Sets the cursor to the first match in the English column.
  * @param {string} originalText - English phrase to highlight
  * @param {string} translationText - Spanish phrase to highlight
- * @returns {{ original: string, translation: string }} "found" or "not_found" per column
+ * @returns {{ matchedBlockIds: string[], original: string, translation: string }}
  */
-function paintHighlight(originalText, translationText) {
+function paintHighlight(originalText, translationText, transVariants, origVariants) {
   var table = getFirstTable_();
-  var result = { original: "not_found", translation: "not_found" };
+  var result = { original: "not_found", translation: "not_found", matchedBlockIds: [] };
   if (!table || table.getNumRows() < 2) return result;
 
+  var cols = getColumnLayout_(table);
   var origTrimmed = (originalText || "").trim();
   var transTrimmed = (translationText || "").trim();
+  var tVariants = transVariants || [];
+  var oVariants = origVariants || [];
 
-  // Search all content rows (skip header at row 0)
+  // Build color maps: each variant phrase gets its own alt color
+  var transColorMap = {};
+  for (var v = 0; v < tVariants.length; v++) {
+    transColorMap[tVariants[v]] = HIGHLIGHT_COLORS_ALT[v % HIGHLIGHT_COLORS_ALT.length];
+  }
+  var origColorMap = {};
+  for (var v = 0; v < oVariants.length; v++) {
+    origColorMap[oVariants[v]] = HIGHLIGHT_COLORS_ALT[v % HIGHLIGHT_COLORS_ALT.length];
+  }
+
+  var firstHitSet = false;
+
   for (var row = 1; row < table.getNumRows(); row++) {
-    var engCell = table.getRow(row).getCell(0);
-    var spaCell = table.getRow(row).getCell(1);
+    var tableRow = table.getRow(row);
+    var engCell = tableRow.getCell(cols.original);
+    var spaCell = tableRow.getCell(cols.translated);
+    var engText = engCell.getText();
+    var spaText = spaCell.getText();
+    var engNorm = straightenQuotes_(engText);
+    var spaNorm = straightenQuotes_(spaText);
 
-    if (origTrimmed && result.original === "not_found") {
-      if (paintInCell_(engCell, origTrimmed, HIGHLIGHT_COLOR)) {
-        result.original = "found";
-        var hit = findInCell_(engCell, origTrimmed);
-        if (hit) {
-          try {
-            var doc = DocumentApp.getActiveDocument();
-            doc.setSelection(doc.newRange().addElement(hit.textEl, hit.start, hit.end).build());
-          } catch (e) { /* non-fatal */ }
+    var engMatches = origTrimmed && engNorm.indexOf(straightenQuotes_(origTrimmed)) !== -1;
+    var spaMatches = transTrimmed && spaNorm.indexOf(straightenQuotes_(transTrimmed)) !== -1;
+
+    if (!engMatches && !spaMatches) continue;
+
+    var blockId = rowBlockId_(tableRow, cols);
+    if (blockId) result.matchedBlockIds.push(blockId);
+
+    if (engMatches) {
+      paintInCell_(engCell, origTrimmed, HIGHLIGHT_COLOR);
+      result.original = "found";
+      if (spaMatches) {
+        paintInCell_(spaCell, transTrimmed, HIGHLIGHT_COLOR);
+        result.translation = "found";
+      } else {
+        for (var vi = 0; vi < tVariants.length; vi++) {
+          if (spaNorm.indexOf(straightenQuotes_(tVariants[vi])) !== -1) {
+            paintInCell_(spaCell, tVariants[vi], transColorMap[tVariants[vi]]);
+            break;
+          }
+        }
+      }
+    } else {
+      // spaMatches is true
+      paintInCell_(spaCell, transTrimmed, HIGHLIGHT_COLOR);
+      result.translation = "found";
+      for (var vi = 0; vi < oVariants.length; vi++) {
+        if (engNorm.indexOf(straightenQuotes_(oVariants[vi])) !== -1) {
+          paintInCell_(engCell, oVariants[vi], origColorMap[oVariants[vi]]);
+          break;
         }
       }
     }
 
-    if (transTrimmed && result.translation === "not_found") {
-      if (paintInCell_(spaCell, transTrimmed, HIGHLIGHT_COLOR)) {
-        result.translation = "found";
+    if (!firstHitSet && engMatches) {
+      var hit = findInCell_(engCell, origTrimmed);
+      if (hit) {
+        try {
+          var doc = DocumentApp.getActiveDocument();
+          doc.setSelection(doc.newRange().addElement(hit.textEl, hit.start, hit.end).build());
+        } catch (e) { /* non-fatal */ }
       }
+      firstHitSet = true;
     }
   }
 
@@ -262,13 +362,38 @@ function clearHighlight(originalText, translationText) {
   var table = getFirstTable_();
   if (!table || table.getNumRows() < 2) return;
 
+  var cols = getColumnLayout_(table);
   var origTrimmed = (originalText || "").trim();
   var transTrimmed = (translationText || "").trim();
 
   for (var row = 1; row < table.getNumRows(); row++) {
-    if (origTrimmed) paintInCell_(table.getRow(row).getCell(0), origTrimmed, null);
-    if (transTrimmed) paintInCell_(table.getRow(row).getCell(1), transTrimmed, null);
+    if (origTrimmed) paintInCell_(table.getRow(row).getCell(cols.original), origTrimmed, null);
+    if (transTrimmed) paintInCell_(table.getRow(row).getCell(cols.translated), transTrimmed, null);
   }
+}
+
+/**
+ * Clear all background highlighting from the English and Spanish columns.
+ * Leaves the Block ID column untouched.
+ */
+function clearHighlightColumns_() {
+  var table = getFirstTable_();
+  if (!table || table.getNumRows() < 2) return;
+  var cols = getColumnLayout_(table);
+  for (var row = 1; row < table.getNumRows(); row++) {
+    paintEntireCell_(table.getRow(row).getCell(cols.original), null);
+    paintEntireCell_(table.getRow(row).getCell(cols.translated), null);
+  }
+}
+
+/**
+ * Combined clear-then-paint in a single server call. Clears all highlighting
+ * from English and Spanish columns, then paints the new phrase pair.
+ * Eliminates the two-round-trip race between clearHighlight and paintHighlight.
+ */
+function swapHighlight(oldOriginal, oldTranslation, newOriginal, newTranslation, transVariants, origVariants) {
+  clearHighlightColumns_();
+  return paintHighlight(newOriginal, newTranslation, transVariants, origVariants);
 }
 
 /**
@@ -278,8 +403,9 @@ function clearHighlight(originalText, translationText) {
 function clearAllHighlights() {
   var table = getFirstTable_();
   if (!table) return;
+  var cols = getColumnLayout_(table);
   for (var row = 1; row < table.getNumRows(); row++) {
-    for (var col = 0; col < 2; col++) {
+    for (var col = 0; col < cols.total; col++) {
       var cell = table.getRow(row).getCell(col);
       for (var p = 0; p < cell.getNumChildren(); p++) {
         var child = cell.getChild(p);
@@ -305,11 +431,12 @@ function getDocTextForHighlightCheck() {
   var table = getFirstTable_();
   if (!table || table.getNumRows() < 2) return { english: "", spanish: "" };
 
+  var cols = getColumnLayout_(table);
   var english = [];
   var spanish = [];
   for (var row = 1; row < table.getNumRows(); row++) {
-    english.push(table.getRow(row).getCell(0).getText());
-    spanish.push(table.getRow(row).getCell(1).getText());
+    english.push(table.getRow(row).getCell(cols.original).getText());
+    spanish.push(table.getRow(row).getCell(cols.translated).getText());
   }
   return { english: english.join("\n"), spanish: spanish.join("\n") };
 }
@@ -341,8 +468,8 @@ function checkItemsExist() {
   if (!res || !res.data) return {};
 
   var docText = getDocTextForHighlightCheck();
-  var english = (docText.english || "").normalize("NFC");
-  var spanish = (docText.spanish || "").normalize("NFC");
+  var english = straightenQuotes_((docText.english || "").normalize("NFC"));
+  var spanish = straightenQuotes_((docText.spanish || "").normalize("NFC"));
   var orphans = {};
 
   var sectionKeys = [
@@ -359,8 +486,8 @@ function checkItemsExist() {
       var origPhrase = (item.original_phrase || item.original_text || "").trim();
       var transPhrase = (item.primary_translation || item.translation || "").trim();
 
-      var origMissing = origPhrase && english.indexOf(origPhrase.normalize("NFC")) === -1;
-      var transMissing = transPhrase && spanish.indexOf(transPhrase.normalize("NFC")) === -1;
+      var origMissing = origPhrase && english.indexOf(straightenQuotes_(origPhrase.normalize("NFC"))) === -1;
+      var transMissing = transPhrase && spanish.indexOf(straightenQuotes_(transPhrase.normalize("NFC"))) === -1;
 
       if (origMissing || transMissing) {
         orphans[key + "::" + i] = true;
@@ -414,20 +541,32 @@ function replaceInCell_(cell, currentText, pattern, replacement) {
 }
 
 /**
+ * Find the table row index for a given block ID.
+ * @param {GoogleAppsScript.Document.Table} table
+ * @param {string} blockId
+ * @returns {number} 1-based row index, or -1 if not found
+ */
+function findRowByBlockId_(table, cols, blockId) {
+  if (cols.blockId < 0) return -1;
+  for (var row = 1; row < table.getNumRows(); row++) {
+    if (table.getRow(row).getCell(cols.blockId).getText().trim() === blockId) {
+      return row;
+    }
+  }
+  return -1;
+}
+
+/**
  * Replace a translation phrase in the document with an alternative.
- * Called by the sidebar's "Use alternative" button.
- *
- * Strategy: tries the exact table row first (blockIndex + 1, since row 0
- * is the header), then falls back to searching all rows. Falls back to a
- * full-body search if no table is found.
  *
  * @param {string} currentText - The current translation text to replace
  * @param {string} altText - The alternative translation to insert
- * @param {number} blockIndex - Zero-based block index from getSidebarData()
- * @returns {{ replaced: boolean, count: number }}
+ * @param {string} blockId - Block ID to target for single-block replace
+ * @param {boolean} replaceAll - If true, replace in every row that contains currentText
+ * @returns {{ replaced: boolean, count: number, blockIds: string[] }}
  */
-function replaceTranslationInDoc(currentText, altText, blockIndex) {
-  var result = { replaced: false, count: 0 };
+function replaceTranslationInDoc(currentText, altText, blockId, replaceAll) {
+  var result = { replaced: false, count: 0, blockIds: [] };
 
   currentText = (currentText || '').trim();
   altText     = (altText || '').trim();
@@ -440,22 +579,39 @@ function replaceTranslationInDoc(currentText, altText, blockIndex) {
   var pattern     = escapeRegex_(currentText);
   var replacement = escapeReplacement_(altText);
 
-  if (table && table.getNumRows() >= 2) {
-    var targetRow = (typeof blockIndex === 'number') ? blockIndex + 1 : -1;
-    if (targetRow >= 1 && targetRow < table.getNumRows()) {
-      var count = replaceInCell_(table.getRow(targetRow).getCell(1), currentText, pattern, replacement);
-      if (count > 0) {
-        result.replaced = true;
-        result.count = count;
-      }
-    }
+  // replaceAll can be: true (all rows), false (single blockId), or an array of block IDs
+  var targetIds = Array.isArray(replaceAll) ? replaceAll : null;
 
-    if (!result.replaced) {
+  if (table && table.getNumRows() >= 2) {
+    var cols = getColumnLayout_(table);
+    if (replaceAll === true || targetIds) {
       for (var row = 1; row < table.getNumRows(); row++) {
-        var count = replaceInCell_(table.getRow(row).getCell(1), currentText, pattern, replacement);
+        var tableRow = table.getRow(row);
+        var rowBlockId = rowBlockId_(tableRow, cols);
+        if (targetIds && rowBlockId && targetIds.indexOf(rowBlockId) < 0) continue;
+        var count = replaceInCell_(tableRow.getCell(cols.translated), currentText, pattern, replacement);
         if (count > 0) {
           result.replaced = true;
           result.count += count;
+          if (rowBlockId) result.blockIds.push(rowBlockId);
+        }
+      }
+    } else {
+      var targetRow = blockId ? findRowByBlockId_(table, cols, blockId) : -1;
+      if (targetRow >= 1) {
+        var count = replaceInCell_(table.getRow(targetRow).getCell(cols.translated), currentText, pattern, replacement);
+        if (count > 0) {
+          result.replaced = true;
+          result.count = count;
+          result.blockIds.push(blockId);
+        }
+      } else if (cols.blockId < 0) {
+        for (var row = 1; row < table.getNumRows(); row++) {
+          var count = replaceInCell_(table.getRow(row).getCell(cols.translated), currentText, pattern, replacement);
+          if (count > 0) {
+            result.replaced = true;
+            result.count += count;
+          }
         }
       }
     }
@@ -467,10 +623,6 @@ function replaceTranslationInDoc(currentText, altText, blockIndex) {
       result.replaced = true;
       result.count = count;
     }
-  }
-
-  if (result.replaced) {
-    try { clearHighlight('', currentText); } catch (e) { /* non-fatal */ }
   }
 
   return result;
@@ -566,21 +718,22 @@ function appendSection_(body, title, items, headers, fields) {
 var EVAL_FUNCTION_URL_KEY = "EVAL_QUALITY_FUNCTION_URL";
 
 /**
- * Read the English/Spanish table into blocks for the eval function.
- * Mirrors the layout the highlighting helpers assume: column 0 English,
- * column 1 Spanish, row 0 a header.
+ * Read the Block ID / English / Spanish table into blocks for the eval function.
  */
 function extractDocBlocks_() {
   var table = getFirstTable_();
   if (!table || table.getNumRows() < 2) return [];
 
+  var cols = getColumnLayout_(table);
   var blocks = [];
   for (var row = 1; row < table.getNumRows(); row++) {
-    var original = table.getRow(row).getCell(0).getText().trim();
-    var translated = table.getRow(row).getCell(1).getText().trim();
+    var tableRow = table.getRow(row);
+    var blockId = rowBlockId_(tableRow, cols) || (LOCAL_ROW_ID_PREFIX + row);
+    var original = tableRow.getCell(cols.original).getText().trim();
+    var translated = tableRow.getCell(cols.translated).getText().trim();
     if (!original && !translated) continue;
     blocks.push({
-      id: "b" + (row < 10 ? "0" : "") + row,
+      id: blockId,
       original_text: original,
       translated_text: translated,
     });
