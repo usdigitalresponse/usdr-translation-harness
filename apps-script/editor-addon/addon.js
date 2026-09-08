@@ -28,6 +28,7 @@ var PL_EVAL_FOLDER_ID = "1Sa5r8G4YMo0Hn02rCjyClixN0jCgbQ5U";
 // any placeholder) to work on a doc that has no usdr_translation_review Drive
 // property. Unset in production, where the property comes from Translate.
 var SANDBOX_FILE_ID_KEY = "SANDBOX_TRANSLATION_FILE_ID";
+var SANDBOX_EVAL_FILE_ID_KEY = "SANDBOX_EVAL_FILE_ID";
 
 /**
  * Look up the translation JSON file ID from the active document's Drive
@@ -934,8 +935,8 @@ function loadEvalFromLocation_(fileId) {
  * from the blocks recorded in the file vs the doc's current content.
  */
 function getEvalData() {
-  var documentId = DocumentApp.getActiveDocument().getId();
-  var fileId = findLatestResultFileId_(documentId);
+  var override = PropertiesService.getScriptProperties().getProperty(SANDBOX_EVAL_FILE_ID_KEY);
+  var fileId = override || findLatestResultFileId_(DocumentApp.getActiveDocument().getId());
   if (!fileId) return null;
 
   var data = loadEvalFromLocation_(fileId);
