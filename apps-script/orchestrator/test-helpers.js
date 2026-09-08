@@ -1,6 +1,28 @@
 // Manual test functions — run from the Apps Script Editor via Run > [function name].
 // These verify configuration, Drive/Sheet access, and the full watcher flow
 // using a stub instead of the real Extract endpoint.
+//
+// Run testAll() to execute all checks in order, or run each function individually.
+
+function testAll() {
+  Logger.log("=== 1/4: Config ===");
+  testConfig();
+  Logger.log("");
+
+  Logger.log("=== 2/4: Folder Access ===");
+  testFolderAccess();
+  Logger.log("");
+
+  Logger.log("=== 3/4: Processing Log ===");
+  testProcessingLog();
+  Logger.log("");
+
+  Logger.log("=== 4/4: Watch with Stub ===");
+  testWatchWithStub();
+  Logger.log("");
+
+  Logger.log("=== All checks complete ===");
+}
 
 function testConfig() {
   try {
