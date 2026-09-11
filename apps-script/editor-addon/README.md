@@ -26,9 +26,12 @@ The sidebar persists reviewer decisions as:
 ```
 {
   status: { "alt_translations::0": "accepted", "alt_translations::1": "alternative", ... },
-  flagged: { "terms_flagged_for_clarification::0": true, ... }
+  flagged: { "terms_flagged_for_clarification::0": true, ... },
+  altScope: { "alt_translations::1": { "b01": "original cell text...", "b02": "..." }, ... }
 }
 ```
+
+`altScope` stores pre-replacement cell text snapshots for items where "Use alternative" was applied. These snapshots enable safe revert — see section 5.
 
 Keys are `section_name::flat_index` where the flat index comes from iterating all blocks' items for that section in order. This is the same flattening that `getSidebarData()` performs when building the sidebar's item list, and the Capture Feedback function's `buildSidebarKeyToBlockMap()` replays it to map keys back to block IDs.
 
@@ -36,9 +39,15 @@ Keys are `section_name::flat_index` where the flat index comes from iterating al
 
 Clicking a review card or reference row highlights the corresponding text in the document table. The add-on searches the two-column table (English / Spanish) for the original phrase and translation, and sets a gold background color. Highlights are cleared when the sidebar closes or when the reviewer moves to another item.
 
-### 5. Use Alternative
+### 5. Use Alternative and Revert
 
-When the reviewer clicks "Use alternative" on an alt_translations card, the sidebar calls `replaceTranslationInDoc(currentText, altText, blockIndex)`. This finds the text in the document's translation table — first trying the exact row via `blockIndex`, then falling back to searching all rows — and replaces it using Apps Script's `replaceText()`.
+When the reviewer clicks "Use alternative" on an alt_translations card, the sidebar calls `replaceTranslationInDoc(currentText, altText, blockId, replaceAll)`. This finds the text in the document's translation table by block ID and replaces it using Apps Script's `replaceText()`.
+
+If the phrase appears in multiple blocks, the reviewer chooses between "Use in this block" (single block ID) and "Use everywhere" (all rows containing the phrase).
+
+Before replacing, the server captures a snapshot of each affected cell's text. These snapshots are stored in the sidebar state (`altScope`) so that revert can restore the original text exactly, without a reverse find-and-replace that could corrupt other instances of the replacement text in the same cell.
+
+**Revert:** When the reviewer clicks the undo arrow or "Review again" on a reviewed alternative item, the sidebar calls `revertAlternativeInDoc(snapshots)`, which restores each affected cell to its pre-replacement text using `setText()`. If no snapshots are available (e.g., the alternative was accepted before snapshot tracking was added) or the block can't be found in the table, the UI shows a "Could not revert" indicator instead of the undo arrow.
 
 ### 6. Time-to-approve tracking
 
@@ -87,11 +96,12 @@ Selecting "Submit Review" from the menu:
 | `Sidebar.html` | Sidebar UI — card-based review flow, status tracking, highlight interaction |
 | `Evaluationsidebar.html` | Evaluation sidebar (separate feature, not part of the review flow) |
 | `PlainLanguageEvalSidebar.html` | Plain language eval sidebar — displays rubric-based eval results for the source document |
+| `test-helpers.js` | Utility functions used by the sidebar for local/manual testing |
 | `appsscript.json` | Manifest — scopes, add-on config, URL whitelist |
 
 ## Evaluation 
 
-Evaluation is its own process: it scores a translation with an LLM-as-judge and writes nothing back to the pipeline. Submit Review is the feedback-capture step and is unrelated — evaluating does not submit anything, and submitting does not evaluate.
+Evaluation is its own process: it scores a translation with an LLM-as-judge and writes nothing back to the pipeline.
 
 `showEvaluationPanel` opens `Evaluationsidebar.html`, which scores **the reviewer's current doc content** rather than the stored translation JSON, so re-running after edits reflects those edits.
 
