@@ -34,5 +34,5 @@ Fire-and-forget: runs the drift analysis on a background thread.
 
 - **sacrebleu** — BLEU score computation
 - **rouge-score** — ROUGE score computation
-- **anthropic** / **google-generativeai** — LLM provider SDKs
+- **anthropic** / **google-genai** — LLM provider SDKs
 - **jsonschema** — validates LLM output structure

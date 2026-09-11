@@ -32,6 +32,6 @@ Fire-and-forget: returns immediately and runs the evaluation on a background thr
 
 ## Dependencies
 
-- **@anthropic-ai/sdk** / **@google/generative-ai** — LLM provider SDKs
+- **@anthropic-ai/sdk** / **@google/genai** — LLM provider SDKs
 - **googleapis** — Google Drive API access
 - **http-status-codes** — standard HTTP status constants

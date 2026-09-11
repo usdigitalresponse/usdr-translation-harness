@@ -46,6 +46,7 @@ Synchronous — the function returns after the output doc is created.
 
 ## Dependencies
 
-- **@anthropic-ai/sdk** / **@google/generative-ai** — LLM provider SDKs
+- **@anthropic-ai/sdk** / **@google/genai** — LLM provider SDKs
 - **googleapis** — Google Drive, Docs, Sheets, Gmail APIs
+- **@google-cloud/storage** — Cloud Storage access
 - **http-status-codes** — standard HTTP status constants

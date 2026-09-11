@@ -36,6 +36,7 @@ The Editor Add-on uses the second mode to evaluate the reviewer's current doc co
 
 ## Dependencies
 
-- **anthropic** / **google-generativeai** — LLM provider SDKs
+- **anthropic** / **google-genai** — LLM provider SDKs
 - **jsonschema** — validates LLM output structure
+- **google-cloud-logging** — structured logging to Cloud Logging
 - **googleapis / google-auth** — Google Drive API access

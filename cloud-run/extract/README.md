@@ -38,4 +38,4 @@ Fire-and-forget: the function returns immediately and runs extraction on a backg
 - **python-docx** — DOCX text extraction
 - **google-cloud-pubsub** — publishes extraction-complete messages
 - **jsonschema** — validates LLM output structure
-- **anthropic** / **google-generativeai** — LLM provider SDKs
+- **anthropic** / **google-genai** — LLM provider SDKs
