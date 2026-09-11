@@ -567,7 +567,7 @@ function findRowByBlockId_(table, cols, blockId) {
  * @returns {{ replaced: boolean, count: number, blockIds: string[] }}
  */
 function replaceTranslationInDoc(currentText, altText, blockId, replaceAll) {
-  var result = { replaced: false, count: 0, blockIds: [] };
+  var result = { replaced: false, count: 0, blockIds: [], snapshots: {} };
 
   currentText = (currentText || '').trim();
   altText     = (altText || '').trim();
@@ -590,21 +590,29 @@ function replaceTranslationInDoc(currentText, altText, blockId, replaceAll) {
         var tableRow = table.getRow(row);
         var rowBlockId = rowBlockId_(tableRow, cols);
         if (targetIds && rowBlockId && targetIds.indexOf(rowBlockId) < 0) continue;
-        var count = replaceInCell_(tableRow.getCell(cols.translated), currentText, pattern, replacement);
+        var cell = tableRow.getCell(cols.translated);
+        var before = cell.getText();
+        var count = replaceInCell_(cell, currentText, pattern, replacement);
         if (count > 0) {
           result.replaced = true;
           result.count += count;
-          if (rowBlockId) result.blockIds.push(rowBlockId);
+          if (rowBlockId) {
+            result.blockIds.push(rowBlockId);
+            result.snapshots[rowBlockId] = before;
+          }
         }
       }
     } else {
       var targetRow = blockId ? findRowByBlockId_(table, cols, blockId) : -1;
       if (targetRow >= 1) {
-        var count = replaceInCell_(table.getRow(targetRow).getCell(cols.translated), currentText, pattern, replacement);
+        var cell = table.getRow(targetRow).getCell(cols.translated);
+        var before = cell.getText();
+        var count = replaceInCell_(cell, currentText, pattern, replacement);
         if (count > 0) {
           result.replaced = true;
           result.count = count;
           result.blockIds.push(blockId);
+          result.snapshots[blockId] = before;
         }
       } else if (cols.blockId < 0) {
         for (var row = 1; row < table.getNumRows(); row++) {
@@ -624,6 +632,40 @@ function replaceTranslationInDoc(currentText, altText, blockId, replaceAll) {
       result.replaced = true;
       result.count = count;
     }
+  }
+
+  return result;
+}
+
+/**
+ * Revert an alternative by restoring pre-replacement cell text.
+ *
+ * @param {Object<string, string>} snapshots - blockId → original cell text before the replacement
+ * @returns {{ reverted: boolean, count: number, failed: string[] }}
+ */
+function revertAlternativeInDoc(snapshots) {
+  var result = { reverted: false, count: 0, failed: [] };
+  if (!snapshots || typeof snapshots !== 'object') return result;
+
+  var doc   = DocumentApp.getActiveDocument();
+  var body  = doc.getBody();
+  var table = getFirstTable_(body);
+  if (!table || table.getNumRows() < 2) return result;
+
+  var cols = getColumnLayout_(table);
+  var blockIds = Object.keys(snapshots);
+
+  for (var i = 0; i < blockIds.length; i++) {
+    var bid = blockIds[i];
+    var row = findRowByBlockId_(table, cols, bid);
+    if (row < 1) {
+      result.failed.push(bid);
+      continue;
+    }
+    var cell = table.getRow(row).getCell(cols.translated);
+    cell.setText(snapshots[bid]);
+    result.reverted = true;
+    result.count++;
   }
 
   return result;
