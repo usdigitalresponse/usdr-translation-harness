@@ -73,6 +73,14 @@ weekly scheduled drift run is the backstop for that case).
 | Orchestrator | Plain-Language Eval | `POST { fileId, fileName, mimeType, contentType }` → `202` |
 | Orchestrator | Eval: Drift | `POST { trigger: "model_change" \| "weekly" }` → `202` (fire-and-forget) |
 
+## Files
+
+| File | Purpose |
+|---|---|
+| `orchestrator.js` | All server-side logic: Drive folder watcher, processing log, model-change detection |
+| `test-helpers.js` | Manual/integration test functions (run from the Apps Script editor against real Google services) |
+| `appsscript.json` | Manifest — scopes, triggers, time zone |
+
 ## Testing
 
 Pure logic (config parsing, dedup sets, the model signature) is covered by Jest:
