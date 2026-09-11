@@ -18,7 +18,7 @@ const TEXT_EXTRACTION_CONTEXT =
   "The content below is structured text from a document. " +
   "Each block contains a paragraph. Translate blocks where " +
   '"translate" is true. Preserve block IDs in your response.';
-const DEFAULT_GLOSSARY_SHEET_TAB = "Glossary";
+const DEFAULT_GLOSSARY_SHEET_TAB = "FAMLI Spanish Glossary";
 const GLOSSARY_SHEET_COLUMNS = "A:I";
 
 /**
