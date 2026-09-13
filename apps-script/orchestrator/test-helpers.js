@@ -28,25 +28,41 @@ function testConfig() {
   try {
     var config = getConfig();
     Logger.log("Config OK:");
-    Logger.log("  INPUT_FOLDER_ID: %s", config.INPUT_FOLDER_ID);
     Logger.log("  EXTRACT_URL: %s", config.EXTRACT_URL);
+    Logger.log("  PLAIN_LANGUAGE_EVAL_URL: %s", config.PLAIN_LANGUAGE_EVAL_URL);
     Logger.log("  PROCESSING_LOG_SHEET_ID: %s", config.PROCESSING_LOG_SHEET_ID);
   } catch (e) {
     Logger.log("Config ERROR: %s", e.message);
   }
+
+  var props = PropertiesService.getScriptProperties();
+  INPUT_FOLDERS.forEach(function(fc) {
+    var id = props.getProperty(fc.propertyKey);
+    Logger.log("  %s: %s (%s)", fc.propertyKey, id || "(not set)", fc.contentType);
+  });
 }
 
 function testFolderAccess() {
-  var config = getConfig();
-  var folder = DriveApp.getFolderById(config.INPUT_FOLDER_ID);
-  Logger.log("Folder name: %s", folder.getName());
-
-  var allFiles = getInputFiles(folder);
-  for (var i = 0; i < allFiles.length; i++) {
-    var file = allFiles[i];
-    Logger.log("  File: %s (id: %s, type: %s, size: %s bytes)", file.getName(), file.getId(), file.getMimeType(), file.getSize());
-  }
-  Logger.log("Total files: %s", allFiles.length);
+  var props = PropertiesService.getScriptProperties();
+  INPUT_FOLDERS.forEach(function(fc) {
+    var folderId = props.getProperty(fc.propertyKey);
+    if (!folderId) {
+      Logger.log("  %s: not set — skipping", fc.propertyKey);
+      return;
+    }
+    try {
+      var folder = DriveApp.getFolderById(folderId);
+      Logger.log("  %s: %s", fc.propertyKey, folder.getName());
+      var allFiles = getInputFiles(folder);
+      for (var i = 0; i < allFiles.length; i++) {
+        var file = allFiles[i];
+        Logger.log("    File: %s (id: %s, type: %s, size: %s bytes)", file.getName(), file.getId(), file.getMimeType(), file.getSize());
+      }
+      Logger.log("    Total files: %s", allFiles.length);
+    } catch (e) {
+      Logger.log("  %s: ERROR — %s", fc.propertyKey, e.message);
+    }
+  });
 }
 
 function testProcessingLog() {
@@ -56,7 +72,7 @@ function testProcessingLog() {
   Logger.log("Processing log has %s rows (including header)", data.length);
 
   var processed = getProcessedFileIds(config.PROCESSING_LOG_SHEET_ID);
-  Logger.log("Files with '%s' status: %s", STATUS.TRIGGERED, processed.size);
+  Logger.log("Files with extract status: %s, PL eval status: %s", processed.extract.size, processed.plEval.size);
 
   if (data.length > HEADER_ROWS) {
     Logger.log("Last 5 rows:");
@@ -83,15 +99,7 @@ function testWatchWithStub() {
     return;
   }
 
-  var folder;
-  try {
-    folder = DriveApp.getFolderById(config.INPUT_FOLDER_ID);
-  } catch (e) {
-    Logger.log("Cannot access input folder %s: %s", config.INPUT_FOLDER_ID, e.message);
-    return;
-  }
-
-  var allFiles = getInputFiles(folder);
+  var props = PropertiesService.getScriptProperties();
   var processed;
   try {
     processed = getProcessedFileIds(config.PROCESSING_LOG_SHEET_ID);
@@ -100,29 +108,46 @@ function testWatchWithStub() {
     return;
   }
 
-  var newCount = 0;
-  var skippedCount = 0;
-
-  for (var i = 0; i < allFiles.length; i++) {
-    var file = allFiles[i];
-    if (processed.has(file.getId())) {
-      skippedCount++;
-      continue;
+  INPUT_FOLDERS.forEach(function(fc) {
+    var folderId = props.getProperty(fc.propertyKey);
+    if (!folderId) {
+      Logger.log("  %s: not set — skipping", fc.propertyKey);
+      return;
     }
 
-    newCount++;
-    var startTime = Date.now();
-    Logger.log("STUB: Would call Extract for %s (id: %s)", file.getName(), file.getId());
+    var folder;
+    try {
+      folder = DriveApp.getFolderById(folderId);
+    } catch (e) {
+      Logger.log("Cannot access folder %s (%s): %s", fc.propertyKey, folderId, e.message);
+      return;
+    }
 
-    var stubResult = {
-      success: true,
-      durationMs: Date.now() - startTime,
-      error: "",
-    };
-    logProcessingResult(config.PROCESSING_LOG_SHEET_ID, file, stubResult);
-    Logger.log("  Logged to processing sheet with status '%s'", STATUS.TRIGGERED);
-  }
+    Logger.log("Checking folder: %s (%s)", folder.getName(), fc.contentType);
+    var allFiles = getInputFiles(folder);
+    var newCount = 0;
+    var skippedCount = 0;
 
-  Logger.log("Done. New files processed: %s, already triggered: %s", newCount, skippedCount);
+    for (var i = 0; i < allFiles.length; i++) {
+      var file = allFiles[i];
+      if (processed.extract.has(file.getId())) {
+        skippedCount++;
+        continue;
+      }
+
+      newCount++;
+      var startTime = Date.now();
+      Logger.log("  STUB: Would call Extract for %s (id: %s, contentType: %s)", file.getName(), file.getId(), fc.contentType);
+
+      var stubResult = {
+        success: true,
+        durationMs: Date.now() - startTime,
+        error: "",
+      };
+      logProcessingResult(config.PROCESSING_LOG_SHEET_ID, file, stubResult);
+      Logger.log("    Logged to processing sheet with status '%s'", STATUS.TRIGGERED);
+    }
+
+    Logger.log("  Done. New files: %s, already triggered: %s", newCount, skippedCount);
+  });
 }
-
