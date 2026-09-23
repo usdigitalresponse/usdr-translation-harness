@@ -4,6 +4,7 @@ const {
   plainLanguageEval,
   runEval,
   buildOutputFilename,
+  SOURCE_FILE_ID_PROPERTY,
 } = require("../plain-language-eval/index.js");
 
 const {
@@ -264,7 +265,8 @@ describe("runEval", () => {
         sourceFileName: "test.pdf",
         provider: "anthropic",
         model: "claude-sonnet-5",
-      })
+      }),
+      { [SOURCE_FILE_ID_PROPERTY]: "file123" }
     );
   });
 
@@ -334,6 +336,10 @@ describe("runEval", () => {
         error: expect.stringContaining("invalid JSON"),
       })
     );
+    // Raw output is saved for debugging but not tagged, so the add-on's
+    // property lookup never returns an unparseable file.
+    expect(writeOutput).toHaveBeenCalledTimes(1);
+    expect(writeOutput.mock.calls[0]).toHaveLength(2);
     errorSpy.mockRestore();
   });
 
@@ -472,11 +478,63 @@ describe("runEval", () => {
 
 // --- loaders unit tests ---
 
+// Only the actual loaders (via requireActual) use googleapis; index.js gets the
+// mocked loaders above.
+const mockDriveCreate = jest.fn();
+jest.mock("../plain-language-eval/node_modules/googleapis", () => ({
+  google: {
+    auth: { GoogleAuth: jest.fn() },
+    drive: () => ({ files: { create: mockDriveCreate } }),
+  },
+}));
+
 const {
   formatTimestamp,
   parseSheetRows,
   stripExtension,
+  writeOutput: actualWriteOutput,
 } = jest.requireActual("../plain-language-eval/loaders.js");
+
+describe("writeOutput", () => {
+  const FOLDER_ID = "pl-eval-folder";
+  let savedFolderId;
+
+  beforeEach(() => {
+    savedFolderId = process.env.DRIVE_PLAIN_LANGUAGE_EVAL_FOLDER_ID;
+    process.env.DRIVE_PLAIN_LANGUAGE_EVAL_FOLDER_ID = FOLDER_ID;
+    mockDriveCreate.mockReset().mockResolvedValue({ data: { id: "new-file" } });
+  });
+
+  afterEach(() => {
+    if (savedFolderId === undefined) {
+      delete process.env.DRIVE_PLAIN_LANGUAGE_EVAL_FOLDER_ID;
+    } else {
+      process.env.DRIVE_PLAIN_LANGUAGE_EVAL_FOLDER_ID = savedFolderId;
+    }
+  });
+
+  test("tags the Drive file with the given properties", async () => {
+    const id = await actualWriteOutput("out.json", { a: 1 }, {
+      [SOURCE_FILE_ID_PROPERTY]: "src-1",
+    });
+
+    expect(id).toBe("new-file");
+    expect(mockDriveCreate.mock.calls[0][0].requestBody).toEqual({
+      name: "out.json",
+      parents: [FOLDER_ID],
+      properties: { [SOURCE_FILE_ID_PROPERTY]: "src-1" },
+    });
+  });
+
+  test("omits properties when none are given", async () => {
+    await actualWriteOutput("raw.json", "not json");
+
+    expect(mockDriveCreate.mock.calls[0][0].requestBody).toEqual({
+      name: "raw.json",
+      parents: [FOLDER_ID],
+    });
+  });
+});
 
 describe("formatTimestamp", () => {
   test("produces MM/DD/YYYY HH:MM with no comma", () => {

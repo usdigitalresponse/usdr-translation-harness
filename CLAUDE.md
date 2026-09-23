@@ -42,6 +42,7 @@ When changing one component, check the other side of each interface it touches:
 | Editor Add-on | Capture Feedback | `POST { documentId }` → `200` with decisions |
 | Extract | Translate | Pub/Sub message with extraction JSON location |
 | Translate | Editor Add-on | `usdr_translation_review` document property on output docs |
+| Plain Language Eval | Editor Add-on | `plainLanguageEvalSourceFileId` Drive property on eval JSON (source file ID; add-on queries by it) |
 
 Update these docs when an interface changes:
 - `scratch.cloud-run-architecture.md` — internal architecture working doc

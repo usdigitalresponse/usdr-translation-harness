@@ -8,9 +8,9 @@ Evaluates source documents for readability and plain language compliance using a
 2. Downloads and reads the source document from Google Drive
 3. Sends the content to an LLM for plain language evaluation
 4. Validates the output against a JSON schema
-5. Writes the evaluation JSON to a dedicated Drive folder
+5. Writes the evaluation JSON to a dedicated Drive folder, tagged with a `plainLanguageEvalSourceFileId` Drive property set to the source file's ID
 
-The Editor Add-on's plain language eval sidebar looks up the result by matching the source filename in the eval output folder.
+The Editor Add-on's plain language eval sidebar finds the result by querying for that property, using the `sourceFileId` from the translation JSON. Because it's a property query, not a folder search, results are still found after the archive sweep moves them. If the LLM returns invalid JSON, the raw output is still saved for debugging but is not tagged, so the sidebar never loads it.
 
 ## HTTP interface
 

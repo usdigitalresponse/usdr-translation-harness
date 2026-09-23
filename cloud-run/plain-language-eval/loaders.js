@@ -137,7 +137,16 @@ async function fetchDocumentContent(fileId, mimeType) {
   throw new Error(`Unsupported MIME type: ${mimeType}`);
 }
 
-async function writeOutput(filename, data) {
+/**
+ * Write an eval output file to the PL eval Drive folder (or fixtures/output
+ * locally when no folder is configured).
+ * @param {string} filename - Output file name
+ * @param {Object|string} data - Eval JSON, or raw LLM text if it didn't parse
+ * @param {Object} [properties] - Public Drive properties to tag the file with,
+ *   so the editor add-on can find it by query regardless of which folder it's in
+ * @returns {Promise<string|null>} Drive file ID, or null when written locally
+ */
+async function writeOutput(filename, data, properties) {
   const content =
     typeof data === "string" ? data : JSON.stringify(data, null, 2);
   const folderId = process.env.DRIVE_PLAIN_LANGUAGE_EVAL_FOLDER_ID;
@@ -155,7 +164,11 @@ async function writeOutput(filename, data) {
   const drive = google.drive({ version: DRIVE_API_VERSION, auth });
 
   const { data: created } = await drive.files.create({
-    requestBody: { name: filename, parents: [folderId] },
+    requestBody: {
+      name: filename,
+      parents: [folderId],
+      ...(properties && { properties }),
+    },
     media: { mimeType: "application/json", body: content },
     fields: "id",
     supportsAllDrives: true,

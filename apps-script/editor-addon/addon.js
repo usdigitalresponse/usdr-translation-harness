@@ -20,7 +20,9 @@ var COL_TRANSLATED = 2;
 var LOCAL_ROW_ID_PREFIX = "row-";
 var TABLE_COLUMNS = 3;
 var DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-var PL_EVAL_FOLDER_ID = "1Sa5r8G4YMo0Hn02rCjyClixN0jCgbQ5U";
+// Drive property the plain-language-eval function sets on each eval JSON
+// (must match SOURCE_FILE_ID_PROPERTY in cloud-run/plain-language-eval).
+var PL_EVAL_SOURCE_PROPERTY_KEY = "plainLanguageEvalSourceFileId";
 
 // ── Drive property access ────────────────────────────────────────────────
 
@@ -29,6 +31,7 @@ var PL_EVAL_FOLDER_ID = "1Sa5r8G4YMo0Hn02rCjyClixN0jCgbQ5U";
 // property. Unset in production, where the property comes from Translate.
 var SANDBOX_FILE_ID_KEY = "SANDBOX_TRANSLATION_FILE_ID";
 var SANDBOX_EVAL_FILE_ID_KEY = "SANDBOX_EVAL_FILE_ID";
+var SANDBOX_PL_EVAL_FILE_ID_KEY = "SANDBOX_PL_EVAL_FILE_ID";
 
 /**
  * Look up the translation JSON file ID from the active document's Drive
@@ -1060,34 +1063,19 @@ function evaluateTranslationFromSidebar() {
 // ── Plain Language Eval ─────────────────────────────────────────────────
 
 /**
- * Search the plain-language-eval Drive folder for an eval JSON matching
- * the current document's source file. Looks up the source filename from
- * the translation JSON, then searches by name pattern.
- * @returns {Object|null} Parsed eval JSON with _evalFileName and _evalModifiedTime, or null
+ * Find the newest plain language eval file for the current document's source.
+ * Reads sourceFileId from the translation JSON, then queries Drive for eval
+ * files the plain-language-eval function tagged with that ID. A property query
+ * (not folder + filename) so the lookup still works after the archive sweep
+ * moves the eval file out of its original folder.
+ * @returns {Object|null} Drive file metadata {id, name, modifiedTime}, or null
  */
-function getPlainLanguageEvalData() {
+function findLatestPlEvalFile_() {
   var json = getTranslationJson_();
-  if (!json) return null;
+  if (!json || !json.sourceFileId) return null;
 
-  var sourceFileId = json.sourceFileId;
-  if (!sourceFileId) return null;
-
-  var sourceFileName;
-  try {
-    var file = Drive.Files.get(sourceFileId, { fields: "name", supportsAllDrives: true });
-    sourceFileName = file.name;
-  } catch (e) {
-    Logger.log("Could not get source file name: " + e.message);
-    return null;
-  }
-
-  var baseName = sourceFileName.replace(/\.[^.]+$/, "");
-  var escapedName = baseName.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-
-  var query = "'" + PL_EVAL_FOLDER_ID + "' in parents"
-    + " and name contains '" + escapedName + "'"
-    + " and name contains 'plain-language-eval'"
-    + " and trashed = false";
+  var query = "properties has { key='" + PL_EVAL_SOURCE_PROPERTY_KEY
+    + "' and value='" + json.sourceFileId + "' } and trashed = false";
 
   try {
     var results = Drive.Files.list({
@@ -1098,90 +1086,28 @@ function getPlainLanguageEvalData() {
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,
     });
-
-    if (!results.files || results.files.length === 0) return null;
-
-    var evalFile = results.files[0];
-    var content = Drive.Files.get(evalFile.id, {
-      alt: "media",
-      supportsAllDrives: true,
-    });
-
-    var parsed = typeof content === "string" ? JSON.parse(content) : content;
-    parsed._evalFileName = evalFile.name;
-    parsed._evalModifiedTime = evalFile.modifiedTime;
-    return parsed;
+    return (results.files && results.files[0]) || null;
   } catch (e) {
-    Logger.log("Could not fetch plain language eval: " + e.message);
+    Logger.log("Could not query Drive for plain language eval: " + e.message);
     return null;
   }
 }
 
 /**
- * Open the Plain Language Eval sidebar. Only available on translation docs.
- */
-function showPlainLanguageEval() {
-  var translationFileId = getTranslationFileId_();
-  if (!translationFileId) {
-    DocumentApp.getUi().alert(
-      "Not a Translation Document",
-      "This document does not have translation data associated with it.",
-      DocumentApp.getUi().ButtonSet.OK
-    );
-    return;
-  }
-
-  var html = HtmlService.createHtmlOutputFromFile("PlainLanguageEvalSidebar")
-    .setTitle("Plain Language Eval - English")
-    .setWidth(340);
-  DocumentApp.getUi().showSidebar(html);
-}
-
-// ── Plain Language Eval ─────────────────────────────────────────────────
-
-/**
- * Search the plain-language-eval Drive folder for an eval JSON matching
- * the current document's source file. Looks up the source filename from
- * the translation JSON, then searches by name pattern.
+ * Load the plain language eval JSON for the current document. Uses the
+ * SANDBOX_PL_EVAL_FILE_ID script property when set (preview/testing with an
+ * untagged sample file); otherwise finds the file by its source property.
  * @returns {Object|null} Parsed eval JSON with _evalFileName and _evalModifiedTime, or null
  */
 function getPlainLanguageEvalData() {
-  var json = getTranslationJson_();
-  if (!json) return null;
-
-  var sourceFileId = json.sourceFileId;
-  if (!sourceFileId) return null;
-
-  var sourceFileName;
-  try {
-    var file = Drive.Files.get(sourceFileId, { fields: "name", supportsAllDrives: true });
-    sourceFileName = file.name;
-  } catch (e) {
-    Logger.log("Could not get source file name: " + e.message);
-    return null;
-  }
-
-  var baseName = sourceFileName.replace(/\.[^.]+$/, "");
-  var escapedName = baseName.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-
-  var query = "'" + PL_EVAL_FOLDER_ID + "' in parents"
-    + " and name contains '" + escapedName + "'"
-    + " and name contains 'plain-language-eval'"
-    + " and trashed = false";
+  var override = PropertiesService.getScriptProperties().getProperty(SANDBOX_PL_EVAL_FILE_ID_KEY);
 
   try {
-    var results = Drive.Files.list({
-      q: query,
-      fields: "files(id,name,modifiedTime)",
-      orderBy: "modifiedTime desc",
-      pageSize: 1,
-      supportsAllDrives: true,
-      includeItemsFromAllDrives: true,
-    });
+    var evalFile = override
+      ? Drive.Files.get(override, { fields: "id,name,modifiedTime", supportsAllDrives: true })
+      : findLatestPlEvalFile_();
+    if (!evalFile) return null;
 
-    if (!results.files || results.files.length === 0) return null;
-
-    var evalFile = results.files[0];
     var content = Drive.Files.get(evalFile.id, {
       alt: "media",
       supportsAllDrives: true,

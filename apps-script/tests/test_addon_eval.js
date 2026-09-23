@@ -452,6 +452,79 @@ describe("getEvalData (reads latest result from Drive)", () => {
   });
 });
 
+describe("getPlainLanguageEvalData (property lookup)", () => {
+  const PL_EVAL_FILE = { id: "pl-1", name: "flyer_gemini_plain-language-eval.json", modifiedTime: "2026-09-01T00:00:00Z" };
+
+  /**
+   * Drive mock: the doc's review property points at a translation JSON with
+   * the given sourceFileId; list returns `listFiles`; the PL eval file's
+   * content is `{ weighted_overall_score: 4 }`.
+   */
+  function plDrive(sourceFileId, listFiles) {
+    const translationJson = sourceFileId ? { sourceFileId, blocks: [] } : { blocks: [] };
+    return {
+      Files: {
+        get: jest.fn((id, opts) => {
+          if (opts && opts.fields === "properties") {
+            return { properties: { usdr_translation_review: "translation-file-1" } };
+          }
+          if (opts && opts.fields === "id,name,modifiedTime") {
+            if (id === PL_EVAL_FILE.id) return PL_EVAL_FILE;
+            throw new Error("File not found: " + id);
+          }
+          if (id === "translation-file-1") return JSON.stringify(translationJson);
+          if (id === PL_EVAL_FILE.id) return JSON.stringify({ weighted_overall_score: 4 });
+          throw new Error("File not found: " + id);
+        }),
+        list: jest.fn().mockReturnValue({ files: listFiles }),
+      },
+    };
+  }
+
+  test("queries by the PL eval source property, not by folder", () => {
+    const s = loadAddon({ Drive: plDrive("src-abc", [PL_EVAL_FILE]) });
+    s.getPlainLanguageEvalData();
+
+    const q = s.Drive.Files.list.mock.calls[0][0].q;
+    expect(q).toContain("key='plainLanguageEvalSourceFileId'");
+    expect(q).toContain("value='src-abc'");
+    expect(q).not.toContain("in parents");
+  });
+
+  test("returns the newest match with file metadata attached", () => {
+    const s = loadAddon({ Drive: plDrive("src-abc", [PL_EVAL_FILE]) });
+    const data = s.getPlainLanguageEvalData();
+
+    expect(s.Drive.Files.list.mock.calls[0][0].orderBy).toBe("modifiedTime desc");
+    expect(data.weighted_overall_score).toBe(4);
+    expect(data._evalFileName).toBe(PL_EVAL_FILE.name);
+    expect(data._evalModifiedTime).toBe(PL_EVAL_FILE.modifiedTime);
+  });
+
+  test("returns null when no eval is tagged with the source file", () => {
+    const s = loadAddon({ Drive: plDrive("src-abc", []) });
+    expect(s.getPlainLanguageEvalData()).toBeNull();
+  });
+
+  test("sandbox override loads the given file without querying", () => {
+    const s = loadAddon({
+      Drive: plDrive(null, []),
+      _scriptProps: { SANDBOX_PL_EVAL_FILE_ID: PL_EVAL_FILE.id },
+    });
+    const data = s.getPlainLanguageEvalData();
+
+    expect(s.Drive.Files.list).not.toHaveBeenCalled();
+    expect(data.weighted_overall_score).toBe(4);
+    expect(data._evalFileName).toBe(PL_EVAL_FILE.name);
+  });
+
+  test("returns null without querying when translation JSON has no sourceFileId", () => {
+    const s = loadAddon({ Drive: plDrive(null, [PL_EVAL_FILE]) });
+    expect(s.getPlainLanguageEvalData()).toBeNull();
+    expect(s.Drive.Files.list).not.toHaveBeenCalled();
+  });
+});
+
 describe("staleness (stored contentHash vs current doc)", () => {
   // The hash of the default mock table, as the add-on itself computes it.
   function hashOfCurrentDoc() {
