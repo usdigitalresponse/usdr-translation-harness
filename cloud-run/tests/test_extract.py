@@ -11,7 +11,8 @@ import pytest
 from extract.main import (
     extract, extract_text_with_pdfplumber, get_active_models,
     load_pdf_bytes, build_extraction_prompt, publish_extraction_complete,
-    log_extraction_result, text_to_extraction_json, run_extraction,
+    log_extraction_result, log_extraction_failure, text_to_extraction_json, run_extraction,
+    run_pdf_extraction,
     EXTRACT_ROLE, PUBSUB_TOPIC_ENV_VAR, STATUS_EXTRACTED, STATUS_FAILED,
     MIME_PDF, MIME_GOOGLE_DOCS, MIME_DOCX, TEXT_MIME_TYPES,
     PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
@@ -379,3 +380,104 @@ class TestLogExtractionResult:
             log_extraction_result("abc123", "test.pdf", self.SAMPLE_RESULT)
 
 
+
+
+# Processing log column indexes (A–I)
+COL_STATUS = 3
+COL_DURATION = 4
+COL_ERROR = 5
+COL_OUTPUT_FILE_ID = 6
+COL_PROVIDER = 7
+COL_MODEL = 8
+
+
+def _sheet_values(mock_build):
+    return mock_build.return_value.spreadsheets.return_value.values.return_value
+
+
+@patch("extract.main.build")
+@patch("extract.main.google.auth.default", return_value=(MagicMock(), "project-id"))
+class TestProcessingLogRows:
+    RESULT = {"driveFileId": "out-1", "model": "gemini", "provider": "google"}
+
+    def test_success_row_includes_llm_duration(self, mock_auth, mock_build):
+        with patch.dict("os.environ", {"PROCESSING_LOG_SHEET_ID": "sheet-123"}):
+            log_extraction_result("abc", "a.pdf", self.RESULT, usage={"duration_ms": 4321})
+
+        row = _sheet_values(mock_build).append.call_args[1]["body"]["values"][0]
+        assert row[COL_STATUS] == STATUS_EXTRACTED
+        assert row[COL_DURATION] == 4321
+        assert row[COL_ERROR] == ""
+        assert row[COL_OUTPUT_FILE_ID] == "out-1"
+
+    def test_success_row_duration_blank_without_usage(self, mock_auth, mock_build):
+        with patch.dict("os.environ", {"PROCESSING_LOG_SHEET_ID": "sheet-123"}):
+            log_extraction_result("abc", "a.docx", self.RESULT)
+
+        row = _sheet_values(mock_build).append.call_args[1]["body"]["values"][0]
+        assert row[COL_DURATION] == ""
+
+    def test_failure_row_puts_error_in_error_detail(self, mock_auth, mock_build):
+        with patch.dict("os.environ", {"PROCESSING_LOG_SHEET_ID": "sheet-123"}):
+            log_extraction_failure("abc", "a.pdf", "google", "gemini", "LLM call failed")
+
+        values = _sheet_values(mock_build)
+        row = values.append.call_args[1]["body"]["values"][0]
+        assert row[COL_STATUS] == STATUS_FAILED
+        assert row[COL_DURATION] == ""
+        assert row[COL_ERROR] == "LLM call failed"
+        assert row[COL_OUTPUT_FILE_ID] == ""
+        assert row[COL_PROVIDER] == "google"
+        assert row[COL_MODEL] == "gemini"
+        # Append-only: never edit an existing row
+        values.update.assert_not_called()
+
+
+class TestExtractionFailureRows:
+    MODEL_CONFIG = {"models": [{"role": EXTRACT_ROLE, "provider": "google", "model": "gemini", "active": True}]}
+
+    @patch("extract.main.publish_extraction_complete")
+    @patch("extract.main.log_extraction_failure")
+    @patch("extract.main.call_llm", side_effect=RuntimeError("timeout"))
+    @patch("extract.main.load_doc", return_value="prompt")
+    @patch("extract.main.extract_text_with_pdfplumber", return_value="")
+    @patch("extract.main.load_pdf_bytes", return_value=b"%PDF")
+    @patch("extract.main.load_config")
+    def test_llm_failure_writes_failed_row(self, mock_config, _pdf, _text, _doc, _llm,
+                                           mock_fail, _publish):
+        mock_config.return_value = self.MODEL_CONFIG
+        run_pdf_extraction("abc", "a.pdf")
+
+        mock_fail.assert_called_once_with("abc", "a.pdf", "google", "gemini",
+                                          "LLM call failed", usage=None)
+
+    @patch("extract.main.publish_extraction_complete")
+    @patch("extract.main.log_extraction_failure")
+    @patch("extract.main.save_extraction_results", return_value=None)
+    @patch("extract.main.call_llm", return_value=("not json", {"duration_ms": 900}))
+    @patch("extract.main.load_doc", return_value="prompt")
+    @patch("extract.main.extract_text_with_pdfplumber", return_value="")
+    @patch("extract.main.load_pdf_bytes", return_value=b"%PDF")
+    @patch("extract.main.load_config")
+    def test_parse_failure_writes_failed_row_with_duration(self, mock_config, _pdf, _text, _doc,
+                                                           _llm, _save, mock_fail, _publish):
+        mock_config.return_value = self.MODEL_CONFIG
+        run_pdf_extraction("abc", "a.pdf")
+
+        mock_fail.assert_called_once_with("abc", "a.pdf", "google", "gemini",
+                                          "Extraction parse/validation failed",
+                                          usage={"duration_ms": 900})
+
+    @patch("extract.main.log_extraction_failure")
+    @patch("extract.main.run_pdf_extraction", side_effect=RuntimeError("PDF download failed"))
+    def test_setup_error_writes_failed_row(self, _run, mock_fail):
+        run_extraction("abc", "a.pdf", MIME_PDF)
+
+        args = mock_fail.call_args[0]
+        assert args[:4] == ("abc", "a.pdf", "", "")
+        assert "PDF download failed" in args[4]
+
+    @patch("extract.main.log_extraction_failure", side_effect=RuntimeError("Sheets down"))
+    @patch("extract.main.run_pdf_extraction", side_effect=RuntimeError("boom"))
+    def test_sheet_write_failure_does_not_raise(self, _run, _fail):
+        run_extraction("abc", "a.pdf", MIME_PDF)  # must not raise
