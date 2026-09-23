@@ -16,6 +16,10 @@ const EVAL_ROLE = "plain-language-eval";
 const STATUS_COMPLETE = "pl-eval-complete";
 const STATUS_FAILED = "pl-eval-failed";
 const PROMPT_ENV_VAR = "PLAIN_LANGUAGE_EVAL_PROMPT_DOC_ID";
+// Drive property the editor add-on queries to find a source doc's eval. A
+// property (not folder + filename) so lookup survives the archive sweep.
+// Must match PL_EVAL_SOURCE_PROPERTY_KEY in apps-script/editor-addon/addon.js.
+const SOURCE_FILE_ID_PROPERTY = "plainLanguageEvalSourceFileId";
 
 function logStructured(status, provider, model, sourceFileId, sourceFileName, extra = {}) {
   const entry = {
@@ -97,7 +101,11 @@ async function runEval(fileId, fileName, mimeType) {
         provider,
         model,
       };
-      const outputFileId = await writeOutput(outputFileName, outputData);
+      // Only parsed output is tagged — the raw fallback above stays untagged
+      // so the add-on never picks up an unparseable file as the latest eval.
+      const outputFileId = await writeOutput(outputFileName, outputData, {
+        [SOURCE_FILE_ID_PROPERTY]: fileId,
+      });
       return { provider, model, outputFileId, outputFileName, usage };
     })
   );
@@ -178,4 +186,4 @@ async function plainLanguageEval(req, res) {
 }
 
 functions.http("plainLanguageEval", plainLanguageEval);
-module.exports = { plainLanguageEval, runEval, buildOutputFilename };
+module.exports = { plainLanguageEval, runEval, buildOutputFilename, SOURCE_FILE_ID_PROPERTY };

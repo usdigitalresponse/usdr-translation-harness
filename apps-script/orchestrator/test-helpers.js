@@ -144,7 +144,7 @@ function testWatchWithStub() {
         durationMs: Date.now() - startTime,
         error: "",
       };
-      logProcessingResult(config.PROCESSING_LOG_SHEET_ID, file, stubResult);
+      logProcessingResult(config.PROCESSING_LOG_SHEET_ID, file, stubResult, STATUS.TRIGGERED, STATUS.FAILED);
       Logger.log("    Logged to processing sheet with status '%s'", STATUS.TRIGGERED);
     }
 
