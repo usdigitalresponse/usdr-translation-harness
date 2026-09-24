@@ -707,3 +707,64 @@ describe("formatTimestamp", () => {
     expect(result).toBe("12/25/2026 00:00");
   });
 });
+
+// --- logTranslationResult (actual loader, googleapis mocked) ---
+
+const mockSheetsAppend = jest.fn();
+jest.mock("../translate/node_modules/googleapis", () => ({
+  google: {
+    auth: { GoogleAuth: jest.fn() },
+    sheets: () => ({ spreadsheets: { values: { append: mockSheetsAppend } } }),
+  },
+}));
+
+const { logTranslationResult: actualLogTranslationResult } = jest.requireActual("../translate/loaders.js");
+
+describe("logTranslationResult", () => {
+  // Processing log columns (A–I): File ID, File Name, Processed At, Status,
+  // Duration (ms), Error Detail, Output File ID, Provider, Model
+  const COL_DURATION = 4;
+  const COL_ERROR = 5;
+  const COL_OUTPUT_FILE_ID = 6;
+  let savedSheetId;
+
+  beforeEach(() => {
+    savedSheetId = process.env.PROCESSING_LOG_SHEET_ID;
+    process.env.PROCESSING_LOG_SHEET_ID = "log-sheet";
+    mockSheetsAppend.mockReset().mockResolvedValue({});
+    jest.spyOn(console, "log").mockImplementation();
+  });
+
+  afterEach(() => {
+    if (savedSheetId === undefined) delete process.env.PROCESSING_LOG_SHEET_ID;
+    else process.env.PROCESSING_LOG_SHEET_ID = savedSheetId;
+    console.log.mockRestore();
+  });
+
+  function loggedRow() {
+    return mockSheetsAppend.mock.calls[0][0].requestBody.values[0];
+  }
+
+  test("writes the error to Error Detail, not Duration", async () => {
+    await actualLogTranslationResult("src-1", "a.pdf", {
+      status: "failed", error: "LLM returned invalid JSON", provider: "google", model: "gemini",
+    });
+
+    const row = loggedRow();
+    expect(row[COL_DURATION]).toBe("");
+    expect(row[COL_ERROR]).toBe("LLM returned invalid JSON");
+  });
+
+  test("writes LLM duration and output file on success", async () => {
+    await actualLogTranslationResult("src-1", "a.pdf", {
+      status: "translated", outputFileId: "out-1", provider: "google", model: "gemini",
+      usage: { duration_ms: 1234 },
+    });
+
+    const row = loggedRow();
+    expect(row).toHaveLength(9);
+    expect(row[COL_DURATION]).toBe(1234);
+    expect(row[COL_ERROR]).toBe("");
+    expect(row[COL_OUTPUT_FILE_ID]).toBe("out-1");
+  });
+});

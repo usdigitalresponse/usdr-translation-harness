@@ -224,37 +224,68 @@ def _get_sheets_service():
     return build("sheets", SHEETS_API_VERSION, credentials=credentials)
 
 
-def log_extraction_result(file_id, file_name, extraction_result):
+def _append_processing_log_row(row):
+    """Append one row to the processing log. Append-only: never edits an
+    existing row (concurrent writers — Orchestrator, Translate, PL eval — all
+    append, and in-place edits caused race conditions)."""
     sheet_id = os.environ.get("PROCESSING_LOG_SHEET_ID")
     if not sheet_id:
         logger.info("No PROCESSING_LOG_SHEET_ID set — skipping log update")
-        return
+        return False
 
     service = _get_sheets_service()
-
-    completed_at = datetime.now().strftime("%m/%d/%Y %H:%M")
-    row = [
-        file_id,
-        file_name,
-        completed_at,
-        STATUS_EXTRACTED,
-        "",
-        "",
-        extraction_result["driveFileId"],
-        extraction_result["provider"],
-        extraction_result["model"],
-    ]
-
     service.spreadsheets().values().append(
         spreadsheetId=sheet_id,
         range=f"{PROCESSING_LOG_SHEET_NAME}!A:I",
         valueInputOption="RAW",
         body={"values": [row]},
     ).execute()
-    logger.info(
-        "Logged extraction result for %s/%s to processing log",
+    return True
+
+
+def _processing_log_row(file_id, file_name, status, provider, model,
+                        duration_ms="", error="", output_file_id=""):
+    """Processing log columns A–I: File ID, File Name, Processed At, Status,
+    Duration (ms), Error Detail, Output File ID, Provider, Model."""
+    completed_at = datetime.now().strftime("%m/%d/%Y %H:%M")
+    return [file_id, file_name, completed_at, status, duration_ms, error,
+            output_file_id, provider, model]
+
+
+def log_extraction_result(file_id, file_name, extraction_result, usage=None):
+    """Append an `extracted` row. Duration is the LLM call time from `usage`
+    (blank for text passthrough, which makes no LLM call)."""
+    duration_ms = (usage or {}).get("duration_ms", "")
+    row = _processing_log_row(
+        file_id, file_name, STATUS_EXTRACTED,
         extraction_result["provider"], extraction_result["model"],
+        duration_ms=duration_ms, output_file_id=extraction_result["driveFileId"],
     )
+    if _append_processing_log_row(row):
+        logger.info(
+            "Logged extraction result for %s/%s to processing log",
+            extraction_result["provider"], extraction_result["model"],
+        )
+
+
+def log_extraction_failure(file_id, file_name, provider, model, error, usage=None):
+    """Append a `failed` row with the error in Error Detail."""
+    duration_ms = (usage or {}).get("duration_ms", "")
+    row = _processing_log_row(file_id, file_name, STATUS_FAILED, provider, model,
+                              duration_ms=duration_ms, error=error)
+    if _append_processing_log_row(row):
+        logger.info("Logged extraction failure for %s/%s to processing log", provider, model)
+
+
+def record_failure(provider, model, file_id, file_name, error, usage=None):
+    """Log a failure to Cloud Run logs and the processing log sheet. A sheet
+    write failure is logged but never raised, so it can't mask the original error."""
+    log_structured(STATUS_FAILED, provider, model, file_id, file_name,
+                   error=error, usage=usage)
+    try:
+        log_extraction_failure(file_id, file_name, provider, model, error, usage=usage)
+    except Exception:
+        logger.exception("Failed to log extraction failure to processing sheet")
 
 
 def publish_extraction_complete(file_id, file_name, extraction_results, content_type="public_flyer", submitted_by_email=""):
@@ -300,8 +331,8 @@ def run_text_extraction(file_id, file_name, mime_type, content_type="public_flye
         logger.info("Fetched text: %d characters", len(text))
     except Exception:
         logger.exception("Failed to fetch text for %s", file_name)
-        log_structured(STATUS_FAILED, PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
-                       file_id, file_name, error="Text fetch failed")
+        record_failure(PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
+                       file_id, file_name, "Text fetch failed")
         return
 
     try:
@@ -311,8 +342,8 @@ def run_text_extraction(file_id, file_name, mime_type, content_type="public_flye
         logger.info("Saved text extraction: %s", parsed_filename)
     except Exception:
         logger.exception("Failed to save text extraction for %s", file_name)
-        log_structured(STATUS_FAILED, PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
-                       file_id, file_name, error="Text extraction save failed")
+        record_failure(PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
+                       file_id, file_name, "Text extraction save failed")
         return
 
     enriched = {
@@ -372,8 +403,7 @@ def run_pdf_extraction(file_id, file_name, content_type="public_flyer", submitte
                         usage.get("input_tokens", 0), usage.get("output_tokens", 0))
         except Exception:
             logger.exception("LLM call failed for %s/%s", provider, model)
-            log_structured(STATUS_FAILED, provider, model, file_id, file_name,
-                           error="LLM call failed")
+            record_failure(provider, model, file_id, file_name, "LLM call failed")
             continue
 
         result = save_extraction_results(file_name, model, raw_response, source_file_id=file_id)
@@ -385,12 +415,12 @@ def run_pdf_extraction(file_id, file_name, content_type="public_flyer", submitte
                            drive_file_id=result["driveFileId"], usage=usage,
                            content_metrics=metrics)
             try:
-                log_extraction_result(file_id, file_name, enriched)
+                log_extraction_result(file_id, file_name, enriched, usage=usage)
             except Exception:
                 logger.exception("Failed to log extraction result to processing sheet")
         else:
-            log_structured(STATUS_FAILED, provider, model, file_id, file_name,
-                           error="Extraction parse/validation failed")
+            record_failure(provider, model, file_id, file_name,
+                           "Extraction parse/validation failed", usage=usage)
 
     publish_extraction_complete(file_id, file_name, extraction_results, content_type, submitted_by_email)
 
@@ -401,14 +431,21 @@ SUPPORTED_MIME_TYPES = {MIME_PDF} | TEXT_MIME_TYPES
 def run_extraction(file_id, file_name, mime_type, content_type="public_flyer", submitted_by_email=""):
     if mime_type not in SUPPORTED_MIME_TYPES:
         logger.error("Unsupported MIME type '%s' for %s", mime_type, file_name)
-        log_structured(STATUS_FAILED, PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
-                       file_id, file_name, error=f"Unsupported MIME type: {mime_type}")
+        record_failure(PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
+                       file_id, file_name, f"Unsupported MIME type: {mime_type}")
         return
 
-    if mime_type in TEXT_MIME_TYPES:
-        run_text_extraction(file_id, file_name, mime_type, content_type, submitted_by_email)
-    else:
-        run_pdf_extraction(file_id, file_name, content_type, submitted_by_email)
+    try:
+        if mime_type in TEXT_MIME_TYPES:
+            run_text_extraction(file_id, file_name, mime_type, content_type, submitted_by_email)
+        else:
+            run_pdf_extraction(file_id, file_name, content_type, submitted_by_email)
+    except Exception as e:
+        # Uncaught errors outside the per-model loop (config, PDF download,
+        # prompt doc, Pub/Sub publish). Without this the background thread dies
+        # with no sheet row.
+        logger.exception("Extraction failed for %s", file_name)
+        record_failure("", "", file_id, file_name, f"Extraction failed: {e}")
 
 
 @functions_framework.http
