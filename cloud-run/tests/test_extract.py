@@ -17,7 +17,15 @@ from extract.main import (
     MIME_PDF, MIME_GOOGLE_DOCS, MIME_DOCX, TEXT_MIME_TYPES,
     PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
 )
-from extract.llm import call_llm, PROVIDER_ANTHROPIC, PROVIDER_GOOGLE
+import anthropic
+import google.auth.exceptions
+import httpx
+from google.genai import errors as genai_errors
+
+from extract.llm import (
+    call_llm, make_claude_client, make_gemini_client,
+    PROVIDER_ANTHROPIC, PROVIDER_GOOGLE, BACKEND_VERTEX, BACKEND_DIRECT,
+)
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
@@ -127,34 +135,163 @@ class TestBuildExtractionPrompt:
         assert "extracted_text" not in prompt
 
 
+def _anthropic_status_error(status):
+    request = httpx.Request("POST", "https://example.test/v1/messages")
+    response = httpx.Response(status, request=request)
+    error_classes = {
+        401: anthropic.AuthenticationError,
+        403: anthropic.PermissionDeniedError,
+        404: anthropic.NotFoundError,
+        429: anthropic.RateLimitError,
+    }
+    cls = error_classes.get(status, anthropic.InternalServerError)
+    return cls("error", response=response, body=None)
+
+
+def _gemini_status_error(status, code_name):
+    return genai_errors.ClientError(status, {"error": {"code": status, "message": "x", "status": code_name}})
+
+
+VERTEX_ENV = {"VERTEX_PROJECT_ID": "proj", "VERTEX_LOCATION": "us"}
+def claude_ok(*_args, **_kwargs):
+    # Fresh dict per call: call_llm adds fields to the usage dict it gets back
+    return '{"blocks": []}', {"input_tokens": 100, "output_tokens": 50}
+
+
+def gemini_ok(*_args, **_kwargs):
+    return '{"blocks": []}', {"input_tokens": 200, "output_tokens": 75}
+
+
+@patch("extract.llm.load_extraction_schema", return_value={"type": "object"})
 class TestCallLlm:
-    @patch("extract.llm.load_extraction_schema", return_value={"type": "object"})
-    @patch("extract.llm.call_claude", return_value=('{"blocks": []}', {"input_tokens": 100, "output_tokens": 50}))
-    def test_dispatches_to_claude(self, mock_claude, mock_schema):
-        text, usage = call_llm(PROVIDER_ANTHROPIC, "claude-sonnet-4-6", "prompt", "base64pdf")
+    @patch("extract.llm.make_claude_client", side_effect=lambda backend: f"claude-{backend}")
+    @patch("extract.llm.call_claude", side_effect=claude_ok)
+    def test_claude_uses_vertex_first(self, mock_claude, _client, mock_schema):
+        with patch.dict("os.environ", VERTEX_ENV):
+            text, usage = call_llm(PROVIDER_ANTHROPIC, "claude-sonnet-4-6", "prompt", "base64pdf")
+
         mock_schema.assert_called_once_with(PROVIDER_ANTHROPIC)
-        mock_claude.assert_called_once_with("prompt", model="claude-sonnet-4-6", pdf_base64="base64pdf", output_schema={"type": "object"})
+        mock_claude.assert_called_once_with("claude-vertex", "prompt", model="claude-sonnet-4-6",
+                                            pdf_base64="base64pdf", output_schema={"type": "object"})
         assert text == '{"blocks": []}'
         assert usage["input_tokens"] == 100
-        assert usage["output_tokens"] == 50
+        assert usage["llm_backend"] == BACKEND_VERTEX
+        assert "llm_fallback_reason" not in usage
         assert isinstance(usage["duration_ms"], int)
-        assert usage["duration_ms"] >= 0
 
-    @patch("extract.llm.load_extraction_schema", return_value={"type": "object"})
-    @patch("extract.llm.call_gemini", return_value=('{"blocks": []}', {"input_tokens": 200, "output_tokens": 75}))
-    def test_dispatches_to_gemini(self, mock_gemini, mock_schema):
-        text, usage = call_llm(PROVIDER_GOOGLE, "gemini-3.5-flash", "prompt", "base64pdf")
-        mock_schema.assert_called_once_with(PROVIDER_GOOGLE)
-        mock_gemini.assert_called_once_with("prompt", model="gemini-3.5-flash", pdf_base64="base64pdf", output_schema={"type": "object"})
-        assert text == '{"blocks": []}'
-        assert usage["input_tokens"] == 200
-        assert usage["output_tokens"] == 75
-        assert isinstance(usage["duration_ms"], int)
-        assert usage["duration_ms"] >= 0
+    @patch("extract.llm.make_gemini_client", side_effect=lambda backend: f"gemini-{backend}")
+    @patch("extract.llm.call_gemini", side_effect=gemini_ok)
+    def test_gemini_uses_vertex_first(self, mock_gemini, _client, _schema):
+        with patch.dict("os.environ", VERTEX_ENV):
+            _, usage = call_llm(PROVIDER_GOOGLE, "gemini-3.5-flash", "prompt", "base64pdf")
 
-    def test_raises_on_unknown_provider(self):
+        assert mock_gemini.call_args[0][0] == "gemini-vertex"
+        assert usage["llm_backend"] == BACKEND_VERTEX
+
+    @pytest.mark.parametrize("status", [401, 403, 404, 429])
+    @patch("extract.llm.make_claude_client", side_effect=lambda backend: backend)
+    @patch("extract.llm.call_claude")
+    def test_claude_falls_back_on_pre_generation_errors(self, mock_claude, _client, _schema, status):
+        mock_claude.side_effect = [_anthropic_status_error(status), claude_ok()]
+        with patch.dict("os.environ", VERTEX_ENV):
+            _, usage = call_llm(PROVIDER_ANTHROPIC, "claude-sonnet-4-6", "prompt", None)
+
+        assert [c[0][0] for c in mock_claude.call_args_list] == [BACKEND_VERTEX, BACKEND_DIRECT]
+        assert usage["llm_backend"] == BACKEND_DIRECT
+        assert f"HTTP {status}" in usage["llm_fallback_reason"]
+
+    @patch("extract.llm.make_gemini_client", side_effect=lambda backend: backend)
+    @patch("extract.llm.call_gemini")
+    def test_gemini_falls_back_when_model_not_found(self, mock_gemini, _client, _schema):
+        mock_gemini.side_effect = [_gemini_status_error(404, "NOT_FOUND"), gemini_ok()]
+        with patch.dict("os.environ", VERTEX_ENV):
+            _, usage = call_llm(PROVIDER_GOOGLE, "gemini-3.5-flash", "prompt", None)
+
+        assert usage["llm_backend"] == BACKEND_DIRECT
+        assert usage["llm_fallback_reason"] == "HTTP 404: NOT_FOUND"
+
+    @patch("extract.llm.call_claude", side_effect=claude_ok)
+    def test_falls_back_when_vertex_not_configured(self, mock_claude, _schema):
+        with patch.dict("os.environ", {}, clear=False):
+            os.environ.pop("VERTEX_PROJECT_ID", None)
+            os.environ.pop("LLM_BACKEND", None)
+            _, usage = call_llm(PROVIDER_ANTHROPIC, "claude-sonnet-4-6", "prompt", None)
+
+        mock_claude.assert_called_once()  # only the direct attempt reached call_claude
+        assert usage["llm_backend"] == BACKEND_DIRECT
+        assert usage["llm_fallback_reason"] == "vertex not configured"
+
+    @patch("extract.llm.make_claude_client", side_effect=lambda backend: backend)
+    @patch("extract.llm.call_claude", side_effect=google.auth.exceptions.DefaultCredentialsError("no creds"))
+    def test_credential_errors_fall_back(self, mock_claude, _client, _schema):
+        mock_claude.side_effect = [google.auth.exceptions.DefaultCredentialsError("no creds"), claude_ok()]
+        with patch.dict("os.environ", VERTEX_ENV):
+            _, usage = call_llm(PROVIDER_ANTHROPIC, "claude-sonnet-4-6", "prompt", None)
+
+        assert usage["llm_fallback_reason"] == "credentials: DefaultCredentialsError"
+
+    @pytest.mark.parametrize("err", [
+        _anthropic_status_error(500),
+        _anthropic_status_error(400),
+        TimeoutError("took too long"),
+        ValueError("bad output"),
+    ])
+    @patch("extract.llm.make_claude_client", side_effect=lambda backend: backend)
+    @patch("extract.llm.call_claude")
+    def test_other_errors_do_not_fall_back(self, mock_claude, _client, _schema, err):
+        mock_claude.side_effect = err
+        with patch.dict("os.environ", VERTEX_ENV), pytest.raises(type(err)):
+            call_llm(PROVIDER_ANTHROPIC, "claude-sonnet-4-6", "prompt", None)
+
+        assert mock_claude.call_count == 1
+
+    @patch("extract.llm.make_claude_client", side_effect=lambda backend: backend)
+    @patch("extract.llm.call_claude")
+    def test_vertex_only_raises_instead_of_falling_back(self, mock_claude, _client, _schema):
+        mock_claude.side_effect = _anthropic_status_error(404)
+        with patch.dict("os.environ", {**VERTEX_ENV, "LLM_BACKEND": "vertex-only"}), \
+                pytest.raises(anthropic.NotFoundError):
+            call_llm(PROVIDER_ANTHROPIC, "claude-sonnet-4-6", "prompt", None)
+
+        assert mock_claude.call_count == 1
+
+    @patch("extract.llm.make_claude_client", side_effect=lambda backend: backend)
+    @patch("extract.llm.call_claude", side_effect=claude_ok)
+    def test_direct_only_skips_vertex(self, mock_claude, _client, _schema):
+        with patch.dict("os.environ", {**VERTEX_ENV, "LLM_BACKEND": "direct-only"}):
+            _, usage = call_llm(PROVIDER_ANTHROPIC, "claude-sonnet-4-6", "prompt", None)
+
+        assert mock_claude.call_args[0][0] == BACKEND_DIRECT
+        assert usage["llm_backend"] == BACKEND_DIRECT
+        assert "llm_fallback_reason" not in usage
+
+    def test_raises_on_unknown_provider(self, mock_schema):
+        mock_schema.side_effect = ValueError("No extraction schema for provider: openai")
         with pytest.raises(ValueError, match="No extraction schema"):
             call_llm("openai", "gpt-4", "prompt", "base64pdf")
+
+
+class TestVertexClients:
+    @patch("extract.llm.anthropic.AnthropicVertex")
+    def test_claude_vertex_client_uses_project_and_location(self, mock_vertex):
+        with patch.dict("os.environ", VERTEX_ENV):
+            make_claude_client(BACKEND_VERTEX)
+        kwargs = mock_vertex.call_args[1]
+        assert kwargs["project_id"] == "proj"
+        assert kwargs["region"] == "us"
+
+    @patch("extract.llm.genai.Client")
+    def test_gemini_vertex_client_uses_project_and_location(self, mock_client):
+        with patch.dict("os.environ", VERTEX_ENV):
+            make_gemini_client(BACKEND_VERTEX)
+        mock_client.assert_called_once_with(vertexai=True, project="proj", location="us")
+
+    @patch("extract.llm.genai.Client")
+    def test_vertex_location_defaults_to_us(self, mock_client):
+        with patch.dict("os.environ", {"VERTEX_PROJECT_ID": "proj"}):
+            os.environ.pop("VERTEX_LOCATION", None)
+            make_gemini_client(BACKEND_VERTEX)
+        assert mock_client.call_args[1]["location"] == "us"
 
 
 class TestExtractTextWithPdfplumber:

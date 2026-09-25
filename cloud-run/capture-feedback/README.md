@@ -10,7 +10,7 @@ The function runs as a single HTTP request with ten sequential steps:
 
 2. **Fetch translation JSON** — downloads the stored AI output from Drive. This contains the original extraction blocks, translated text, and per-block metadata (alternative translations, flagged terms, glossary cross-checks).
 
-3. **Read the Google Doc** — uses the Docs API to read the two-column table (Original Text / Translated Text) from the reviewer-edited document.
+3. **Read the Google Doc** — uses the Docs API to read the translation table (Block / Original Text (English) / Translated Text (Spanish)) from the reviewer-edited document. Columns are located by header label, so older docs without the Block column still work.
 
 4. **Diff blocks** — compares each AI-translated block against the reviewer's version using word-level diffing (via the `diff` library) and computes character-level and word-level Levenshtein edit distances.
 
@@ -74,7 +74,7 @@ The sidebar uses flat keys like `alt_translations::0`, `terms_flagged_for_clarif
 | `index.js` | HTTP handler — orchestrates the nine steps, returns response |
 | `decisions.js` | Signal classification, tab routing, sidebar key mapping |
 | `differ.js` | Word-level diffing and Levenshtein edit distance |
-| `doc-reader.js` | Reads the two-column translation table from a Google Doc via the Docs API |
+| `doc-reader.js` | Reads the translation table from a Google Doc via the Docs API (finds columns by header label; supports docs with or without the Block column) |
 | `loaders.js` | Drive operations — read translation JSON, store feedback JSON |
 | `glossary-writer.js` | Appends decisions to the derived glossary sheet via Sheets API |
 | `metrics.js` | Acceptance rate, edit distances, time-to-approve |

@@ -13,7 +13,7 @@ __pycache__/
 
 .DS_Store
 scratch.*
-scratch-done/
+scratch/
 node_modules/
 cloud-run/.venv/
 cloud-run/**/fixtures/output/
@@ -31,4 +31,3 @@ drafts/
 
 playground-scripts/
 
-scratch_images/

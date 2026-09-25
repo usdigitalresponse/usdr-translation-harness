@@ -214,6 +214,11 @@ def log_structured(status, provider, model, source_file_id, source_file_name,
         entry["output_tokens"] = usage.get("output_tokens")
         if usage.get("duration_ms") is not None:
             entry["duration_ms"] = usage["duration_ms"]
+        # Which backend served the call (vertex/direct), and why Vertex was
+        # skipped if it fell back — see llm.call_llm.
+        for key in ("llm_backend", "llm_fallback_reason"):
+            if usage.get(key):
+                entry[key] = usage[key]
     if content_metrics:
         entry.update(content_metrics)
     print(json.dumps(entry), flush=True)

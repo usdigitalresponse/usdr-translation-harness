@@ -23,6 +23,11 @@ var DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.
 // Drive property the plain-language-eval function sets on each eval JSON
 // (must match SOURCE_FILE_ID_PROPERTY in cloud-run/plain-language-eval).
 var PL_EVAL_SOURCE_PROPERTY_KEY = "plainLanguageEvalSourceFileId";
+// Search every Shared Drive the user belongs to. The default corpus ("user")
+// only covers files the user created, opened, or had shared directly — so a
+// reviewer who never opened a service-account-written eval file in Drive
+// wouldn't find it, even with Shared Drive access.
+var DRIVE_SEARCH_CORPORA = "allDrives";
 
 // ── Drive property access ────────────────────────────────────────────────
 
@@ -931,6 +936,7 @@ function findLatestResultFileId_(documentId) {
       fields: "files(id)",
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,
+      corpora: DRIVE_SEARCH_CORPORA,
     });
     var files = (res && res.files) || [];
     return files.length ? files[0].id : null;
@@ -1085,6 +1091,7 @@ function findLatestPlEvalFile_() {
       pageSize: 1,
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,
+      corpora: DRIVE_SEARCH_CORPORA,
     });
     return (results.files && results.files[0]) || null;
   } catch (e) {
