@@ -413,6 +413,8 @@ describe("getEvalData (reads latest result from Drive)", () => {
     const q = s.Drive.Files.list.mock.calls[0][0].q;
     expect(q).toContain("documentId");
     expect(q).toContain("doc-123");
+    // Shared Drive files the user never opened aren't in the default corpus
+    expect(s.Drive.Files.list.mock.calls[0][0].corpora).toBe("allDrives");
   });
 
   test("loads and compiles the latest file for the doc", () => {
@@ -489,6 +491,8 @@ describe("getPlainLanguageEvalData (property lookup)", () => {
     expect(q).toContain("key='plainLanguageEvalSourceFileId'");
     expect(q).toContain("value='src-abc'");
     expect(q).not.toContain("in parents");
+    // Shared Drive files the user never opened aren't in the default corpus
+    expect(s.Drive.Files.list.mock.calls[0][0].corpora).toBe("allDrives");
   });
 
   test("returns the newest match with file metadata attached", () => {

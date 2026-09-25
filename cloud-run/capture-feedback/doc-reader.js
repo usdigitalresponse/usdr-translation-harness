@@ -3,19 +3,24 @@ const { google } = require("googleapis");
 // https://developers.google.com/docs/api/reference/rest
 const DOCS_API_VERSION = "v1";
 
+// Header labels Translate writes (translate/doc-writer.js). Columns are located
+// by label, so both layouts work: current docs are
+// | Block | Original Text (English) | Translated Text (Spanish) |,
+// older docs have no Block column.
+const HEADER_BLOCK_ID = "Block";
 const EXPECTED_HEADER_ORIGINAL = "Original Text (English)";
 const EXPECTED_HEADER_TRANSLATED = "Translated Text (Spanish)";
 const MIN_TABLE_ROWS = 2;
-const COL_ORIGINAL = 0;
-const COL_TRANSLATED = 1;
+const NOT_FOUND = -1;
 
 /**
  * Read the side-by-side translation table from a Google Doc.
- * Returns an array of { original_text, translated_text } objects,
- * one per content row (skipping the header row).
+ * Returns an array of { original_text, translated_text, block_id } objects,
+ * one per content row (skipping the header row). block_id is the row's
+ * Block column value, or "" for older docs without that column.
  *
- * Validates that the header row matches the expected labels and that
- * the first content row has non-empty text in both columns.
+ * Locates columns by their header labels (see getColumnLayout) and validates
+ * that the first content row has text.
  */
 async function readDocTable(documentId, auth) {
   const docs = google.docs({ version: DOCS_API_VERSION, auth });
@@ -32,38 +37,50 @@ async function readDocTable(documentId, auth) {
     throw new Error("Table has no content rows (only " + rows.length + " row(s) found)");
   }
 
-  validateHeader(rows[0]);
-  validateFirstContentRow(rows[1]);
+  const cols = getColumnLayout(rows[0]);
+  validateFirstContentRow(rows[1], cols);
 
   const blocks = [];
   for (let i = 1; i < rows.length; i++) {
     const cells = rows[i].tableCells || [];
-    const original = extractCellText(cells[COL_ORIGINAL]);
-    const translated = extractCellText(cells[COL_TRANSLATED]);
-    blocks.push({ original_text: original, translated_text: translated });
+    blocks.push({
+      original_text: extractCellText(cells[cols.original]),
+      translated_text: extractCellText(cells[cols.translated]),
+      block_id: cols.blockId === NOT_FOUND ? "" : extractCellText(cells[cols.blockId]).trim(),
+    });
   }
 
   return blocks;
 }
 
-function validateHeader(headerRow) {
-  const cells = headerRow.tableCells || [];
-  const col0 = extractCellText(cells[COL_ORIGINAL]);
-  const col1 = extractCellText(cells[COL_TRANSLATED]);
+/**
+ * Find the column index of each labeled column in the header row.
+ * @returns {{ original: number, translated: number, blockId: number }}
+ *   blockId is NOT_FOUND for docs without a Block column.
+ * @throws if the English or Spanish column is missing.
+ */
+function getColumnLayout(headerRow) {
+  const labels = (headerRow.tableCells || []).map((cell) => extractCellText(cell).trim());
+  const cols = {
+    original: labels.indexOf(EXPECTED_HEADER_ORIGINAL),
+    translated: labels.indexOf(EXPECTED_HEADER_TRANSLATED),
+    blockId: labels.indexOf(HEADER_BLOCK_ID),
+  };
 
-  if (col0 !== EXPECTED_HEADER_ORIGINAL || col1 !== EXPECTED_HEADER_TRANSLATED) {
+  if (cols.original === NOT_FOUND || cols.translated === NOT_FOUND) {
     throw new Error(
-      "Unexpected table header — expected [\"" + EXPECTED_HEADER_ORIGINAL +
-      "\", \"" + EXPECTED_HEADER_TRANSLATED +
-      "\"] but got [\"" + col0 + "\", \"" + col1 + "\"]"
+      "Unexpected table header — expected columns \"" + EXPECTED_HEADER_ORIGINAL +
+      "\" and \"" + EXPECTED_HEADER_TRANSLATED +
+      "\" but got " + JSON.stringify(labels)
     );
   }
+  return cols;
 }
 
-function validateFirstContentRow(row) {
+function validateFirstContentRow(row, cols) {
   const cells = row.tableCells || [];
-  const original = extractCellText(cells[COL_ORIGINAL]);
-  const translated = extractCellText(cells[COL_TRANSLATED]);
+  const original = extractCellText(cells[cols.original]);
+  const translated = extractCellText(cells[cols.translated]);
 
   if (!original.trim() && !translated.trim()) {
     throw new Error("First content row is empty — table may not contain translation data");
@@ -84,4 +101,4 @@ function extractCellText(cell) {
     .replace(/\n$/, "");
 }
 
-module.exports = { readDocTable };
+module.exports = { readDocTable, getColumnLayout };

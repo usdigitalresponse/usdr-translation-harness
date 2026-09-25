@@ -161,6 +161,9 @@ async function translate(req, res) {
       : {
           driveFileId: t.outputFileId,
           ...(t.usage && { input_tokens: t.usage.input_tokens, output_tokens: t.usage.output_tokens, duration_ms: t.usage.duration_ms }),
+          // Which backend served the call (vertex/direct), and why Vertex was skipped if it fell back
+          ...(t.usage?.llm_backend && { llm_backend: t.usage.llm_backend }),
+          ...(t.usage?.llm_fallback_reason && { llm_fallback_reason: t.usage.llm_fallback_reason }),
           ...promptMetrics,
         };
     logStructured(t.status, t.provider, t.model, sourceFileId, sourceFileName, extra);

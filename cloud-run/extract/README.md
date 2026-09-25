@@ -26,11 +26,28 @@ Fire-and-forget: the function returns immediately and runs extraction on a backg
 | File | Purpose |
 |---|---|
 | `main.py` | HTTP entrypoint, orchestration, Pub/Sub publishing |
-| `llm.py` | LLM provider calls (Anthropic, Google AI) |
+| `llm.py` | LLM provider calls (Claude, Gemini) via Vertex AI or the direct APIs |
 | `loaders.py` | Google Drive and config I/O, output writing |
 | `extraction-schema-claude.json` | JSON schema for validating Claude extraction output |
 | `extraction-schema-gemini.json` | JSON schema for validating Gemini extraction output |
 | `requirements.txt` | Python dependencies |
+
+## LLM backends (Vertex AI migration in progress)
+
+`llm.call_llm` can reach each provider two ways:
+
+- **Vertex AI** — authenticates as the Cloud Run service account (`roles/aiplatform.user`); no API keys. Claude uses `anthropic.AnthropicVertex`; Gemini uses `google-genai` with `vertexai=True`.
+- **Direct** — the Anthropic API and Gemini Developer API, using `ANTHROPIC_API_KEY` / `GEMINI_API_KEY`.
+
+| Env var | Default | Meaning |
+|---|---|---|
+| `LLM_BACKEND` | `vertex-first` | `vertex-first` (fall back to direct), `vertex-only`, or `direct-only` |
+| `VERTEX_PROJECT_ID` | — | GCP project for Vertex calls. If unset, `vertex-first` goes straight to direct |
+| `VERTEX_LOCATION` | `us` | Vertex location (`us`, `global`, or a region) |
+
+With `vertex-first`, a Vertex failure falls back to direct **only** for errors raised before generation: 401/403 (auth), 404 (model not enabled or not offered in the location), 429 (quota), credential errors, or missing `VERTEX_PROJECT_ID`. Timeouts, 5xx, and invalid output are raised as-is. Every successful call logs `llm_backend` (`vertex` / `direct`) and, after a fallback, `llm_fallback_reason` in the structured log entry.
+
+Model IDs in the Model Config sheet are the same for both backends.
 
 ## Dependencies
 
@@ -38,4 +55,4 @@ Fire-and-forget: the function returns immediately and runs extraction on a backg
 - **python-docx** — DOCX text extraction
 - **google-cloud-pubsub** — publishes extraction-complete messages
 - **jsonschema** — validates LLM output structure
-- **anthropic** / **google-genai** — LLM provider SDKs
+- **anthropic[vertex]** / **google-genai** — LLM provider SDKs (the `vertex` extra adds Claude-on-Vertex auth)

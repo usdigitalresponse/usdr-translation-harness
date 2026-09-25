@@ -63,7 +63,7 @@ Selecting "View Plain Language Eval" opens a sidebar displaying the plain langua
 2. Queries Drive for files with the `plainLanguageEvalSourceFileId` property equal to that ID. The `plain-language-eval` function sets this property on every successfully parsed eval JSON it writes.
 3. Returns the most recent match (ordered by `modifiedTime desc`)
 
-The lookup uses a Drive property rather than a folder + filename search so it keeps working after the orchestrator's archive sweep moves eval files into an Archive subfolder. No doc property links the translated doc to the eval JSON because the two services run in parallel with no guaranteed ordering; the source file ID is the shared key. If no eval is found, the sidebar shows a "No evaluation found" message.
+The lookup uses a Drive property rather than a folder + filename search so it keeps working after the orchestrator's archive sweep moves eval files into an Archive subfolder. Both this lookup and the Eval Quality result lookup search with `corpora: "allDrives"`: the default corpus only covers files the user created, opened, or had shared directly, so a reviewer who never opened a service-account-written file in Drive wouldn't find it. No doc property links the translated doc to the eval JSON because the two services run in parallel with no guaranteed ordering; the source file ID is the shared key. If no eval is found, the sidebar shows a "No evaluation found" message.
 
 For preview/testing with an untagged sample file, set the `SANDBOX_PL_EVAL_FILE_ID` script property to the eval JSON's file ID; the sidebar loads that file directly and skips the query.
 

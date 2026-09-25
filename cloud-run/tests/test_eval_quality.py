@@ -4,8 +4,12 @@ import os
 from http import HTTPStatus
 from unittest.mock import MagicMock, patch
 
+import anthropic
+import google.auth.exceptions
+import httpx
 import jsonschema
 import pytest
+from google.genai import errors as genai_errors
 
 from eval.quality.main import (
     build_eval_prompt, build_result_row, eval_quality, evaluate_with_model,
@@ -14,7 +18,8 @@ from eval.quality.main import (
     write_combined_result, CRITERIA, EVAL_ROLE, PIPELINE_STAGE, STATUS_FAILED, STATUS_OK,
 )
 from eval.quality.quality_llm import (
-    call_llm, load_eval_schema, PROVIDER_ANTHROPIC, PROVIDER_GOOGLE,
+    call_llm, load_eval_schema, make_claude_client, make_gemini_client,
+    PROVIDER_ANTHROPIC, PROVIDER_GOOGLE, BACKEND_VERTEX, BACKEND_DIRECT,
 )
 from eval.quality.quality_loaders import (
     append_result_row, parse_drive_file_id, _extract_structural_text,
@@ -625,29 +630,149 @@ class TestRunQualityEval:
             run_quality_eval("file-1")
 
 
+VERTEX_ENV = {"VERTEX_PROJECT_ID": "proj", "VERTEX_LOCATION": "us"}
+
+
+def _anthropic_status_error(status):
+    request = httpx.Request("POST", "https://example.test/v1/messages")
+    response = httpx.Response(status, request=request)
+    error_classes = {
+        401: anthropic.AuthenticationError,
+        403: anthropic.PermissionDeniedError,
+        404: anthropic.NotFoundError,
+        429: anthropic.RateLimitError,
+    }
+    cls = error_classes.get(status, anthropic.InternalServerError)
+    return cls("error", response=response, body=None)
+
+
+def _llm_ok(*_args, **_kwargs):
+    # Fresh dict per call: call_llm adds fields to the usage dict it gets back
+    return "{}", {"input_tokens": 1}
+
+
 class TestCallLlm:
-    @patch("eval.quality.quality_llm.call_claude", return_value=("{}", {"input_tokens": 1}))
-    def test_dispatches_to_claude_with_claude_schema(self, mock_claude):
-        text, usage = call_llm(PROVIDER_ANTHROPIC, "claude-opus-4-8", "prompt")
-        schema = mock_claude.call_args[1]["output_schema"]
+    @patch("eval.quality.quality_llm.make_claude_client", side_effect=lambda backend: backend)
+    @patch("eval.quality.quality_llm.call_claude", side_effect=_llm_ok)
+    def test_claude_uses_vertex_first_with_claude_schema(self, mock_claude, _client):
+        with patch.dict("os.environ", VERTEX_ENV):
+            text, usage = call_llm(PROVIDER_ANTHROPIC, "claude-opus-4-8", "prompt")
 
         assert text == "{}"
-        assert usage == {"input_tokens": 1}
+        assert mock_claude.call_args[0][0] == BACKEND_VERTEX
         assert mock_claude.call_args[1]["model"] == "claude-opus-4-8"
-        assert schema["additionalProperties"] is False
+        assert mock_claude.call_args[1]["output_schema"]["additionalProperties"] is False
+        assert usage == {"input_tokens": 1, "llm_backend": BACKEND_VERTEX}
 
-    @patch("eval.quality.quality_llm.call_gemini", return_value=("{}", {"output_tokens": 2}))
-    def test_dispatches_to_gemini_with_gemini_schema(self, mock_gemini):
-        text, usage = call_llm(PROVIDER_GOOGLE, "gemini-3.5-flash", "prompt")
-        schema = mock_gemini.call_args[1]["output_schema"]
+    @patch("eval.quality.quality_llm.make_gemini_client", side_effect=lambda backend: backend)
+    @patch("eval.quality.quality_llm.call_gemini", side_effect=_llm_ok)
+    def test_gemini_uses_vertex_first_with_gemini_schema(self, mock_gemini, _client):
+        with patch.dict("os.environ", VERTEX_ENV):
+            _, usage = call_llm(PROVIDER_GOOGLE, "gemini-3.5-flash", "prompt")
 
-        assert text == "{}"
-        assert usage == {"output_tokens": 2}
-        assert "additionalProperties" not in schema
+        assert mock_gemini.call_args[0][0] == BACKEND_VERTEX
+        assert "additionalProperties" not in mock_gemini.call_args[1]["output_schema"]
+        assert usage["llm_backend"] == BACKEND_VERTEX
+
+    @pytest.mark.parametrize("status", [401, 403, 404, 429])
+    @patch("eval.quality.quality_llm.make_claude_client", side_effect=lambda backend: backend)
+    @patch("eval.quality.quality_llm.call_claude")
+    def test_claude_falls_back_on_pre_generation_errors(self, mock_claude, _client, status):
+        mock_claude.side_effect = [_anthropic_status_error(status), _llm_ok()]
+        with patch.dict("os.environ", VERTEX_ENV):
+            _, usage = call_llm(PROVIDER_ANTHROPIC, "claude-opus-4-8", "prompt")
+
+        assert [c[0][0] for c in mock_claude.call_args_list] == [BACKEND_VERTEX, BACKEND_DIRECT]
+        assert usage["llm_backend"] == BACKEND_DIRECT
+        assert f"HTTP {status}" in usage["llm_fallback_reason"]
+
+    @patch("eval.quality.quality_llm.make_gemini_client", side_effect=lambda backend: backend)
+    @patch("eval.quality.quality_llm.call_gemini")
+    def test_gemini_falls_back_when_model_not_found(self, mock_gemini, _client):
+        mock_gemini.side_effect = [
+            genai_errors.ClientError(404, {"error": {"code": 404, "message": "x", "status": "NOT_FOUND"}}),
+            _llm_ok(),
+        ]
+        with patch.dict("os.environ", VERTEX_ENV):
+            _, usage = call_llm(PROVIDER_GOOGLE, "gemini-3.5-flash", "prompt")
+
+        assert usage["llm_backend"] == BACKEND_DIRECT
+        assert usage["llm_fallback_reason"] == "HTTP 404: NOT_FOUND"
+
+    @patch("eval.quality.quality_llm.call_claude", side_effect=_llm_ok)
+    def test_falls_back_when_vertex_not_configured(self, mock_claude):
+        with patch.dict("os.environ", {}):
+            os.environ.pop("VERTEX_PROJECT_ID", None)
+            os.environ.pop("LLM_BACKEND", None)
+            _, usage = call_llm(PROVIDER_ANTHROPIC, "claude-opus-4-8", "prompt")
+
+        mock_claude.assert_called_once()
+        assert usage["llm_fallback_reason"] == "vertex not configured"
+
+    @patch("eval.quality.quality_llm.make_claude_client", side_effect=lambda backend: backend)
+    @patch("eval.quality.quality_llm.call_claude")
+    def test_credential_errors_fall_back(self, mock_claude, _client):
+        mock_claude.side_effect = [google.auth.exceptions.DefaultCredentialsError("no creds"), _llm_ok()]
+        with patch.dict("os.environ", VERTEX_ENV):
+            _, usage = call_llm(PROVIDER_ANTHROPIC, "claude-opus-4-8", "prompt")
+
+        assert usage["llm_fallback_reason"] == "credentials: DefaultCredentialsError"
+
+    @pytest.mark.parametrize("err", [
+        _anthropic_status_error(500),
+        _anthropic_status_error(400),
+        TimeoutError("took too long"),
+    ])
+    @patch("eval.quality.quality_llm.make_claude_client", side_effect=lambda backend: backend)
+    @patch("eval.quality.quality_llm.call_claude")
+    def test_other_errors_do_not_fall_back(self, mock_claude, _client, err):
+        mock_claude.side_effect = err
+        with patch.dict("os.environ", VERTEX_ENV), pytest.raises(type(err)):
+            call_llm(PROVIDER_ANTHROPIC, "claude-opus-4-8", "prompt")
+
+        assert mock_claude.call_count == 1
+
+    @patch("eval.quality.quality_llm.make_claude_client", side_effect=lambda backend: backend)
+    @patch("eval.quality.quality_llm.call_claude")
+    def test_vertex_only_raises_instead_of_falling_back(self, mock_claude, _client):
+        mock_claude.side_effect = _anthropic_status_error(404)
+        with patch.dict("os.environ", {**VERTEX_ENV, "LLM_BACKEND": "vertex-only"}), \
+                pytest.raises(anthropic.NotFoundError):
+            call_llm(PROVIDER_ANTHROPIC, "claude-opus-4-8", "prompt")
+
+        assert mock_claude.call_count == 1
+
+    @patch("eval.quality.quality_llm.make_claude_client", side_effect=lambda backend: backend)
+    @patch("eval.quality.quality_llm.call_claude", side_effect=_llm_ok)
+    def test_direct_only_skips_vertex(self, mock_claude, _client):
+        with patch.dict("os.environ", {**VERTEX_ENV, "LLM_BACKEND": "direct-only"}):
+            _, usage = call_llm(PROVIDER_ANTHROPIC, "claude-opus-4-8", "prompt")
+
+        assert mock_claude.call_args[0][0] == BACKEND_DIRECT
+        assert "llm_fallback_reason" not in usage
 
     def test_raises_on_unknown_provider(self):
         with pytest.raises(ValueError, match="No eval schema"):
             call_llm("openai", "gpt-4", "prompt")
+
+
+class TestVertexClients:
+    @patch("eval.quality.quality_llm.anthropic.AnthropicVertex")
+    def test_claude_vertex_client_uses_project_and_location(self, mock_vertex):
+        with patch.dict("os.environ", VERTEX_ENV):
+            make_claude_client(BACKEND_VERTEX)
+        assert mock_vertex.call_args[1]["project_id"] == "proj"
+        assert mock_vertex.call_args[1]["region"] == "us"
+
+    @patch("eval.quality.quality_llm.genai.Client")
+    def test_gemini_vertex_client_keeps_timeout(self, mock_client):
+        with patch.dict("os.environ", VERTEX_ENV):
+            make_gemini_client(BACKEND_VERTEX)
+        kwargs = mock_client.call_args[1]
+        assert kwargs["vertexai"] is True
+        assert kwargs["project"] == "proj"
+        assert kwargs["location"] == "us"
+        assert kwargs["http_options"].timeout == 240_000
 
 
 class TestLogStructured:

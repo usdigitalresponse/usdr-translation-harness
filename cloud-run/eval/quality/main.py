@@ -139,6 +139,11 @@ def log_structured(status, provider, model, translation_file_id, *, document_id=
     if usage:
         entry["input_tokens"] = usage.get("input_tokens")
         entry["output_tokens"] = usage.get("output_tokens")
+        # Which backend served the call (vertex/direct), and why Vertex was
+        # skipped if it fell back — see quality_llm.call_llm.
+        for key in ("llm_backend", "llm_fallback_reason"):
+            if usage.get(key):
+                entry[key] = usage[key]
     if duration_ms is not None:
         entry["duration_ms"] = duration_ms
     if error:
