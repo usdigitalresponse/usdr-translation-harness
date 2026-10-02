@@ -45,7 +45,7 @@ function buildOutputFilename(baseName, model) {
   return `${baseName}_${safeModel}_${timestamp}_plain-language-eval.json`;
 }
 
-async function runEval(fileId, fileName, mimeType) {
+async function runEval(fileId, fileName, mimeType, submittedByEmail = "") {
   const config = await loadConfig();
   const activeModels = config.models.filter(
     (m) => m.role === EVAL_ROLE && m.active
@@ -117,6 +117,8 @@ async function runEval(fileId, fileName, mimeType) {
     if (r.status === "fulfilled") {
       const { outputFileId, usage } = r.value;
       logStructured(STATUS_COMPLETE, provider, model, fileId, fileName, {
+        // Who dropped the file in the input folder (Drive lastModifyingUser, from the Orchestrator)
+        ...(submittedByEmail && { submittedByEmail }),
         driveFileId: outputFileId,
         input_tokens: usage.input_tokens,
         output_tokens: usage.output_tokens,
@@ -142,6 +144,7 @@ async function runEval(fileId, fileName, mimeType) {
     } else {
       const error = r.reason?.message || String(r.reason);
       logStructured(STATUS_FAILED, provider, model, fileId, fileName, {
+        ...(submittedByEmail && { submittedByEmail }),
         error,
       });
       try {
@@ -163,7 +166,7 @@ async function runEval(fileId, fileName, mimeType) {
 
 async function plainLanguageEval(req, res) {
   const body = req.body || {};
-  const { fileId, fileName, mimeType = MIME_PDF } = body;
+  const { fileId, fileName, mimeType = MIME_PDF, submittedByEmail = "" } = body;
 
   console.log(
     "Received request: fileId=%s, fileName=%s, mimeType=%s",
@@ -183,7 +186,7 @@ async function plainLanguageEval(req, res) {
     .status(StatusCodes.ACCEPTED)
     .json({ status: "accepted", fileId, fileName });
 
-  runEval(fileId, fileName, mimeType).catch((err) => {
+  runEval(fileId, fileName, mimeType, submittedByEmail).catch((err) => {
     console.error("Plain language eval failed:", err);
   });
 }

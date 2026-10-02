@@ -12,7 +12,7 @@ from extract.main import (
     extract, extract_text_with_pdfplumber, get_active_models,
     load_pdf_bytes, build_extraction_prompt, publish_extraction_complete,
     log_extraction_result, log_extraction_failure, text_to_extraction_json, run_extraction,
-    run_pdf_extraction,
+    run_pdf_extraction, log_structured, record_failure,
     EXTRACT_ROLE, PUBSUB_TOPIC_ENV_VAR, STATUS_EXTRACTED, STATUS_FAILED,
     MIME_PDF, MIME_GOOGLE_DOCS, MIME_DOCX, TEXT_MIME_TYPES,
     PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
@@ -618,3 +618,35 @@ class TestExtractionFailureRows:
     @patch("extract.main.run_pdf_extraction", side_effect=RuntimeError("boom"))
     def test_sheet_write_failure_does_not_raise(self, _run, _fail):
         run_extraction("abc", "a.pdf", MIME_PDF)  # must not raise
+
+
+class TestSubmitterInLogs:
+    def _entries(self, capsys):
+        out = capsys.readouterr().out
+        return [json.loads(line) for line in out.splitlines() if line.startswith("{")]
+
+    def test_log_structured_includes_submitter(self, capsys):
+        log_structured(STATUS_EXTRACTED, "google", "gemini", "src", "a.pdf",
+                       submitted_by_email="person@example.gov")
+        [entry] = self._entries(capsys)
+        assert entry["submittedByEmail"] == "person@example.gov"
+
+    def test_log_structured_omits_submitter_when_empty(self, capsys):
+        log_structured(STATUS_EXTRACTED, "google", "gemini", "src", "a.pdf")
+        [entry] = self._entries(capsys)
+        assert "submittedByEmail" not in entry
+
+    @patch("extract.main.log_extraction_failure")
+    def test_record_failure_logs_submitter(self, _sheet, capsys):
+        record_failure("google", "gemini", "src", "a.pdf", "LLM call failed",
+                       submitted_by_email="person@example.gov")
+        [entry] = self._entries(capsys)
+        assert entry["status"] == STATUS_FAILED
+        assert entry["submittedByEmail"] == "person@example.gov"
+
+    @patch("extract.main.log_extraction_failure")
+    @patch("extract.main.run_pdf_extraction", side_effect=RuntimeError("boom"))
+    def test_run_extraction_catch_all_logs_submitter(self, _run, _sheet, capsys):
+        run_extraction("src", "a.pdf", MIME_PDF, submitted_by_email="person@example.gov")
+        entries = self._entries(capsys)
+        assert entries[-1]["submittedByEmail"] == "person@example.gov"

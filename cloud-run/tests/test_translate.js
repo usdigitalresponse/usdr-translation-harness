@@ -344,6 +344,51 @@ describe("translate", () => {
 
 // --- formatGlossaryEntry ---
 
+describe("translate structured logs", () => {
+  function mockRes() {
+    return { status: jest.fn().mockReturnThis(), json: jest.fn() };
+  }
+
+  function structuredLogs(spy) {
+    return spy.mock.calls
+      .map((c) => { try { return JSON.parse(c[0]); } catch { return null; } })
+      .filter((e) => e && e.pipeline_stage === "translate");
+  }
+
+  beforeEach(() => {
+    loadExtractionJson.mockResolvedValue({ blocks: [{ id: "b01", text: "Hello", translate: true }] });
+    loadDoc.mockResolvedValue("Translate. [Paste content to be translated in the area below]");
+    loadSheet.mockResolvedValue([]);
+    loadConfig.mockResolvedValue({
+      models: [{ role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
+    });
+    callLlm.mockResolvedValue({ text: '{"translated_text": "Hola"}', usage: { input_tokens: 1, output_tokens: 1, duration_ms: 1 } });
+    writeOutput.mockResolvedValue("output-file-id");
+  });
+
+  test("includes the submitter's email when provided", async () => {
+    const spy = jest.spyOn(console, "log").mockImplementation();
+    await translate(
+      { body: { extractionFileId: "f", sourceFileName: "a.pdf", sourceFileId: "s", submittedByEmail: "person@example.gov" } },
+      mockRes()
+    );
+    const [entry] = structuredLogs(spy);
+    spy.mockRestore();
+
+    expect(entry.submittedByEmail).toBe("person@example.gov");
+  });
+
+  test("omits the field when there's no submitter", async () => {
+    const spy = jest.spyOn(console, "log").mockImplementation();
+    await translate({ body: { extractionFileId: "f", sourceFileName: "a.pdf", sourceFileId: "s" } }, mockRes());
+    const [entry] = structuredLogs(spy);
+    spy.mockRestore();
+
+    expect(entry).toBeDefined();
+    expect(entry).not.toHaveProperty("submittedByEmail");
+  });
+});
+
 describe("formatGlossaryEntry", () => {
   test("returns null for row with no english term", () => {
     expect(formatGlossaryEntry({})).toBeNull();

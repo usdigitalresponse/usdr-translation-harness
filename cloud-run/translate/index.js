@@ -166,7 +166,11 @@ async function translate(req, res) {
           ...(t.usage?.llm_fallback_reason && { llm_fallback_reason: t.usage.llm_fallback_reason }),
           ...promptMetrics,
         };
-    logStructured(t.status, t.provider, t.model, sourceFileId, sourceFileName, extra);
+    // Who dropped the file in the input folder (Drive lastModifyingUser, from the Orchestrator)
+    logStructured(t.status, t.provider, t.model, sourceFileId, sourceFileName, {
+      ...extra,
+      ...(submittedByEmail && { submittedByEmail }),
+    });
     try {
       await logTranslationResult(sourceFileId, sourceFileName, t);
     } catch (err) {
