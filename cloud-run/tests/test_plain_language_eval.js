@@ -536,6 +536,61 @@ describe("writeOutput", () => {
   });
 });
 
+describe("runEval structured logs", () => {
+  function structuredLogs(spy) {
+    return spy.mock.calls
+      .map((c) => { try { return JSON.parse(c[0]); } catch { return null; } })
+      .filter((e) => e && e.pipeline_stage === "plain-language-eval");
+  }
+
+  beforeEach(() => {
+    loadConfig.mockResolvedValue({
+      models: [{ role: "plain-language-eval", provider: "google", model: "gemini", active: true }],
+    });
+    fetchDocumentContent.mockResolvedValue({ text: null, pdfBase64: "pdf" });
+    loadDoc.mockResolvedValue("Evaluate.");
+    writeOutput.mockResolvedValue("output-id");
+  });
+
+  test("includes the submitter's email on success", async () => {
+    callLlm.mockResolvedValue({ text: "{}", usage: { input_tokens: 1, output_tokens: 1, duration_ms: 1 } });
+    const spy = jest.spyOn(console, "log").mockImplementation();
+    await runEval("file123", "a.pdf", MIME_PDF, "person@example.gov");
+    const [entry] = structuredLogs(spy);
+    spy.mockRestore();
+
+    expect(entry.status).toBe("pl-eval-complete");
+    expect(entry.submittedByEmail).toBe("person@example.gov");
+  });
+
+  test("includes the submitter's email on failure", async () => {
+    callLlm.mockRejectedValue(new Error("boom"));
+    const logSpy = jest.spyOn(console, "log").mockImplementation();
+    const errSpy = jest.spyOn(console, "error").mockImplementation();
+    await runEval("file123", "a.pdf", MIME_PDF, "person@example.gov");
+    const [entry] = structuredLogs(logSpy);
+    logSpy.mockRestore();
+    errSpy.mockRestore();
+
+    expect(entry.status).toBe("pl-eval-failed");
+    expect(entry.submittedByEmail).toBe("person@example.gov");
+  });
+
+  test("handler passes submittedByEmail through to the logs", async () => {
+    callLlm.mockResolvedValue({ text: "{}", usage: { input_tokens: 1, output_tokens: 1, duration_ms: 1 } });
+    const spy = jest.spyOn(console, "log").mockImplementation();
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    await plainLanguageEval({ body: { fileId: "file123", fileName: "a.pdf", submittedByEmail: "person@example.gov" } }, res);
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+    const entries = structuredLogs(spy);
+    spy.mockRestore();
+
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries[0].submittedByEmail).toBe("person@example.gov");
+  });
+});
+
 describe("formatTimestamp", () => {
   test("produces MM/DD/YYYY HH:MM with no comma", () => {
     const result = formatTimestamp(new Date(2026, 6, 8, 14, 5));

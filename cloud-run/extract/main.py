@@ -194,7 +194,8 @@ def save_extraction_results(file_name, model, raw_response, source_file_id):
 
 
 def log_structured(status, provider, model, source_file_id, source_file_name,
-                    drive_file_id="", error="", usage=None, content_metrics=None):
+                    drive_file_id="", error="", usage=None, content_metrics=None,
+                    submitted_by_email=""):
     entry = {
         "severity": "ERROR" if status == STATUS_FAILED else "INFO",
         "message": f"extraction {status} for {provider}/{model}",
@@ -205,6 +206,10 @@ def log_structured(status, provider, model, source_file_id, source_file_name,
         "sourceFileId": source_file_id,
         "sourceFileName": source_file_name,
     }
+    if submitted_by_email:
+        # Who dropped the file in the input folder (Drive lastModifyingUser,
+        # passed from the Orchestrator)
+        entry["submittedByEmail"] = submitted_by_email
     if drive_file_id:
         entry["driveFileId"] = drive_file_id
     if error:
@@ -282,11 +287,11 @@ def log_extraction_failure(file_id, file_name, provider, model, error, usage=Non
         logger.info("Logged extraction failure for %s/%s to processing log", provider, model)
 
 
-def record_failure(provider, model, file_id, file_name, error, usage=None):
+def record_failure(provider, model, file_id, file_name, error, usage=None, submitted_by_email=""):
     """Log a failure to Cloud Run logs and the processing log sheet. A sheet
     write failure is logged but never raised, so it can't mask the original error."""
     log_structured(STATUS_FAILED, provider, model, file_id, file_name,
-                   error=error, usage=usage)
+                   error=error, usage=usage, submitted_by_email=submitted_by_email)
     try:
         log_extraction_failure(file_id, file_name, provider, model, error, usage=usage)
     except Exception:
@@ -337,7 +342,7 @@ def run_text_extraction(file_id, file_name, mime_type, content_type="public_flye
     except Exception:
         logger.exception("Failed to fetch text for %s", file_name)
         record_failure(PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
-                       file_id, file_name, "Text fetch failed")
+                       file_id, file_name, "Text fetch failed", submitted_by_email=submitted_by_email)
         return
 
     try:
@@ -348,7 +353,7 @@ def run_text_extraction(file_id, file_name, mime_type, content_type="public_flye
     except Exception:
         logger.exception("Failed to save text extraction for %s", file_name)
         record_failure(PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
-                       file_id, file_name, "Text extraction save failed")
+                       file_id, file_name, "Text extraction save failed", submitted_by_email=submitted_by_email)
         return
 
     enriched = {
@@ -362,7 +367,7 @@ def run_text_extraction(file_id, file_name, mime_type, content_type="public_flye
     metrics = compute_content_metrics(parsed, "text_passthrough")
     log_structured(STATUS_EXTRACTED, PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
                    file_id, file_name, drive_file_id=drive_file_id,
-                   content_metrics=metrics)
+                   content_metrics=metrics, submitted_by_email=submitted_by_email)
     try:
         log_extraction_result(file_id, file_name, enriched)
     except Exception:
@@ -408,7 +413,7 @@ def run_pdf_extraction(file_id, file_name, content_type="public_flyer", submitte
                         usage.get("input_tokens", 0), usage.get("output_tokens", 0))
         except Exception:
             logger.exception("LLM call failed for %s/%s", provider, model)
-            record_failure(provider, model, file_id, file_name, "LLM call failed")
+            record_failure(provider, model, file_id, file_name, "LLM call failed", submitted_by_email=submitted_by_email)
             continue
 
         result = save_extraction_results(file_name, model, raw_response, source_file_id=file_id)
@@ -418,14 +423,14 @@ def run_pdf_extraction(file_id, file_name, content_type="public_flyer", submitte
             metrics = compute_content_metrics(result["parsed"], extraction_method)
             log_structured(STATUS_EXTRACTED, provider, model, file_id, file_name,
                            drive_file_id=result["driveFileId"], usage=usage,
-                           content_metrics=metrics)
+                           content_metrics=metrics, submitted_by_email=submitted_by_email)
             try:
                 log_extraction_result(file_id, file_name, enriched, usage=usage)
             except Exception:
                 logger.exception("Failed to log extraction result to processing sheet")
         else:
             record_failure(provider, model, file_id, file_name,
-                           "Extraction parse/validation failed", usage=usage)
+                           "Extraction parse/validation failed", usage=usage, submitted_by_email=submitted_by_email)
 
     publish_extraction_complete(file_id, file_name, extraction_results, content_type, submitted_by_email)
 
@@ -437,7 +442,7 @@ def run_extraction(file_id, file_name, mime_type, content_type="public_flyer", s
     if mime_type not in SUPPORTED_MIME_TYPES:
         logger.error("Unsupported MIME type '%s' for %s", mime_type, file_name)
         record_failure(PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
-                       file_id, file_name, f"Unsupported MIME type: {mime_type}")
+                       file_id, file_name, f"Unsupported MIME type: {mime_type}", submitted_by_email=submitted_by_email)
         return
 
     try:
@@ -450,7 +455,7 @@ def run_extraction(file_id, file_name, mime_type, content_type="public_flyer", s
         # prompt doc, Pub/Sub publish). Without this the background thread dies
         # with no sheet row.
         logger.exception("Extraction failed for %s", file_name)
-        record_failure("", "", file_id, file_name, f"Extraction failed: {e}")
+        record_failure("", "", file_id, file_name, f"Extraction failed: {e}", submitted_by_email=submitted_by_email)
 
 
 @functions_framework.http
