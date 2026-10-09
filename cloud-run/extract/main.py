@@ -24,6 +24,7 @@ from loaders import load_config, load_doc, write_output, DRIVE_API_VERSION, SHEE
 EXTRACT_ROLE = "extract"
 PUBSUB_TOPIC_ENV_VAR = "PUBSUB_TOPIC_EXTRACTION_COMPLETE"
 PROCESSING_LOG_SHEET_NAME = "ProcessingLog"
+PROCESSING_LOG_COLUMNS = "A:J"
 STATUS_EXTRACTED = "extracted"
 STATUS_FAILED = "failed"
 
@@ -246,7 +247,7 @@ def _append_processing_log_row(row):
     service = _get_sheets_service()
     service.spreadsheets().values().append(
         spreadsheetId=sheet_id,
-        range=f"{PROCESSING_LOG_SHEET_NAME}!A:I",
+        range=f"{PROCESSING_LOG_SHEET_NAME}!{PROCESSING_LOG_COLUMNS}",
         valueInputOption="RAW",
         body={"values": [row]},
     ).execute()
@@ -254,15 +255,15 @@ def _append_processing_log_row(row):
 
 
 def _processing_log_row(file_id, file_name, status, provider, model,
-                        duration_ms="", error="", output_file_id=""):
-    """Processing log columns A–I: File ID, File Name, Processed At, Status,
-    Duration (ms), Error Detail, Output File ID, Provider, Model."""
+                        duration_ms="", error="", output_file_id="", submitted_by_email=""):
+    """Processing log columns A–J: File ID, File Name, Processed At, Status,
+    Duration (ms), Error Detail, Output File ID, Provider, Model, Submitted By."""
     completed_at = datetime.now().strftime("%m/%d/%Y %H:%M")
     return [file_id, file_name, completed_at, status, duration_ms, error,
-            output_file_id, provider, model]
+            output_file_id, provider, model, submitted_by_email]
 
 
-def log_extraction_result(file_id, file_name, extraction_result, usage=None):
+def log_extraction_result(file_id, file_name, extraction_result, usage=None, submitted_by_email=""):
     """Append an `extracted` row. Duration is the LLM call time from `usage`
     (blank for text passthrough, which makes no LLM call)."""
     duration_ms = (usage or {}).get("duration_ms", "")
@@ -270,6 +271,7 @@ def log_extraction_result(file_id, file_name, extraction_result, usage=None):
         file_id, file_name, STATUS_EXTRACTED,
         extraction_result["provider"], extraction_result["model"],
         duration_ms=duration_ms, output_file_id=extraction_result["driveFileId"],
+        submitted_by_email=submitted_by_email,
     )
     if _append_processing_log_row(row):
         logger.info(
@@ -278,11 +280,13 @@ def log_extraction_result(file_id, file_name, extraction_result, usage=None):
         )
 
 
-def log_extraction_failure(file_id, file_name, provider, model, error, usage=None):
+def log_extraction_failure(file_id, file_name, provider, model, error, usage=None,
+                           submitted_by_email=""):
     """Append a `failed` row with the error in Error Detail."""
     duration_ms = (usage or {}).get("duration_ms", "")
     row = _processing_log_row(file_id, file_name, STATUS_FAILED, provider, model,
-                              duration_ms=duration_ms, error=error)
+                              duration_ms=duration_ms, error=error,
+                              submitted_by_email=submitted_by_email)
     if _append_processing_log_row(row):
         logger.info("Logged extraction failure for %s/%s to processing log", provider, model)
 
@@ -293,7 +297,8 @@ def record_failure(provider, model, file_id, file_name, error, usage=None, submi
     log_structured(STATUS_FAILED, provider, model, file_id, file_name,
                    error=error, usage=usage, submitted_by_email=submitted_by_email)
     try:
-        log_extraction_failure(file_id, file_name, provider, model, error, usage=usage)
+        log_extraction_failure(file_id, file_name, provider, model, error, usage=usage,
+                               submitted_by_email=submitted_by_email)
     except Exception:
         logger.exception("Failed to log extraction failure to processing sheet")
 
@@ -369,7 +374,7 @@ def run_text_extraction(file_id, file_name, mime_type, content_type="public_flye
                    file_id, file_name, drive_file_id=drive_file_id,
                    content_metrics=metrics, submitted_by_email=submitted_by_email)
     try:
-        log_extraction_result(file_id, file_name, enriched)
+        log_extraction_result(file_id, file_name, enriched, submitted_by_email=submitted_by_email)
     except Exception:
         logger.exception("Failed to log extraction result to processing sheet")
 
@@ -425,7 +430,8 @@ def run_pdf_extraction(file_id, file_name, content_type="public_flyer", submitte
                            drive_file_id=result["driveFileId"], usage=usage,
                            content_metrics=metrics, submitted_by_email=submitted_by_email)
             try:
-                log_extraction_result(file_id, file_name, enriched, usage=usage)
+                log_extraction_result(file_id, file_name, enriched, usage=usage,
+                                      submitted_by_email=submitted_by_email)
             except Exception:
                 logger.exception("Failed to log extraction result to processing sheet")
         else:

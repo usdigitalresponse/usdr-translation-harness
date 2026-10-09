@@ -11,6 +11,7 @@ const MIN_SHEET_ROWS = 2;
 const COL_ACTIVE = "active";
 const COL_PROVIDER = "provider";
 const PROCESSING_LOG_TAB_NAME = "ProcessingLog";
+const PROCESSING_LOG_COLUMNS = "A:J";
 
 const DOCS_API_VERSION = "v1";
 const SHEETS_API_VERSION = "v4";
@@ -214,11 +215,12 @@ async function logEvalResult(sourceFileId, sourceFileName, evalResult) {
     evalResult.outputFileId || "",
     evalResult.provider,
     evalResult.model,
+    evalResult.submittedByEmail || "",
   ];
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: sheetId,
-    range: `${PROCESSING_LOG_TAB_NAME}!A:I`,
+    range: `${PROCESSING_LOG_TAB_NAME}!${PROCESSING_LOG_COLUMNS}`,
     valueInputOption: "RAW",
     requestBody: { values: [row] },
   });

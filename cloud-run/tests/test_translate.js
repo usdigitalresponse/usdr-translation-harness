@@ -766,11 +766,12 @@ jest.mock("../translate/node_modules/googleapis", () => ({
 const { logTranslationResult: actualLogTranslationResult } = jest.requireActual("../translate/loaders.js");
 
 describe("logTranslationResult", () => {
-  // Processing log columns (A–I): File ID, File Name, Processed At, Status,
-  // Duration (ms), Error Detail, Output File ID, Provider, Model
+  // Processing log columns (A–J): File ID, File Name, Processed At, Status,
+  // Duration (ms), Error Detail, Output File ID, Provider, Model, Submitted By
   const COL_DURATION = 4;
   const COL_ERROR = 5;
   const COL_OUTPUT_FILE_ID = 6;
+  const COL_SUBMITTED_BY = 9;
   let savedSheetId;
 
   beforeEach(() => {
@@ -803,13 +804,14 @@ describe("logTranslationResult", () => {
   test("writes LLM duration and output file on success", async () => {
     await actualLogTranslationResult("src-1", "a.pdf", {
       status: "translated", outputFileId: "out-1", provider: "google", model: "gemini",
-      usage: { duration_ms: 1234 },
+      usage: { duration_ms: 1234 }, submittedByEmail: "person@example.gov",
     });
 
     const row = loggedRow();
-    expect(row).toHaveLength(9);
+    expect(row).toHaveLength(10);
     expect(row[COL_DURATION]).toBe(1234);
     expect(row[COL_ERROR]).toBe("");
     expect(row[COL_OUTPUT_FILE_ID]).toBe("out-1");
+    expect(row[COL_SUBMITTED_BY]).toBe("person@example.gov");
   });
 });

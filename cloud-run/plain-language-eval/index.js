@@ -134,6 +134,7 @@ async function runEval(fileId, fileName, mimeType, submittedByEmail = "") {
           durationMs: usage.duration_ms,
           provider,
           model,
+          submittedByEmail,
         });
       } catch (err) {
         console.error(
@@ -153,6 +154,7 @@ async function runEval(fileId, fileName, mimeType, submittedByEmail = "") {
           error,
           provider,
           model,
+          submittedByEmail,
         });
       } catch (err) {
         console.error(

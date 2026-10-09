@@ -172,7 +172,7 @@ async function translate(req, res) {
       ...(submittedByEmail && { submittedByEmail }),
     });
     try {
-      await logTranslationResult(sourceFileId, sourceFileName, t);
+      await logTranslationResult(sourceFileId, sourceFileName, { ...t, submittedByEmail });
     } catch (err) {
       console.error(`Failed to log translation result for ${t.provider}/${t.model}:`, err.message);
     }
