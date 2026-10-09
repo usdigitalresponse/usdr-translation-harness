@@ -12,6 +12,7 @@ const MIN_SHEET_ROWS = 2;
 const COL_ACTIVE = "active";
 const COL_PROVIDER = "provider";
 const PROCESSING_LOG_TAB_NAME = "ProcessingLog";
+const PROCESSING_LOG_COLUMNS = "A:J";
 
 // https://developers.google.com/docs/api/reference/rest
 const DOCS_API_VERSION = "v1";
@@ -285,11 +286,12 @@ async function logTranslationResult(sourceFileId, sourceFileName, translationRes
     translationResult.outputFileId || "",
     translationResult.provider,
     translationResult.model,
+    translationResult.submittedByEmail || "",
   ];
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: sheetId,
-    range: `${PROCESSING_LOG_TAB_NAME}!A:I`,
+    range: `${PROCESSING_LOG_TAB_NAME}!${PROCESSING_LOG_COLUMNS}`,
     valueInputOption: "RAW",
     requestBody: { values: [row] },
   });

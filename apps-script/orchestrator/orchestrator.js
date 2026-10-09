@@ -33,6 +33,7 @@ var COL = {
   EXTRACTION_FILE_ID: 6,
   PROVIDER: 7,
   MODEL: 8,
+  SUBMITTED_BY: 9,
 };
 
 var CONTENT_TYPE_TWO = "content_type_two";
@@ -84,14 +85,16 @@ function getProcessedFileIds(sheetId) {
 
 function logProcessingResult(sheetId, file, result, successStatus, failedStatus) {
   var sheet = getProcessingLogSheet(sheetId);
-  sheet.appendRow([
-    file.getId(),
-    file.getName(),
-    new Date(),
-    result.success ? successStatus : failedStatus,
-    result.durationMs,
-    result.error || "",
-  ]);
+  // Output File ID, Provider and Model stay blank: those are written by the Cloud Run functions
+  var row = new Array(COL.SUBMITTED_BY + 1).fill("");
+  row[COL.FILE_ID] = file.getId();
+  row[COL.FILE_NAME] = file.getName();
+  row[COL.PROCESSED_AT] = new Date();
+  row[COL.STATUS] = result.success ? successStatus : failedStatus;
+  row[COL.DURATION_MS] = result.durationMs;
+  row[COL.ERROR_DETAIL] = result.error || "";
+  row[COL.SUBMITTED_BY] = result.submittedByEmail || "";
+  sheet.appendRow(row);
 }
 
 function callCloudRunFunction(file, url, label, contentType) {
@@ -142,6 +145,7 @@ function callCloudRunFunction(file, url, label, contentType) {
   return {
     success: success,
     error: success ? "" : "HTTP " + code + ": " + body.substring(0, 200),
+    submittedByEmail: submittedByEmail,
   };
 }
 

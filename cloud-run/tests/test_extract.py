@@ -498,11 +498,12 @@ class TestLogExtractionResult:
         mock_values = mock_service.spreadsheets.return_value.values.return_value
 
         with patch.dict("os.environ", {"PROCESSING_LOG_SHEET_ID": "sheet-123"}):
-            log_extraction_result("abc123", "test.pdf", self.SAMPLE_RESULT)
+            log_extraction_result("abc123", "test.pdf", self.SAMPLE_RESULT,
+                                  submitted_by_email="person@example.gov")
 
         mock_values.append.assert_called_once()
         call_kwargs = mock_values.append.call_args[1]
-        assert call_kwargs["range"] == "ProcessingLog!A:I"
+        assert call_kwargs["range"] == "ProcessingLog!A:J"
         row = call_kwargs["body"]["values"][0]
         assert row[0] == "abc123"
         assert row[1] == "test.pdf"
@@ -510,6 +511,7 @@ class TestLogExtractionResult:
         assert row[6] == "extraction-drive-id"
         assert row[7] == "anthropic"
         assert row[8] == "claude-sonnet-4-6"
+        assert row[9] == "person@example.gov"
 
     def test_skips_when_no_sheet_id(self):
         with patch.dict("os.environ", {}, clear=False):
@@ -583,10 +585,11 @@ class TestExtractionFailureRows:
     def test_llm_failure_writes_failed_row(self, mock_config, _pdf, _text, _doc, _llm,
                                            mock_fail, _publish):
         mock_config.return_value = self.MODEL_CONFIG
-        run_pdf_extraction("abc", "a.pdf")
+        run_pdf_extraction("abc", "a.pdf", submitted_by_email="person@example.gov")
 
         mock_fail.assert_called_once_with("abc", "a.pdf", "google", "gemini",
-                                          "LLM call failed", usage=None)
+                                          "LLM call failed", usage=None,
+                                          submitted_by_email="person@example.gov")
 
     @patch("extract.main.publish_extraction_complete")
     @patch("extract.main.log_extraction_failure")
@@ -603,7 +606,7 @@ class TestExtractionFailureRows:
 
         mock_fail.assert_called_once_with("abc", "a.pdf", "google", "gemini",
                                           "Extraction parse/validation failed",
-                                          usage={"duration_ms": 900})
+                                          usage={"duration_ms": 900}, submitted_by_email="")
 
     @patch("extract.main.log_extraction_failure")
     @patch("extract.main.run_pdf_extraction", side_effect=RuntimeError("PDF download failed"))

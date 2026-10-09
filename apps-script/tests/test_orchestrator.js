@@ -257,6 +257,24 @@ describe("logProcessingResult", () => {
     expect(row[4]).toBe(300);
     expect(row[5]).toBe("HTTP 500: Internal Server Error");
   });
+
+  test("writes Submitted By to column J, leaving G–I blank", () => {
+    var sheetMock = mockSheet([HEADER_ROW]);
+    var ctx = loadOrchestrator({ SpreadsheetApp: sheetMock });
+    var file = makeFile("file-1", "test.pdf");
+
+    ctx.logProcessingResult("sheet-456", file, {
+      success: true,
+      durationMs: 150,
+      error: "",
+      submittedByEmail: "person@example.gov",
+    }, "triggered", "failed");
+
+    var row = sheetMock._sheet.appendRow.mock.calls[0][0];
+    expect(row).toHaveLength(10);
+    expect(row.slice(6, 9)).toEqual(["", "", ""]);
+    expect(row[9]).toBe("person@example.gov");
+  });
 });
 
 describe("callCloudRunFunction", () => {

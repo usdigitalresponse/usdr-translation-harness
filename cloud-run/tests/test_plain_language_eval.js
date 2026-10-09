@@ -292,7 +292,7 @@ describe("runEval", () => {
     });
     writeOutput.mockResolvedValue("output-id");
 
-    await runEval("file123", "test.pdf", MIME_PDF);
+    await runEval("file123", "test.pdf", MIME_PDF, "person@example.gov");
 
     expect(logEvalResult).toHaveBeenCalledWith("file123", "test.pdf", {
       status: "pl-eval-complete",
@@ -300,6 +300,7 @@ describe("runEval", () => {
       durationMs: 2345,
       provider: "anthropic",
       model: "claude-sonnet-5",
+      submittedByEmail: "person@example.gov",
     });
   });
 
