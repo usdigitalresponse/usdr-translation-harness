@@ -2,8 +2,8 @@ const fs = require("fs");
 const path = require("path");
 
 const { loadDoc, loadSheetTable, loadExtractionJson, loadStatutes } = require("./loaders");
+const { logInputProblem, INPUT_GLOSSARY, INPUT_STATUTES } = require("./input-problems");
 
-const CONTENT_PLACEHOLDER = "[Paste content to be translated in the area below]";
 const DEFAULT_CONTENT_TYPE = "public_flyer";
 const PROMPT_DOC_ENV_VARS = {
   public_flyer: "TRANSLATION_PROMPT_DOC_ID",
@@ -23,7 +23,7 @@ const GLOSSARY_SHEET_COLUMNS = "A:I";
 
 /**
  * Column headers in the FAMLI Glossary sheet, mapped to the keys returned
- * by loadSheet() (which lowercases and trims headers).
+ * by loadSheetTable() (which lowercases and trims headers).
  */
 const GLOSSARY_COLUMNS = {
   ENGLISH_TERM: "english term",
@@ -42,31 +42,6 @@ const GLOSSARY_COLUMNS = {
 const GLOSSARY_COLUMNS_USED = Object.values(GLOSSARY_COLUMNS).filter(
   (column) => column !== GLOSSARY_COLUMNS.STATUS
 );
-
-// Every input problem shares this message prefix and the input_problem field,
-// so one log-based alert can catch them all. These entries deliberately have no
-// pipeline_stage field: the pipeline_stage_status metric counts every entry
-// that has one as a stage execution.
-const INPUT_PROBLEM_PREFIX = "Translation input problem";
-const INPUT_GLOSSARY = "glossary";
-
-/**
- * Log a problem with a supplemental prompt input (glossary, etc.) as a
- * structured ERROR. Translation continues without that input, so this log is
- * the only signal that the prompt is missing something.
- *
- * @param {string} input - Which input (e.g. "glossary")
- * @param {string} detail - What's wrong, in words an operator can act on
- * @param {Object} [fields] - Extra structured fields
- */
-function logInputProblem(input, detail, fields = {}) {
-  console.log(JSON.stringify({
-    severity: "ERROR",
-    message: `${INPUT_PROBLEM_PREFIX} (${input}): ${detail}`,
-    input_problem: input,
-    ...fields,
-  }));
-}
 
 /**
  * Format a single glossary entry into a readable block for the LLM.
@@ -223,6 +198,43 @@ async function loadGlossary() {
 }
 
 /**
+ * Load the statute files and format them for the prompt, logging an input
+ * problem if they can't be read or none are found (e.g. STATUTES_GCS_BUCKET
+ * unset, wrong STATUTES_GCS_PREFIX, files moved). Never throws: translation
+ * proceeds without statutes.
+ *
+ * @returns {Promise<string>} The statutes prompt section, or "" if none loaded
+ */
+async function loadStatutesText() {
+  const location = {
+    statutes_bucket: process.env.STATUTES_GCS_BUCKET || "(not set)",
+    statutes_prefix: process.env.STATUTES_GCS_PREFIX || "(default)",
+  };
+  console.log("Loading statutes...");
+
+  let statutes;
+  try {
+    statutes = await loadStatutes();
+  } catch (err) {
+    logInputProblem(INPUT_STATUTES, `could not load statute files: ${err.message}`, location);
+    return "";
+  }
+
+  if (!statutes.length) {
+    logInputProblem(
+      INPUT_STATUTES,
+      "no statute files found, so none were included in the prompt. " +
+        "Check STATUTES_GCS_BUCKET and STATUTES_GCS_PREFIX, and that the files are in the bucket.",
+      location
+    );
+    return "";
+  }
+
+  console.log(`Statutes: ${statutes.length} sections included in the prompt`);
+  return formatStatutes(statutes);
+}
+
+/**
  * Load all inputs and assemble the full translation prompt.
  *
  * Loads the base prompt from the Google Doc, the glossary from Google Sheets,
@@ -243,23 +255,9 @@ async function buildTranslationPrompt(extractionFileId, contentType, { includeSt
   const glossary = await loadGlossary();
   const glossaryText = glossary.text;
 
-  let statutesText = "";
-  if (includeStatutes) {
-    try {
-      console.log("Loading statutes...");
-      const statutes = await loadStatutes();
-      statutesText = formatStatutes(statutes);
-      if (statutes.length) {
-        console.log(`Statutes loaded (${statutes.length} sections)`);
-      } else {
-        console.log("No statute files found, proceeding without");
-      }
-    } catch (err) {
-      console.warn("Could not load statutes, proceeding without:", err.message);
-    }
-  }
+  const statutesText = includeStatutes ? await loadStatutesText() : "";
 
-  const promptBase = basePrompt.replace(CONTENT_PLACEHOLDER, "").trimEnd();
+  const promptBase = basePrompt.trimEnd();
 
   const extractionContext = extractionJson.sourceType === "text"
     ? TEXT_EXTRACTION_CONTEXT

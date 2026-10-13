@@ -34,6 +34,12 @@ The Editor Add-on uses the second mode to evaluate the reviewer's current doc co
 | `eval-schema-*.json` | JSON schemas for validating LLM output |
 | `requirements.txt` | Python dependencies |
 
+## Model Config sheet
+
+Models come from the `Config!A:E` range of the Model Config sheet (`MODEL_CONFIG_SHEET_ID`). **Row 1 must be the header row** and include `Role`, `Provider`, `Model`, and `Active` (case-insensitive). Without `MODEL_CONFIG_SHEET_ID`, the service uses `fixtures/config.json` for local development, but **on Cloud Run a missing `MODEL_CONFIG_SHEET_ID` is an error** so a deploy that loses its env vars can't run on test models.
+
+Config problems (missing env var on Cloud Run, missing columns, no data rows) stop the run and log a structured **ERROR** with `input_problem: "model_config"` and a message starting `Quality eval input problem (model_config):`. Missing columns are listed in `missing_columns`, with the headers found in `found_headers`.
+
 ## LLM backends (Vertex AI migration in progress)
 
 `quality_llm.call_llm` can reach each provider two ways:

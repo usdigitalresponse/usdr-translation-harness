@@ -7,7 +7,7 @@ require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const { diffBlocks } = require("./differ");
 const { extractDecisions } = require("./decisions");
-const { writeDecisions } = require("./glossary-writer");
+const { recordDecisions } = require("./glossary-writer");
 const {
   loadTranslationFileId,
   loadTranslationJson,
@@ -144,17 +144,12 @@ async function captureFeedback(req, res) {
   }
   logStructured("INFO", `feedback captured for ${metrics.provider}/${metrics.model}`, logFields);
 
-  // Step 8: Write terminology decisions to derived glossary sheet
+  // Step 8: Write terminology decisions to the refinement log (derived glossary sheet)
   const warnings = [];
-  const derivedGlossarySheetId = process.env.DERIVED_GLOSSARY_SHEET_ID;
-  if (derivedGlossarySheetId && decisions.length) {
-    try {
-      await writeDecisions(decisions, derivedGlossarySheetId, auth);
-    } catch (err) {
-      console.error("Failed to write decisions to derived glossary:", err.message);
-      warnings.push("Failed to write to derived glossary: " + err.message);
-    }
-  }
+  const refinementLogWarning = await recordDecisions(
+    decisions, process.env.DERIVED_GLOSSARY_SHEET_ID, auth
+  );
+  if (refinementLogWarning) warnings.push(refinementLogWarning);
 
   // Step 9: Store feedback results in Drive
   const feedbackFolderId = process.env.DRIVE_FEEDBACK_FOLDER_ID;

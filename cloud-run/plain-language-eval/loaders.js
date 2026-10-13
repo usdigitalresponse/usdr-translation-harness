@@ -2,6 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const { google } = require("googleapis");
+const { logInputProblem, INPUT_MODEL_CONFIG } = require("./input-problems");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const FIXTURES_DIR = path.join(__dirname, "fixtures");
@@ -10,6 +11,11 @@ const ACTIVE_YES = "YES";
 const MIN_SHEET_ROWS = 2;
 const COL_ACTIVE = "active";
 const COL_PROVIDER = "provider";
+const COL_ROLE = "role";
+const COL_MODEL = "model";
+// Columns every service needs to pick its models; a missing one means no model
+// matches, or a model is called with a blank name or provider
+const REQUIRED_CONFIG_COLUMNS = [COL_ROLE, COL_PROVIDER, COL_MODEL, COL_ACTIVE];
 const PROCESSING_LOG_TAB_NAME = "ProcessingLog";
 const PROCESSING_LOG_COLUMNS = "A:J";
 
@@ -62,9 +68,34 @@ async function loadDoc(envVar) {
   return text;
 }
 
+/**
+ * Log a Model Config problem and return an Error to throw. Config problems stop
+ * the run (there's no model to call), so callers throw; the structured log
+ * carries the input_problem field for alerting.
+ */
+function configProblem(detail, fields = {}) {
+  logInputProblem(INPUT_MODEL_CONFIG, detail, fields);
+  return new Error(`Model Config problem: ${detail}`);
+}
+
+/**
+ * Load model config from the Google Sheet, or fall back to a local fixture.
+ *
+ * The fixture is for local development only: on Cloud Run (K_SERVICE is set)
+ * a missing MODEL_CONFIG_SHEET_ID is an error, so a deploy that loses its env
+ * vars can't quietly run on test models.
+ *
+ * @throws if the sheet ID is missing on Cloud Run, the Config tab has no data
+ *   rows, or row 1 is missing a required column
+ */
 async function loadConfig() {
   const sheetId = process.env.MODEL_CONFIG_SHEET_ID;
   if (!sheetId) {
+    if (process.env.K_SERVICE) {
+      throw configProblem(
+        "MODEL_CONFIG_SHEET_ID is not set. Restore the env var on this service (use --update-env-vars, not --set-env-vars)."
+      );
+    }
     const fixture = fs.readFileSync(
       path.join(FIXTURES_DIR, "config.json"),
       "utf-8"
@@ -82,9 +113,21 @@ async function loadConfig() {
   });
 
   const rows = data.values || [];
+  const headers = (rows[0] || []).map((h) => h.trim());
+  const missingColumns = REQUIRED_CONFIG_COLUMNS.filter(
+    (column) => !headers.map((h) => h.toLowerCase()).includes(column)
+  );
+  if (missingColumns.length) {
+    throw configProblem(
+      `the ${MODEL_CONFIG_SHEET_RANGE} range is missing expected columns: ${missingColumns.join(", ")}. ` +
+        "Row 1 must be the header row, with these exact column names.",
+      { missing_columns: missingColumns, found_headers: headers }
+    );
+  }
+
   const parsed = parseSheetRows(rows);
   if (!parsed.length) {
-    throw new Error(`Config sheet '${sheetId}' has no data rows`);
+    throw configProblem(`the ${MODEL_CONFIG_SHEET_RANGE} range has no data rows`);
   }
 
   const models = parsed.map((entry) => ({

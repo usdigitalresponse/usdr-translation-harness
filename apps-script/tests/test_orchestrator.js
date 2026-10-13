@@ -348,6 +348,28 @@ describe("callCloudRunFunction", () => {
     expect(payload.submittedByEmail).toBe("uploader@example.com");
   });
 
+  test("finds Shared Drive files (passes supportsAllDrives)", () => {
+    var fetchMock = jest.fn().mockReturnValue({
+      getResponseCode: jest.fn().mockReturnValue(202),
+      getContentText: jest.fn().mockReturnValue(""),
+    });
+    // Like the real API: a Shared Drive file is "not found" unless supportsAllDrives is set
+    var sharedDrive = { Files: { get: jest.fn().mockImplementation(function (fileId, options) {
+      if (!options || !options.supportsAllDrives) throw new Error("File not found: " + fileId);
+      return { lastModifyingUser: { emailAddress: "uploader@maryland.gov" } };
+    }) } };
+    var ctx = loadOrchestrator({
+      UrlFetchApp: { fetch: fetchMock },
+      Drive: sharedDrive,
+    });
+    var file = makeFile("file-1", "test.pdf");
+
+    ctx.callCloudRunFunction(file, "https://extract.example.com", "Extract");
+
+    var payload = JSON.parse(fetchMock.mock.calls[0][1].payload);
+    expect(payload.submittedByEmail).toBe("uploader@maryland.gov");
+  });
+
   test("sends empty submittedByEmail when Drive.Files.get fails", () => {
     var fetchMock = jest.fn().mockReturnValue({
       getResponseCode: jest.fn().mockReturnValue(202),

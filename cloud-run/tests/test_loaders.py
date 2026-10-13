@@ -91,6 +91,53 @@ class TestLoadConfig:
         mock_fixture.assert_called_once()
 
 
+def _input_problems(capsys):
+    entries = []
+    for line in capsys.readouterr().out.splitlines():
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        if entry.get("input_problem"):
+            entries.append(entry)
+    return entries
+
+
+class TestModelConfigChecks:
+    @patch("extract.loaders.build")
+    @patch("extract.loaders.google.auth.default", return_value=(MagicMock(), "project"))
+    def test_missing_header_row_names_missing_columns(self, _auth, mock_build, capsys):
+        mock_build.return_value.spreadsheets().values().get().execute.return_value = {
+            "values": [["Last updated: Oct 1"], *SHEET_ROWS]
+        }
+
+        with pytest.raises(ValueError, match="missing expected columns: role, provider, model, active"):
+            _load_config_from_sheet("sheet-id-123")
+
+        [problem] = _input_problems(capsys)
+        assert problem["severity"] == "ERROR"
+        assert problem["input_problem"] == "model_config"
+        assert problem["found_headers"] == ["Last updated: Oct 1"]
+        assert "pipeline_stage" not in problem
+
+    @patch("extract.loaders.build")
+    @patch("extract.loaders.google.auth.default", return_value=(MagicMock(), "project"))
+    def test_renamed_column(self, _auth, mock_build):
+        mock_build.return_value.spreadsheets().values().get().execute.return_value = {
+            "values": [["Role", "Provider", "Model name", "Active"], ["extract", "google", "gemini", "YES"]]
+        }
+
+        with pytest.raises(ValueError, match="missing expected columns: model"):
+            _load_config_from_sheet("sheet-id-123")
+
+    def test_missing_sheet_id_on_cloud_run_raises(self, capsys):
+        with patch.dict("os.environ", {"K_SERVICE": "extract"}):
+            with pytest.raises(ValueError, match="MODEL_CONFIG_SHEET_ID is not set"):
+                load_config()
+        [problem] = _input_problems(capsys)
+        assert problem["input_problem"] == "model_config"
+
+
 class TestWriteToDrive:
     @patch("extract.loaders.build")
     @patch("extract.loaders.google.auth.default", return_value=(MagicMock(), "project"))

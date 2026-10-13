@@ -24,6 +24,7 @@ from eval.quality.quality_llm import (
 from eval.quality.quality_loaders import (
     append_result_row, parse_drive_file_id, _extract_structural_text,
     EVAL_RESULTS_HEADERS, EVAL_RESULTS_SHEET_NAME,
+    _load_config_from_sheet, load_config,
 )
 
 
@@ -814,3 +815,48 @@ class TestLoadEvalSchema:
         gemini = load_eval_schema(PROVIDER_GOOGLE)
         assert claude["required"] == gemini["required"]
         assert set(CRITERIA) <= set(claude["properties"])
+
+
+class TestModelConfigChecks:
+    @staticmethod
+    def _input_problems(capsys):
+        entries = []
+        for line in capsys.readouterr().out.splitlines():
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if entry.get("input_problem"):
+                entries.append(entry)
+        return entries
+
+    @patch("eval.quality.quality_loaders.build")
+    @patch("eval.quality.quality_loaders.google.auth.default", return_value=(MagicMock(), "project"))
+    def test_missing_header_row_names_missing_columns(self, _auth, mock_build, capsys):
+        mock_build.return_value.spreadsheets().values().get().execute.return_value = {
+            "values": [["Last updated: Oct 1"], ["Role", "Provider", "Model", "Active"]]
+        }
+
+        with pytest.raises(ValueError, match="missing expected columns: role, provider, model, active"):
+            _load_config_from_sheet("sheet-id-123")
+
+        [problem] = self._input_problems(capsys)
+        assert problem["input_problem"] == "model_config"
+        assert problem["message"].startswith("Quality eval input problem (model_config)")
+
+    @patch("eval.quality.quality_loaders.build")
+    @patch("eval.quality.quality_loaders.google.auth.default", return_value=(MagicMock(), "project"))
+    def test_valid_sheet_parses(self, _auth, mock_build, capsys):
+        mock_build.return_value.spreadsheets().values().get().execute.return_value = {
+            "values": [["Role", "Provider", "Model", "Active"], ["eval", "Anthropic", "claude-opus-5", "YES"]]
+        }
+
+        config = _load_config_from_sheet("sheet-id-123")
+
+        assert config["models"] == [{"role": "eval", "provider": "anthropic", "model": "claude-opus-5", "active": True}]
+        assert self._input_problems(capsys) == []
+
+    def test_missing_sheet_id_on_cloud_run_raises(self):
+        with patch.dict("os.environ", {"K_SERVICE": "eval-quality"}):
+            with pytest.raises(ValueError, match="MODEL_CONFIG_SHEET_ID is not set"):
+                load_config()
