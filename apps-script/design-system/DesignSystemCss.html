@@ -1,0 +1,441 @@
+<!--
+  Design system CSS, copied as-is from the "USDR Translation design system" tab
+  (version 1.0, Oct 6 2026). Each block has an id so the page can show the exact
+  CSS that styles each live example. Edit here when the designer updates the doc.
+-->
+
+<style id="css-tokens">
+:root {
+  /* Colors */
+  --color-primary: #1976D2;
+  --color-primary-hover: #1565C0;
+  --color-primary-active: #0D47A1;
+  --color-primary-disabled: #BDBDBD;
+  --color-primary-container: #E3F2FD;
+  --color-on-primary: #FFFFFF;
+  --color-on-primary-container: #0D47A1;
+
+  --color-secondary: #4FC3F7;
+  --color-secondary-hover: #29B6F6;
+  --color-secondary-disabled: #BDBDBD;
+
+  --color-tertiary: #81C784;
+  --color-tertiary-hover: #66BB6A;
+
+  --color-error: #F44336;
+  --color-error-hover: #D32F2F;
+  --color-warning: #FBC02D;
+  --color-warning-text: #37474F;
+  --color-success: #4CAF50;
+
+  --color-surface: #FFFFFF;
+  --color-surface-variant: #F5F5F5;
+  --color-surface-emphasis: #EEEEEE;
+
+  --color-on-surface: #202124;
+  --color-on-surface-variant: #5F6368;
+  --color-on-background: #202124;
+
+  --color-outline: #DADCE0;
+  --color-outline-variant: #E8EAED;
+
+  /* Typography */
+  --font-family-primary: Roboto, 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-family-mono: 'Monaco', 'Courier New', monospace;
+
+  --font-size-title-lg: 22px;
+  --font-weight-title-lg: 400;
+  --line-height-title-lg: 1.27;
+
+  --font-size-title-md: 16px;
+  --font-weight-title-md: 500;
+  --line-height-title-md: 1.5;
+
+  --font-size-title-sm: 14px;
+  --font-weight-title-sm: 500;
+  --line-height-title-sm: 1.42;
+
+  --font-size-body-lg: 16px;
+  --font-weight-body-lg: 400;
+  --line-height-body-lg: 1.5;
+
+  --font-size-body-md: 14px;
+  --font-weight-body-md: 400;
+  --line-height-body-md: 1.42;
+
+  --font-size-body-sm: 12px;
+  --font-weight-body-sm: 400;
+  --line-height-body-sm: 1.33;
+
+  --font-size-label-lg: 14px;
+  --font-weight-label-lg: 500;
+  --line-height-label-lg: 1.42;
+
+  --font-size-label-md: 12px;
+  --font-weight-label-md: 500;
+  --line-height-label-md: 1.33;
+
+  --font-size-label-sm: 11px;
+  --font-weight-label-sm: 500;
+  --line-height-label-sm: 1.45;
+
+  /* Spacing */
+  --spacing-0: 0px;
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-10: 40px;
+  --spacing-12: 48px;
+
+  /* Border Radius */
+  --border-radius-sm: 4px;
+  --border-radius-md: 6px;
+  --border-radius-lg: 8px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.15);
+  --shadow-xl: 0 11px 15px -7px rgba(0, 0, 0, 0.2),
+               0 24px 38px 3px rgba(0, 0, 0, 0.14),
+               0 9px 46px 8px rgba(0, 0, 0, 0.12);
+}
+
+/* Utility classes using variables */
+.color-primary { color: var(--color-primary); }
+.bg-primary { background-color: var(--color-surface); }
+.text-on-surface { color: var(--color-on-surface); }
+.text-on-surface-variant { color: var(--color-on-surface-variant); }
+.border-outline { border-color: var(--color-outline); }
+
+.spacing-4 { margin: var(--spacing-4); }
+.px-4 { padding-left: var(--spacing-4); padding-right: var(--spacing-4); }
+.gap-2 { gap: var(--spacing-2); }
+</style>
+
+<style id="css-type">
+/* Headline / Large titles */
+.headline-lg { font-size: 32px; line-height: 40px; font-weight: 400; letter-spacing: 0; }
+/* Headline / Medium */
+.headline-md { font-size: 28px; line-height: 36px; font-weight: 400; letter-spacing: 0; }
+/* Headline / Small */
+.headline-sm { font-size: 24px; line-height: 32px; font-weight: 400; letter-spacing: 0; }
+/* Title / Large - PRIMARY SIDEBAR TITLE */
+.title-lg { font-size: 22px; line-height: 28px; font-weight: 400; letter-spacing: 0.1px; }
+/* Title / Medium - SECTION HEADERS */
+.title-md { font-size: 16px; line-height: 24px; font-weight: 500; letter-spacing: 0.15px; }
+/* Title / Small */
+.title-sm { font-size: 14px; line-height: 20px; font-weight: 500; letter-spacing: 0.1px; }
+/* Body / Large - PRIMARY BODY TEXT */
+.body-lg { font-size: 16px; line-height: 24px; font-weight: 400; letter-spacing: 0.5px; }
+/* Body / Medium - STANDARD BODY */
+.body-md { font-size: 14px; line-height: 20px; font-weight: 400; letter-spacing: 0.25px; }
+/* Body / Small */
+.body-sm { font-size: 12px; line-height: 16px; font-weight: 400; letter-spacing: 0.4px; }
+/* Label / Large */
+.label-lg { font-size: 14px; line-height: 20px; font-weight: 500; letter-spacing: 0.1px; }
+/* Label / Medium */
+.label-md { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.5px; }
+/* Label / Small */
+.label-sm { font-size: 11px; line-height: 16px; font-weight: 500; letter-spacing: 0.5px; }
+</style>
+
+<style id="css-buttons">
+.btn {
+  /* Base styles */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 24px;
+  border: none;
+  border-radius: 6px;
+  font-family: Roboto, sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+  min-height: 40px;  /* Touch target minimum */
+  min-width: 40px;   /* Touch target minimum */
+  white-space: nowrap;
+}
+
+/* Primary button */
+.btn-primary {
+  background-color: #1976D2;
+  color: #FFFFFF;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+.btn-primary:hover {
+  background-color: #1565C0;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+.btn-primary:active {
+  background-color: #0D47A1;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+.btn-primary:focus-visible {
+  outline: 2px solid #1976D2;
+  outline-offset: 2px;
+}
+.btn-primary:disabled {
+  background-color: #BDBDBD;
+  color: #F5F5F5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* Secondary button */
+.btn-secondary {
+  background-color: #F5F5F5;
+  color: #202124;
+  border: 1px solid #DADCE0;
+}
+.btn-secondary:hover {
+  background-color: #EEEEEE;
+  border-color: #BDBDBD;
+}
+.btn-secondary:active {
+  background-color: #E0E0E0;
+}
+.btn-secondary:focus-visible {
+  outline: 2px solid #1976D2;
+  outline-offset: 2px;
+}
+.btn-secondary:disabled {
+  background-color: #F5F5F5;
+  color: #BDBDBD;
+  border-color: #E8EAED;
+  cursor: not-allowed;
+}
+
+/* Button group (side by side) */
+.button-group {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+.button-group .btn {
+  flex: 1;
+  width: auto;  /* Override to share space */
+}
+</style>
+
+<style id="css-link">
+.link {
+  color: #1976D2;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-skip-ink: auto;
+  cursor: pointer;
+  background-color: transparent;
+  padding: 0;
+  border: none;
+  font-family: inherit;
+  font-size: inherit;
+  transition: color 0.2s ease-in-out;
+}
+.link:visited {
+  color: #1565C0;
+}
+.link:hover {
+  color: #1565C0;
+  text-decoration-thickness: 2px;
+  background-color: rgba(25, 118, 210, 0.08);
+}
+.link:focus-visible {
+  outline: 2px solid #1976D2;
+  outline-offset: 2px;
+}
+.link:active {
+  color: #0D47A1;
+}
+</style>
+
+<style id="css-card">
+.card {
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  background-color: #FFFFFF;
+  border: 1px solid #DADCE0;
+}
+.card-yellow {
+  background-color: #FFF9C4;  /* Material yellow */
+  border: 1px solid #FDD835;  /* Slightly darker yellow */
+}
+.card-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.card-section:last-child {
+  margin-bottom: 0;
+}
+.card-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #80868B;
+  letter-spacing: 0.4px;
+}
+.card-text {
+  font-size: 14px;
+  line-height: 20px;
+  color: #37474F;  /* IMPORTANT: Dark gray for contrast on yellow */
+  margin: 0;
+}
+</style>
+
+<style id="css-collapsible">
+.collapsible-header {
+  background: none;
+  border: none;
+  padding: 12px 0;
+  text-align: left;
+  cursor: pointer;
+  font-size: inherit;
+  font-family: inherit;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #202124;
+  transition: background-color 0.2s ease-in-out;
+}
+.collapsible-header:hover {
+  background-color: #F5F5F5;
+  border-radius: 4px;
+  padding: 12px 8px;
+  margin-left: -8px;
+  margin-right: -8px;
+}
+.collapsible-header:focus-visible {
+  outline: 2px solid #1976D2;
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+.collapse-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  font-size: 16px;
+  transition: transform 0.2s ease-in-out;
+  flex-shrink: 0;
+}
+.collapsible-header[aria-expanded="false"] .collapse-icon {
+  transform: rotate(-90deg);
+}
+.score-badge {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 600;
+  color: #1976D2;
+  flex-shrink: 0;
+}
+.collapsible-content {
+  padding: 0 0 16px 0;
+  display: none;
+}
+.collapsible-content[aria-hidden="false"] {
+  display: block;
+}
+.collapsible-header[aria-expanded="true"] + .collapsible-content {
+  display: block;
+}
+</style>
+
+<style id="css-modal">
+dialog {
+  border: none;
+  border-radius: 8px;
+  box-shadow: 0 11px 15px -7px rgba(0, 0, 0, 0.2),
+              0 24px 38px 3px rgba(0, 0, 0, 0.14),
+              0 9px 46px 8px rgba(0, 0, 0, 0.12);
+  padding: 24px;
+  max-width: 90%;
+  width: auto;
+  min-width: 280px;
+}
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.32);
+}
+dialog h2 {
+  margin: 0 0 12px 0;
+  font-size: 20px;
+  font-weight: 500;
+  color: #202124;
+}
+dialog p {
+  margin: 0 0 24px 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: #5F6368;
+}
+dialog button {
+  width: 100%;
+}
+</style>
+
+<style id="css-badge">
+.badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.badge-warning {
+  background-color: #FFF3E0;
+  color: #E65100;
+  border: 1px solid #FFB74D;
+}
+.badge-success {
+  background-color: #E8F5E9;
+  color: #1B5E20;
+  border: 1px solid #81C784;
+}
+.badge-error {
+  background-color: #FFEBEE;
+  color: #B71C1C;
+  border: 1px solid #EF5350;
+}
+.score-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1976D2;
+}
+</style>
+
+<style id="css-divider">
+.divider {
+  border: none;
+  border-top: 1px solid #DADCE0;
+  margin: 16px 0;
+  padding: 0;
+  height: 0;
+}
+</style>
+
+<style id="css-card-error">
+.card-error {
+  background-color: #FFEBEE;
+  border: 1px solid #EF5350;
+  color: #B71C1C;
+}
+</style>

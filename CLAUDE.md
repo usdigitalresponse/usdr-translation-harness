@@ -54,6 +54,7 @@ Update these docs when an interface changes:
 
 - `apps-script/orchestrator/` — Apps Script project: Drive folder watcher, processing log
 - `apps-script/editor-addon/` — Apps Script project: editor add-on for reviewer feedback
+- `apps-script/design-system/` — Apps Script web app: reference site for the add-on's design system (not part of the pipeline; `.clasp.json` gitignored)
 - `cloud-run/extract/` — Cloud Run function: PDF extraction via LLM (Python; uses pdfplumber for text pre-extraction)
 - `cloud-run/translate/` — Cloud Run function: translation via LLM
 - `cloud-run/capture-feedback/` — Cloud Run function: reviewer feedback capture

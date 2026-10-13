@@ -23,6 +23,8 @@ cloud-run/monitoring/token-usage-report.sh
 
 # clasp credentials (not the project config .clasp.json, which should be committed)
 .clasprc.json
+# Design system site: script ID stays local (the pipeline projects' .clasp.json files are committed)
+apps-script/design-system/.clasp.json
 
 # Internal reference docs (specs, working notes) — not for public repo
 docs/internal/

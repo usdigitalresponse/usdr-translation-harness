@@ -1,0 +1,1021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
+  <?!= include("DesignSystemCss"); ?>
+  <style>
+    /* Page chrome for the reference site only — not part of the design system. */
+    body {
+      margin: 0;
+      font-family: var(--font-family-primary);
+      color: var(--color-on-surface);
+      background: var(--color-surface-variant);
+    }
+    .skip-link { position: absolute; left: -9999px; }
+    .skip-link:focus { left: var(--spacing-4); top: var(--spacing-4); background: var(--color-surface); padding: var(--spacing-2); z-index: 10; }
+    .site-header {
+      background: var(--color-surface);
+      border-bottom: 1px solid var(--color-outline);
+      padding: var(--spacing-6) var(--spacing-8);
+    }
+    .site-header h1 { margin: 0 0 var(--spacing-1); }
+    .site-header p { margin: 0; color: var(--color-on-surface-variant); }
+    .layout { display: flex; align-items: flex-start; max-width: 1200px; margin: 0 auto; }
+    .site-nav {
+      position: sticky; top: 0;
+      width: 220px; flex-shrink: 0;
+      padding: var(--spacing-6) var(--spacing-4);
+      box-sizing: border-box;
+    }
+    .site-nav ol { margin: 0; padding-left: var(--spacing-5); }
+    .site-nav li { margin-bottom: var(--spacing-2); }
+    main { flex: 1; min-width: 0; padding: var(--spacing-6) var(--spacing-8) var(--spacing-12); }
+    main > section {
+      background: var(--color-surface);
+      border: 1px solid var(--color-outline);
+      border-radius: var(--border-radius-lg);
+      padding: var(--spacing-6);
+      margin-bottom: var(--spacing-6);
+    }
+    main h2 { margin-top: 0; }
+    main h3 { margin: var(--spacing-8) 0 var(--spacing-3); }
+    main h4 { margin: var(--spacing-5) 0 var(--spacing-2); }
+    .note { color: var(--color-on-surface-variant); }
+
+    .swatch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: var(--spacing-3); }
+    .swatch { border: 1px solid var(--color-outline); border-radius: var(--border-radius-md); overflow: hidden; }
+    .swatch-color { height: 56px; border-bottom: 1px solid var(--color-outline); }
+    .swatch-color.with-outline { outline: 2px solid #1976D2; outline-offset: -6px; }
+    .swatch-info { padding: var(--spacing-2) var(--spacing-3); }
+    .swatch-info code { font-family: var(--font-family-mono); }
+    .chip {
+      display: inline-block; width: 12px; height: 12px; margin-right: 4px;
+      border: 1px solid var(--color-outline); border-radius: 2px; vertical-align: -1px;
+    }
+
+    .table-wrap { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border-bottom: 1px solid var(--color-outline); padding: var(--spacing-2) var(--spacing-3); text-align: left; vertical-align: top; }
+    th { background: var(--color-surface-variant); }
+
+    .type-row { display: grid; grid-template-columns: 160px 1fr; gap: var(--spacing-4); padding: var(--spacing-3) 0; border-bottom: 1px solid var(--color-outline-variant); }
+    .spacing-row { display: flex; align-items: center; gap: var(--spacing-3); margin-bottom: var(--spacing-1); }
+    .spacing-row code { width: 150px; flex-shrink: 0; }
+    .spacing-bar { height: 12px; background: var(--color-primary); border-radius: 2px; }
+
+    .demo {
+      border: 1px dashed var(--color-outline);
+      border-radius: var(--border-radius-md);
+      padding: var(--spacing-4);
+      margin-bottom: var(--spacing-2);
+    }
+    .demo-row { display: flex; flex-wrap: wrap; gap: var(--spacing-3); align-items: center; }
+    .demo-narrow { width: 268px; max-width: 100%; }
+    details { margin-bottom: var(--spacing-3); }
+    summary { cursor: pointer; color: var(--color-on-surface-variant); }
+    pre.code {
+      background: #F8F9FA; border: 1px solid var(--color-outline-variant); border-radius: var(--border-radius-sm);
+      padding: var(--spacing-3); overflow-x: auto;
+      font-family: var(--font-family-mono); font-size: 12px; line-height: 1.5;
+    }
+    .example-frame { width: 300px; max-width: 100%; border: 1px solid var(--color-outline); }
+    /* The doc's example uses height: 100vh; capped here so it fits on the page */
+    .example-frame .sidebar { height: 560px; }
+
+    @media (max-width: 800px) {
+      .layout { display: block; }
+      .site-nav { position: static; width: auto; }
+      main { padding: var(--spacing-4); }
+      .type-row { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <h1 class="headline-sm">USDR Translation Review Add-On — Design System &amp; Component Library</h1>
+    <p class="body-md">Version 1.0 · Last updated October 6, 2026 · Status: Production-Ready with Accessibility Focus</p>
+  </header>
+
+  <div class="layout">
+    <nav class="site-nav" aria-label="Sections">
+      <ol class="body-md">
+        <li><a class="link" href="#colors">Color system</a></li>
+        <li><a class="link" href="#typography">Typography</a></li>
+        <li><a class="link" href="#spacing">Spacing &amp; layout</a></li>
+        <li><a class="link" href="#components">Components</a></li>
+        <li><a class="link" href="#variables">CSS variables</a></li>
+        <li><a class="link" href="#accessibility">Accessibility standards</a></li>
+        <li><a class="link" href="#examples">Usage examples</a></li>
+        <li><a class="link" href="#migration">Migration checklist</a></li>
+        <li><a class="link" href="#governance">Design system governance</a></li>
+        <li><a class="link" href="#resources">Resources</a></li>
+      </ol>
+    </nav>
+
+    <main id="main">
+
+      <!-- 1. COLOR SYSTEM -->
+      <section id="colors" aria-labelledby="h-colors">
+        <h2 id="h-colors" class="title-lg">1. Color system</h2>
+
+        <h3 class="title-md">1.1 Material Design 3 palette</h3>
+        <p class="body-md">Based on your screenshots, the primary color is <strong>Google Blue</strong> (#1F73E7 or #1976D2). Here's the complete Material 3 palette:</p>
+        <div id="palette"></div>
+
+        <h3 class="title-md">1.2 Your current color usage (from screenshots)</h3>
+        <div class="table-wrap"><table id="table-color-usage" class="body-md"></table></div>
+
+        <h3 class="title-md">1.3 Color contrast verification (WCAG 2.1)</h3>
+        <p class="body-md"><strong>All combinations must meet minimum standards:</strong></p>
+        <div class="table-wrap"><table id="table-contrast" class="body-md"></table></div>
+      </section>
+
+      <!-- 2. TYPOGRAPHY -->
+      <section id="typography" aria-labelledby="h-typography">
+        <h2 id="h-typography" class="title-lg">2. Typography</h2>
+
+        <h3 class="title-md">2.1 Font family</h3>
+        <ul class="body-md">
+          <li><strong>Primary font:</strong> Roboto (Material Design standard)</li>
+          <li><strong>Fallback stack:</strong> Roboto, 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif</li>
+          <li><strong>Weight range:</strong> 400 (Regular), 500 (Medium), 700 (Bold)</li>
+          <li><strong>For code/technical content:</strong> Monaco, 'Courier New', monospace</li>
+        </ul>
+
+        <h3 class="title-md">2.2 Type scale (Material Design 3)</h3>
+        <div id="type-scale"></div>
+        <details><summary class="body-md">CSS</summary><pre class="code" data-css="css-type"></pre></details>
+
+        <h3 class="title-md">2.3 Your current typography (from screenshots)</h3>
+        <div class="table-wrap"><table id="table-type-usage" class="body-md"></table></div>
+
+        <h3 class="title-md">2.4 Line length &amp; readability</h3>
+        <p class="body-md"><strong>Sidebar width:</strong> 300px (fixed)</p>
+        <ul class="body-md">
+          <li>At 300px sidebar width, you can safely display 45–50 characters per line</li>
+          <li>Your current layout achieves this well</li>
+          <li>No changes needed here ✓</li>
+        </ul>
+      </section>
+
+      <!-- 3. SPACING & LAYOUT -->
+      <section id="spacing" aria-labelledby="h-spacing">
+        <h2 id="h-spacing" class="title-lg">3. Spacing &amp; layout</h2>
+
+        <h3 class="title-md">3.1 Spacing scale</h3>
+        <p class="body-md">Material Design 3 uses a base unit of <strong>4px</strong>. All spacing should be multiples of 4.</p>
+        <div id="spacing-scale"></div>
+
+        <h3 class="title-md">3.2 Current layout spacing (from screenshots)</h3>
+        <div class="table-wrap"><table id="table-spacing-usage" class="body-md"></table></div>
+
+        <h3 class="title-md">3.3 Sidebar layout structure</h3>
+<pre class="code">&lt;div class="sidebar" style="width: 300px;"&gt;
+  &lt;!-- Header: 56px (12px padding + 32px content height + 12px padding) --&gt;
+  &lt;header class="sidebar-header"&gt;
+    &lt;h1 class="title-lg"&gt;AI Suggestions - Spanish&lt;/h1&gt;
+    &lt;button class="icon-button" aria-label="Help"&gt;?&lt;/button&gt;
+  &lt;/header&gt;
+
+  &lt;!-- Divider: 1px --&gt;
+  &lt;hr class="divider" /&gt;
+
+  &lt;!-- Content: scrollable, fills remaining height --&gt;
+  &lt;main class="sidebar-content"&gt;
+    &lt;!-- Sections stack vertically with 16px spacing --&gt;
+    &lt;section class="evaluation-section"&gt;
+      &lt;!-- Criterion header: 44px --&gt;
+      &lt;!-- Criterion content: dynamic height --&gt;
+      &lt;!-- Divider: 1px --&gt;
+    &lt;/section&gt;
+  &lt;/main&gt;
+
+  &lt;!-- Footer (if needed): fixed at bottom --&gt;
+  &lt;footer class="sidebar-footer"&gt;
+    &lt;!-- Help, settings, etc. --&gt;
+  &lt;/footer&gt;
+&lt;/div&gt;</pre>
+
+        <h3 class="title-md">3.4 300px sidebar constraint</h3>
+        <p class="body-md"><strong>Content areas within 300px width:</strong></p>
+        <div class="table-wrap"><table id="table-sidebar-widths" class="body-md"></table></div>
+      </section>
+
+      <!-- 4. COMPONENTS -->
+      <section id="components" aria-labelledby="h-components">
+        <h2 id="h-components" class="title-lg">4. Components</h2>
+        <p class="body-md note">Each example below is live, styled by the CSS shown under it. Hover, click, and tab through them to see their states.</p>
+
+        <h3 class="title-md">4.1 Button component</h3>
+        <h4 class="title-sm">Primary button ("Looks good")</h4>
+        <div class="demo demo-row" id="demo-btn-primary">
+          <button class="btn btn-primary">
+            Looks good
+          </button>
+          <button class="btn btn-primary" disabled>Disabled</button>
+        </div>
+        <details><summary class="body-md">HTML</summary><pre class="code" data-html="demo-btn-primary"></pre></details>
+
+        <h4 class="title-sm">Secondary button ("Suggest alternative")</h4>
+        <div class="demo demo-row" id="demo-btn-secondary">
+          <button class="btn btn-secondary">
+            Suggest alternative
+          </button>
+          <button class="btn btn-secondary" disabled>Disabled</button>
+        </div>
+        <details><summary class="body-md">HTML</summary><pre class="code" data-html="demo-btn-secondary"></pre></details>
+
+        <h4 class="title-sm">Button group (side by side)</h4>
+        <div class="demo"><div class="demo-narrow" id="demo-btn-group">
+          <div class="button-group">
+            <button class="btn btn-primary">Looks good</button>
+            <button class="btn btn-secondary">Suggest alternative</button>
+          </div>
+        </div></div>
+        <p class="body-sm note">Shown at the 268px sidebar content width.</p>
+        <details><summary class="body-md">HTML</summary><pre class="code" data-html="demo-btn-group"></pre></details>
+        <details><summary class="body-md">CSS</summary><pre class="code" data-css="css-buttons"></pre></details>
+
+        <h3 class="title-md">4.2 Link component</h3>
+        <div class="demo body-md" id="demo-link">
+          <a href="#view-prompt" class="link">View prompt</a>
+        </div>
+        <details><summary class="body-md">HTML</summary><pre class="code" data-html="demo-link"></pre></details>
+        <details><summary class="body-md">CSS</summary><pre class="code" data-css="css-link"></pre></details>
+
+        <h3 class="title-md">4.3 Card component (yellow evaluation card)</h3>
+        <div class="demo"><div class="demo-narrow" id="demo-card">
+          <div class="card card-yellow">
+            <div class="card-section">
+              <span class="card-label">Original</span>
+              <p class="card-text">Paid family and medical leave</p>
+            </div>
+            <div class="card-section">
+              <span class="card-label">Current translation</span>
+              <p class="card-text">La licencia familiar y médica remunerada</p>
+            </div>
+          </div>
+        </div></div>
+        <details><summary class="body-md">HTML</summary><pre class="code" data-html="demo-card"></pre></details>
+        <details><summary class="body-md">CSS</summary><pre class="code" data-css="css-card"></pre></details>
+
+        <h3 class="title-md">4.4 Collapsible section component</h3>
+        <div class="demo"><div class="demo-narrow" id="demo-collapsible">
+          <button
+            class="collapsible-header"
+            aria-expanded="true"
+            aria-controls="accuracy-content"
+            onclick="toggleSection(this)">
+            <span class="collapse-icon" aria-hidden="true">▼</span>
+            <h3 class="title-md">Accuracy &amp; Relevance</h3>
+            <span class="score-badge">
+              <span aria-hidden="true">•</span>
+              <span>4</span>
+            </span>
+          </button>
+          <div id="accuracy-content" class="collapsible-content">
+            <p class="body-md">5: Meaning fully preserved; all deadlines, legal nuances, and key steps present.</p>
+          </div>
+        </div></div>
+        <p class="body-sm note">Click the header to collapse and expand it.</p>
+        <details><summary class="body-md">HTML</summary><pre class="code" data-html="demo-collapsible"></pre></details>
+        <details><summary class="body-md">CSS</summary><pre class="code" data-css="css-collapsible"></pre></details>
+
+        <h3 class="title-md">4.5 Modal/dialog component</h3>
+        <div class="demo">
+          <button class="btn btn-secondary" onclick="openModal()">Open the example dialog</button>
+          <div id="demo-modal">
+            <dialog
+              class="modal"
+              role="alertdialog"
+              aria-labelledby="modal-title"
+              aria-describedby="modal-message">
+              <h2 id="modal-title">Not a Translation Document</h2>
+              <p id="modal-message">
+                This document does not have translation data associated with it.
+              </p>
+              <button class="btn btn-primary" onclick="closeModal()">OK</button>
+            </dialog>
+          </div>
+        </div>
+        <details><summary class="body-md">HTML</summary><pre class="code" data-html="demo-modal"></pre></details>
+        <details><summary class="body-md">CSS</summary><pre class="code" data-css="css-modal"></pre></details>
+
+        <h3 class="title-md">4.6 Badge/status component</h3>
+        <div class="demo demo-row" id="demo-badge">
+          <!-- Status badge -->
+          <span class="badge badge-warning" aria-label="Status: Highlighting not available">
+            HIGHLIGHTING NOT AVAILABLE
+          </span>
+          <span class="badge badge-success">Success</span>
+          <span class="badge badge-error">Error</span>
+
+          <!-- Score badge -->
+          <span class="score-badge" aria-label="Score: 4 out of 5">
+            <span aria-hidden="true">•</span>
+            <span>4/5</span>
+          </span>
+        </div>
+        <details><summary class="body-md">HTML</summary><pre class="code" data-html="demo-badge"></pre></details>
+        <details><summary class="body-md">CSS</summary><pre class="code" data-css="css-badge"></pre></details>
+
+        <h3 class="title-md">4.7 Divider component</h3>
+        <div class="demo" id="demo-divider">
+          <hr class="divider" />
+        </div>
+        <details><summary class="body-md">HTML</summary><pre class="code" data-html="demo-divider"></pre></details>
+        <details><summary class="body-md">CSS</summary><pre class="code" data-css="css-divider"></pre></details>
+      </section>
+
+      <!-- 5. CSS VARIABLES -->
+      <section id="variables" aria-labelledby="h-variables">
+        <h2 id="h-variables" class="title-lg">5. CSS variables</h2>
+        <p class="body-md">Create a single CSS file with all design system tokens. This makes updating colors/spacing global and easy.</p>
+        <p class="body-md"><strong>File:</strong> design-system.css</p>
+        <pre class="code" data-css="css-tokens"></pre>
+      </section>
+
+      <!-- 6. ACCESSIBILITY STANDARDS -->
+      <section id="accessibility" aria-labelledby="h-accessibility">
+        <h2 id="h-accessibility" class="title-lg">6. Accessibility standards</h2>
+
+        <h3 class="title-md">6.1 Built in to every component</h3>
+        <div class="body-md">
+          <p><strong>Color contrast:</strong></p>
+          <ul>
+            <li>✅ All text/background combinations meet WCAG AA minimum (4.5:1)</li>
+            <li>✅ Large text meets AAA standard (7:1) where possible</li>
+          </ul>
+          <p><strong>Keyboard navigation:</strong></p>
+          <ul>
+            <li>✅ All interactive elements (buttons, links, collapsibles) are keyboard accessible</li>
+            <li>✅ Focus indicators are visible and clear (2px outline)</li>
+            <li>✅ Tab order follows visual flow</li>
+          </ul>
+          <p><strong>Screen reader support:</strong></p>
+          <ul>
+            <li>✅ Semantic HTML (buttons, links, headers)</li>
+            <li>✅ ARIA labels where needed (aria-expanded, aria-label, aria-controls)</li>
+            <li>✅ Alt text for images and icons</li>
+          </ul>
+          <p><strong>Touch targets:</strong></p>
+          <ul>
+            <li>✅ Minimum 40px × 40px touch targets for mobile</li>
+            <li>✅ Adequate spacing between interactive elements (8px minimum)</li>
+          </ul>
+        </div>
+
+        <h3 class="title-md">6.2 Accessibility checklist for every component</h3>
+        <p class="body-md">Before using any component, verify:</p>
+        <div id="a11y-checklists" class="body-md"></div>
+
+        <h3 class="title-md">6.3 Accessibility testing standards</h3>
+        <p class="body-md">Every new feature must pass:</p>
+        <ol class="body-md">
+          <li><strong>Automated testing</strong>
+            <ul>
+              <li>axe DevTools (browser extension)</li>
+              <li>Lighthouse accessibility audit</li>
+              <li>No errors or critical issues</li>
+            </ul>
+          </li>
+          <li><strong>Manual testing</strong>
+            <ul>
+              <li>Keyboard navigation (Tab, Shift+Tab, Escape, Enter)</li>
+              <li>Screen reader (NVDA on Windows, VoiceOver on Mac)</li>
+              <li>Zoom/magnification (200%)</li>
+              <li>Color blindness simulation</li>
+            </ul>
+          </li>
+          <li><strong>User testing</strong>
+            <ul>
+              <li>At least one keyboard-only navigation test</li>
+              <li>At least one screen reader user test</li>
+              <li>Feedback collection and iteration</li>
+            </ul>
+          </li>
+        </ol>
+      </section>
+
+      <!-- 7. USAGE EXAMPLES -->
+      <section id="examples" aria-labelledby="h-examples">
+        <h2 id="h-examples" class="title-lg">7. Usage examples</h2>
+
+        <h3 class="title-md">7.1 Example: sidebar structure</h3>
+        <p class="body-sm note">Classes the design system doesn't define yet (icon-button, score-display, score-number, score-unit, scoring-scale, recommendation-list, action-verb) show with browser defaults. The sidebar classes (sidebar, sidebar-header, sidebar-content, evaluation-section) are defined only in this example's own styles, not in the design system CSS.</p>
+        <div class="example-frame" id="demo-sidebar">
+          <style>
+            .example-frame {
+              font-family: var(--font-family-primary);
+              background-color: var(--color-surface);
+              color: var(--color-on-surface);
+            }
+            .sidebar {
+              width: 300px;
+              display: flex;
+              flex-direction: column;
+              background-color: var(--color-surface);
+              border-left: 1px solid var(--color-outline);
+              box-sizing: border-box;
+            }
+            .sidebar-header {
+              padding: var(--spacing-4);
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              border-bottom: 1px solid var(--color-outline);
+            }
+            .sidebar-header h1 {
+              margin: 0;
+              font-size: var(--font-size-title-lg);
+              font-weight: var(--font-weight-title-lg);
+            }
+            .sidebar-content {
+              flex: 1;
+              overflow-y: auto;
+              padding: var(--spacing-4);
+            }
+            .evaluation-section {
+              margin-bottom: var(--spacing-4);
+            }
+          </style>
+          <div class="sidebar">
+            <header class="sidebar-header">
+              <h1>AI Suggestions - Spanish</h1>
+              <button
+                class="icon-button"
+                aria-label="Help and documentation">
+                <span aria-hidden="true">?</span>
+              </button>
+            </header>
+
+            <div class="sidebar-content">
+              <!-- Evaluation Results -->
+              <section class="evaluation-section">
+                <h2 class="title-md">Evaluation Results</h2>
+                <div class="score-display">
+                  <span class="score-number">4.7</span>
+                  <span class="score-unit">/5</span>
+                </div>
+                <span class="badge badge-warning">MEDIUM FIX PRIORITY</span>
+              </section>
+
+              <!-- Criterion Section -->
+              <section class="evaluation-section">
+                <button
+                  class="collapsible-header"
+                  aria-expanded="true"
+                  aria-controls="example-accuracy-content"
+                  onclick="toggleSection(this)">
+                  <span class="collapse-icon" aria-hidden="true">▼</span>
+                  <h3 class="title-md">Accuracy &amp; Relevance</h3>
+                  <span class="score-badge">
+                    <span aria-hidden="true">•</span>
+                    <span>4</span>
+                  </span>
+                </button>
+
+                <div id="example-accuracy-content" class="collapsible-content">
+                  <ol class="scoring-scale">
+                    <li>
+                      <strong>5 (Excellent):</strong>
+                      Meaning fully preserved; all deadlines, legal nuances, and key steps present.
+                    </li>
+                    <li>
+                      <strong>4:</strong>
+                      Meaning preserved; all deadlines and key steps are correct.
+                    </li>
+                  </ol>
+
+                  <a href="#example-recommendations" class="link">View Recommendations →</a>
+                </div>
+              </section>
+
+              <!-- Recommendations -->
+              <section id="example-recommendations" class="evaluation-section">
+                <h3 class="title-md">Recommendations</h3>
+                <ul class="recommendation-list">
+                  <li>
+                    <strong class="action-verb">Change</strong>
+                    <code>'FAMLI, en inglés'</code> to
+                    <code>'FAMLI, sigla en inglés'</code>
+                  </li>
+                  <li>
+                    <strong class="action-verb">Remove</strong>
+                    <code>'(sueldo)'</code> from 'salario (sueldo)'
+                  </li>
+                </ul>
+              </section>
+            </div>
+          </div>
+        </div>
+        <p class="body-sm note">The doc's example uses <code>height: 100vh</code> on <code>.sidebar</code> and a <code>&lt;main&gt;</code> element for the content; here it's capped at 560px and uses a <code>&lt;div&gt;</code> so it fits inside this page.</p>
+        <details><summary class="body-md">HTML</summary><pre class="code" data-html="demo-sidebar"></pre></details>
+
+        <h3 class="title-md">7.2 Example: yellow translation card</h3>
+        <div class="demo"><div class="demo-narrow" id="demo-card-example">
+          <div class="card card-yellow">
+            <div class="card-section">
+              <span class="card-label">Original</span>
+              <p class="card-text">
+                Maryland is preparing to launch a paid family and medical leave program!
+              </p>
+            </div>
+
+            <div class="card-section">
+              <span class="card-label">Current translation</span>
+              <p class="card-text">
+                ¡Maryland se está preparando para lanzar un programa de licencia familiar y médica remunerada!
+              </p>
+            </div>
+          </div>
+
+          <div class="button-group">
+            <button class="btn btn-primary">Looks good</button>
+            <button class="btn btn-secondary">Suggest alternative</button>
+          </div>
+        </div></div>
+        <details><summary class="body-md">HTML</summary><pre class="code" data-html="demo-card-example"></pre></details>
+
+        <h3 class="title-md">7.3 Example: error state</h3>
+        <div class="demo"><div class="demo-narrow" id="demo-error">
+          <section class="error-state">
+            <div class="card card-error">
+              <h3 class="title-sm">Unable to Load Evaluation</h3>
+              <p class="body-md">
+                There was a problem loading the translation evaluation.
+                Please try again or contact support.
+              </p>
+            </div>
+            <button class="btn btn-primary" onclick="retryEvaluation()">
+              Retry
+            </button>
+          </section>
+        </div></div>
+        <details><summary class="body-md">HTML</summary><pre class="code" data-html="demo-error"></pre></details>
+        <details><summary class="body-md">CSS</summary><pre class="code" data-css="css-card-error"></pre></details>
+      </section>
+
+      <!-- 8. MIGRATION CHECKLIST -->
+      <section id="migration" aria-labelledby="h-migration">
+        <h2 id="h-migration" class="title-lg">8. Migration checklist</h2>
+        <p class="body-md">Use this to migrate existing HTML/CSS to the design system:</p>
+        <div id="migration-phases" class="body-md"></div>
+        <p class="body-md"><strong>Total estimated time: 16 hours</strong> (can be spread across sprints)</p>
+      </section>
+
+      <!-- 9. GOVERNANCE -->
+      <section id="governance" aria-labelledby="h-governance">
+        <h2 id="h-governance" class="title-lg">9. Design system governance</h2>
+        <div class="body-md">
+          <h3 class="title-md">When to update the design system</h3>
+          <p><strong>Do update if:</strong></p>
+          <ul>
+            <li>Creating new component types (data tables, accordions, etc.)</li>
+            <li>Adding new semantic colors (success, warning, error)</li>
+            <li>Changing baseline accessibility standards</li>
+            <li>Material Design 3 releases updates</li>
+          </ul>
+          <p><strong>Don't update if:</strong></p>
+          <ul>
+            <li>Creating one-off styles for unique features</li>
+            <li>Tweaking spacing for specific layouts (use margin/padding instead)</li>
+            <li>Experimenting with new UI patterns (try in feature branch first)</li>
+          </ul>
+
+          <h3 class="title-md">Versioning</h3>
+          <ul>
+            <li><strong>1.0</strong> (current) — Initial Material Design 3 implementation with accessibility focus</li>
+            <li><strong>1.1</strong> (future) — Additional component types based on feature needs</li>
+            <li><strong>2.0</strong> (future) — Potential redesign or Material Design 4 adoption</li>
+          </ul>
+
+          <h3 class="title-md">Documentation</h3>
+          <p>Maintain a living design system document:</p>
+          <ul>
+            <li>Keep this markdown file in version control</li>
+            <li>Update whenever design tokens change</li>
+            <li>Include screenshots/examples of each component</li>
+            <li>Link to accessibility testing results</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- 10. RESOURCES -->
+      <section id="resources" aria-labelledby="h-resources">
+        <h2 id="h-resources" class="title-lg">10. Resources</h2>
+        <div class="body-md">
+          <h3 class="title-md">Design tools</h3>
+          <ul>
+            <li><a class="link" href="https://www.figma.com/file/O0Zdiaprc2vPy57gPQVtsN/Material-3-Design-Kit">Material Design 3 Figma Kit</a></li>
+            <li><a class="link" href="https://m3.material.io/theme-builder">Material Design 3 Color Tool</a></li>
+            <li><a class="link" href="https://webaim.org/resources/contrastchecker/">Color Contrast Checker</a></li>
+          </ul>
+          <h3 class="title-md">Accessibility resources</h3>
+          <ul>
+            <li><a class="link" href="https://www.w3.org/WAI/ARIA/apg/">ARIA Authoring Practices Guide</a></li>
+            <li><a class="link" href="https://www.color-blindness.com/coblis-color-blindness-simulator/">WebAIM Color Blindness Simulator</a></li>
+            <li><a class="link" href="https://www.w3.org/WAI/WCAG21/quickref/">WCAG 2.1 Guidelines</a></li>
+          </ul>
+          <h3 class="title-md">Tools &amp; testing</h3>
+          <ul>
+            <li><a class="link" href="https://www.deque.com/axe/devtools/">axe DevTools</a></li>
+            <li><a class="link" href="https://developers.google.com/web/tools/lighthouse">Lighthouse</a></li>
+            <li><a class="link" href="https://www.nvaccess.org/">NVDA Screen Reader</a></li>
+            <li><a class="link" href="https://developer.chrome.com/docs/devtools/accessibility/reference/">Chrome DevTools Accessibility Inspector</a></li>
+          </ul>
+
+          <h3 class="title-md">Questions?</h3>
+          <p>This design system is intentionally detailed but also flexible. As you implement it:</p>
+          <ol>
+            <li><strong>Does something feel off?</strong> Adjust it.</li>
+            <li><strong>Do you need components not listed?</strong> Add them following the patterns here.</li>
+            <li><strong>Do you have feedback?</strong> Update the design system—it's a living document.</li>
+          </ol>
+          <p>The goal is to make your sidebar <strong>accessible, maintainable, and beautiful</strong>.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    // ---- Content from the design system doc (sections 1–3, 6.2, 8) ----
+
+    var PALETTE = [
+      { group: "Primary colors", colors: [
+        ["Primary", "#1976D2", "Google Blue"],
+        ["Primary (hover)", "#1565C0", "Darker"],
+        ["Primary (focus)", "#1565C0", "With outline", true],
+        ["Primary (disabled)", "#BDBDBD", "Gray"],
+        ["On Primary", "#FFFFFF", "White text on primary"],
+        ["Primary Container", "#E3F2FD", "Light blue background"],
+        ["On Primary Container", "#0D47A1", "Dark blue text"],
+      ]},
+      { group: "Secondary colors (for alternatives/secondary actions)", colors: [
+        ["Secondary", "#4FC3F7", "Light Blue"],
+        ["Secondary (hover)", "#29B6F6", ""],
+        ["Secondary (disabled)", "#BDBDBD", ""],
+        ["On Secondary", "#000000", "Black text"],
+        ["Secondary Container", "#B3E5FC", ""],
+        ["On Secondary Container", "#01579B", ""],
+      ]},
+      { group: "Tertiary (for success/positive states)", colors: [
+        ["Tertiary", "#81C784", "Green"],
+        ["Tertiary (hover)", "#66BB6A", ""],
+        ["On Tertiary", "#FFFFFF", ""],
+        ["Tertiary Container", "#C8E6C9", ""],
+        ["On Tertiary Container", "#1B5E20", ""],
+      ]},
+      { group: "Neutral/surface colors", colors: [
+        ["Surface", "#FFFFFF", "White background"],
+        ["Surface (variant)", "#F5F5F5", "Light gray background"],
+        ["Surface (emphasis)", "#EEEEEE", "Slightly darker gray"],
+        ["On Surface", "#202124", "Dark gray - primary text"],
+        ["On Surface (variant)", "#5F6368", "Medium gray - secondary text"],
+        ["Background", "#FFFFFF", ""],
+        ["On Background", "#202124", ""],
+        ["Outline", "#DADCE0", "Border color"],
+        ["Outline (variant)", "#E8EAED", "Lighter border"],
+      ]},
+      { group: "Semantic colors (alert states)", colors: [
+        ["Error", "#F44336", "Red"],
+        ["Error (hover)", "#D32F2F", ""],
+        ["On Error", "#FFFFFF", ""],
+        ["Error Container", "#FFEBEE", ""],
+        ["On Error Container", "#B71C1C", ""],
+        ["Warning", "#FBC02D", "Yellow - used in your card"],
+        ["Warning Text", "#37474F", "Dark gray on yellow - MUST use for contrast"],
+        ["On Warning", "#F57F17", ""],
+        ["Success", "#4CAF50", "Green"],
+        ["On Success", "#FFFFFF", ""],
+      ]},
+    ];
+
+    var COLOR_USAGE = {
+      headers: ["Element", "Current color", "Recommendation"],
+      rows: [
+        ["Primary button (\"Looks good\")", "#1976D2", "✓ Perfect"],
+        ["Secondary button (\"Suggest alternative\")", "Light gray", "Change to #F5F5F5 with #202124 text"],
+        ["Yellow card background", "#FFF9C4", "✓ Keep (accessible)"],
+        ["Yellow card text", "#9AA0A6 (light gray)", "❌ Change to #37474F (dark gray)"],
+        ["Heading text", "#202124", "✓ Perfect"],
+        ["Body text", "#202124", "✓ Perfect"],
+        ["Link text", "#1976D2", "✓ Good (add underline)"],
+        ["Dividers/borders", "#DADCE0", "✓ Good"],
+        ["Score badge (e.g., \"• 4\")", "#202124 or #1976D2", "✓ Good"],
+        ["\"HIGHLIGHTING NOT AVAILABLE\" badge", "Gray background", "Change to #FFF3E0 (light orange) with clear text"],
+        ["Sidebar background", "#FFFFFF", "✓ Perfect"],
+      ],
+    };
+
+    var CONTRAST = {
+      headers: ["Foreground", "Background", "Ratio", "WCAG AA", "WCAG AAA", "Status"],
+      rows: [
+        ["#202124 (text)", "#FFFFFF", "18.5:1", "✅ Pass", "✅ Pass", "Perfect"],
+        ["#202124 (text)", "#F5F5F5", "17.5:1", "✅ Pass", "✅ Pass", "Perfect"],
+        ["#FFFFFF (text)", "#1976D2", "6.3:1", "✅ Pass", "✅ Pass", "Perfect"],
+        ["#37474F (text)", "#FFF9C4 (yellow)", "7.1:1", "✅ Pass", "✅ Pass", "Fix this"],
+        ["#9AA0A6 (light gray)", "#FFF9C4 (yellow)", "3.2:1", "❌ Fail", "❌ Fail", "CRITICAL"],
+        ["#1976D2 (link)", "#FFFFFF", "4.8:1", "✅ Pass", "✅ Pass", "Good"],
+        ["#202124 (text)", "#E3F2FD", "17.8:1", "✅ Pass", "✅ Pass", "Perfect"],
+      ],
+    };
+
+    // [class, size, line height, weight, letter spacing, usage]
+    var TYPE_SCALE = [
+      ["headline-lg", "32px", "40px", 400, "0", "Headline / Large titles — rarely used in sidebars (too large)"],
+      ["headline-md", "28px", "36px", 400, "0", "Headline / Medium — rarely used in sidebars (too large)"],
+      ["headline-sm", "24px", "32px", 400, "0", "Headline / Small — page title, document name"],
+      ["title-lg", "22px", "28px", 400, "0.1px", "Title / Large — PRIMARY SIDEBAR TITLE (\"AI Suggestions - Spanish\")"],
+      ["title-md", "16px", "24px", 500, "0.15px", "Title / Medium — SECTION HEADERS (\"Needs review (16)\", criterion names, \"Evaluation Results\")"],
+      ["title-sm", "14px", "20px", 500, "0.1px", "Title / Small — subsection titles"],
+      ["body-lg", "16px", "24px", 400, "0.5px", "Body / Large — PRIMARY BODY TEXT (paragraphs, descriptions, long-form content)"],
+      ["body-md", "14px", "20px", 400, "0.25px", "Body / Medium — STANDARD BODY (most body text, explanations, lists)"],
+      ["body-sm", "12px", "16px", 400, "0.4px", "Body / Small — fine print, helper text, metadata"],
+      ["label-lg", "14px", "20px", 500, "0.1px", "Label / Large — button text, form labels, emphasized labels"],
+      ["label-md", "12px", "16px", 500, "0.5px", "Label / Medium — smaller buttons, tags, badges"],
+      ["label-sm", "11px", "16px", 500, "0.5px", "Label / Small — micro text, timestamps"],
+    ];
+
+    var TYPE_USAGE = {
+      headers: ["Element", "Current", "Recommendation"],
+      rows: [
+        ["\"AI Suggestions - Spanish\"", "~16-18px, bold", "Use .title-lg (22px) or keep at 18px"],
+        ["Criterion names (\"Accuracy & Relevance\")", "~14px, medium", "Use .title-md (16px, 500 weight) ✓"],
+        ["Score descriptions (\"5: Meaning fully preserved...\")", "~13-14px", "Use .body-md (14px) ✓"],
+        ["Translation text (original/current)", "~14px", "Use .body-md ✓"],
+        ["\"Evaluation Results\" heading", "~18px", "Use .title-lg (22px)"],
+        ["Score badge \"4.7/5\"", "~32px bold", "Use size appropriately, ensure accessible color"],
+        ["Priority text \"MEDIUM FIX PRIORITY\"", "~11px", "Use .label-sm"],
+        ["\"View prompt\", \"View source\" links", "~14px, blue", "Use .body-md with underline ✓"],
+        ["Navigation numbers \"1 of 16\"", "~12px", "Use .body-sm ✓"],
+      ],
+    };
+
+    var SPACING_SCALE = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 20, 24];
+    var SPACING_BASE_PX = 4;
+
+    var SPACING_USAGE = {
+      headers: ["Element", "Current spacing", "Recommendation"],
+      rows: [
+        ["Sidebar padding (left/right)", "~12-16px", "Use --spacing-4 (16px)"],
+        ["Sidebar padding (top/bottom)", "~12-16px", "Use --spacing-4 (16px)"],
+        ["Section margin (between sections)", "~12-16px", "Use --spacing-4 (16px)"],
+        ["Criterion header padding", "~12px", "Use --spacing-3 (12px) ✓"],
+        ["Yellow card padding", "~12-16px", "Use --spacing-4 (16px) ✓"],
+        ["Button margin (between buttons)", "~8px horizontal", "Use --spacing-2 (8px) ✓"],
+        ["List item spacing", "~8-12px", "Use --spacing-2 to --spacing-3 ✓"],
+      ],
+    };
+
+    var SIDEBAR_WIDTHS = {
+      headers: ["Component", "Width", "Notes"],
+      rows: [
+        ["Sidebar padding", "16px each side", "Content width = 268px"],
+        ["Button full width", "268px", "Common for CTAs"],
+        ["Button (side by side)", "130px each + 8px gap", "For primary/secondary pairs"],
+        ["Text column", "268px", "~45-50 characters"],
+        ["Icon + label", "20px icon + 8px gap + text", "Icon left-aligned"],
+      ],
+    };
+
+    var A11Y_CHECKLISTS = [
+      ["For buttons", [
+        "Text is descriptive (\"Looks good\" vs \"Yes\")",
+        "Minimum 40×40px touch target",
+        "Visible focus indicator on focus-visible",
+        "Disabled state is visually clear",
+        "Sufficient color contrast (7:1 preferred)",
+      ]],
+      ["For links", [
+        "Underline is visible",
+        "Not relying on color alone",
+        "\"View [noun]\" pattern (descriptive)",
+        "Focus indicator visible",
+        "Contrast ratio ≥ 4.5:1",
+      ]],
+      ["For collapsibles", [
+        "aria-expanded=\"true/false\" on button",
+        "aria-controls points to content ID",
+        "Icon rotates to show state",
+        "Header is button element",
+        "Focus indicator visible",
+      ]],
+      ["For cards", [
+        "Text color meets 4.5:1 contrast with background",
+        "Not relying on color alone to convey meaning",
+        "Clear visual hierarchy",
+      ]],
+      ["For modals", [
+        "Modal uses <dialog> element",
+        "aria-labelledby points to title",
+        "Focus moves to first button on open",
+        "Escape key closes modal",
+        "Focus returns to trigger on close",
+      ]],
+    ];
+
+    var MIGRATION_PHASES = [
+      ["Phase 1: Setup (1 hour)", [
+        "Create design-system.css with all CSS variables",
+        "Include design-system.css in Sidebar.html",
+        "Include design-system.css in Evaluationsidebar.html",
+      ]],
+      ["Phase 2: Colors (2 hours)", [
+        "Replace all hardcoded hex colors with CSS variables",
+        "Test color contrast on yellow card (fix to #37474F text)",
+        "Verify all buttons use primary/secondary color variables",
+      ]],
+      ["Phase 3: Typography (2 hours)", [
+        "Replace font sizes with type scale classes",
+        "Standardize heading hierarchy",
+        "Apply appropriate line heights",
+      ]],
+      ["Phase 4: Components (3 hours)", [
+        "Refactor buttons using .btn classes",
+        "Refactor collapsibles with proper ARIA",
+        "Refactor cards using .card classes",
+        "Create modals from dialog examples",
+      ]],
+      ["Phase 5: Spacing (2 hours)", [
+        "Replace all margin/padding with spacing variables",
+        "Verify 300px sidebar constraint is respected",
+        "Ensure consistent gutters and spacing",
+      ]],
+      ["Phase 6: Accessibility (4 hours)", [
+        "Add focus indicators to all interactive elements",
+        "Verify all collapsibles have aria-expanded/aria-controls",
+        "Test with NVDA/JAWS",
+        "Test keyboard navigation",
+      ]],
+      ["Phase 7: Testing (2 hours)", [
+        "Run axe DevTools",
+        "Test with Lighthouse",
+        "Manual keyboard navigation test",
+        "Screen reader test",
+      ]],
+    ];
+
+    // ---- Rendering ----
+
+    var HEX_PATTERN = /#[0-9A-Fa-f]{6}/g;
+
+    function el(tag, className, text) {
+      var node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+
+    /** Appends text to a node, adding a color chip before each hex code. */
+    function appendWithChips(node, text) {
+      var last = 0;
+      text.replace(HEX_PATTERN, function (hex, index) {
+        node.appendChild(document.createTextNode(text.slice(last, index)));
+        var chip = el("span", "chip");
+        chip.style.background = hex;
+        chip.setAttribute("aria-hidden", "true");
+        node.appendChild(chip);
+        node.appendChild(document.createTextNode(hex));
+        last = index + hex.length;
+      });
+      node.appendChild(document.createTextNode(text.slice(last)));
+    }
+
+    function renderTable(tableId, data) {
+      var table = document.getElementById(tableId);
+      var headRow = el("tr");
+      data.headers.forEach(function (h) {
+        var th = el("th", null, h);
+        th.scope = "col";
+        headRow.appendChild(th);
+      });
+      table.appendChild(el("thead")).appendChild(headRow);
+      var body = table.appendChild(el("tbody"));
+      data.rows.forEach(function (row) {
+        var tr = body.appendChild(el("tr"));
+        row.forEach(function (cell) { appendWithChips(tr.appendChild(el("td")), cell); });
+      });
+    }
+
+    function renderPalette() {
+      var container = document.getElementById("palette");
+      PALETTE.forEach(function (group) {
+        container.appendChild(el("h4", "title-sm", group.group));
+        var grid = container.appendChild(el("div", "swatch-grid"));
+        group.colors.forEach(function (c) {
+          var swatch = grid.appendChild(el("div", "swatch"));
+          var color = swatch.appendChild(el("div", "swatch-color" + (c[3] ? " with-outline" : "")));
+          color.style.background = c[1];
+          var info = swatch.appendChild(el("div", "swatch-info"));
+          info.appendChild(el("div", "label-lg", c[0]));
+          info.appendChild(el("code", "body-sm", c[1]));
+          if (c[2]) info.appendChild(el("div", "body-sm note", c[2]));
+        });
+      });
+    }
+
+    function renderTypeScale() {
+      var container = document.getElementById("type-scale");
+      TYPE_SCALE.forEach(function (t) {
+        var row = container.appendChild(el("div", "type-row"));
+        var meta = row.appendChild(el("div", "body-sm note"));
+        meta.appendChild(el("code", null, "." + t[0]));
+        meta.appendChild(el("div", null, t[1] + " / " + t[2] + " · " + t[3] + " · " + t[4]));
+        var sample = row.appendChild(el("div"));
+        sample.appendChild(el("div", t[0], "Paid family and medical leave"));
+        sample.appendChild(el("div", "body-sm note", t[5]));
+      });
+    }
+
+    function renderSpacing() {
+      var container = document.getElementById("spacing-scale");
+      SPACING_SCALE.forEach(function (step) {
+        var px = step * SPACING_BASE_PX;
+        var row = container.appendChild(el("div", "spacing-row body-sm"));
+        row.appendChild(el("code", null, "--spacing-" + step + ": " + px + "px"));
+        var bar = row.appendChild(el("div", "spacing-bar"));
+        bar.style.width = px + "px";
+      });
+    }
+
+    function renderChecklists(containerId, lists) {
+      var container = document.getElementById(containerId);
+      lists.forEach(function (list) {
+        container.appendChild(el("p")).appendChild(el("strong", null, list[0]));
+        var ul = container.appendChild(el("ul"));
+        list[1].forEach(function (item) { ul.appendChild(el("li", null, "☐ " + item)); });
+      });
+    }
+
+    /** Removes the common leading indentation so code samples read cleanly. */
+    function dedent(text) {
+      var lines = text.replace(/^\n+|\s+$/g, "").split("\n");
+      var indents = lines.filter(function (l) { return l.trim(); })
+        .map(function (l) { return l.match(/^ */)[0].length; });
+      var min = Math.min.apply(null, indents);
+      return lines.map(function (l) { return l.slice(min); }).join("\n");
+    }
+
+    function fillCodeBlocks() {
+      document.querySelectorAll("pre[data-css]").forEach(function (pre) {
+        pre.textContent = dedent(document.getElementById(pre.dataset.css).textContent);
+      });
+      document.querySelectorAll("pre[data-html]").forEach(function (pre) {
+        pre.textContent = dedent(document.getElementById(pre.dataset.html).innerHTML);
+      });
+    }
+
+    // ---- Behavior used by the examples ----
+
+    function toggleSection(button) {
+      var expanded = button.getAttribute("aria-expanded") === "true";
+      button.setAttribute("aria-expanded", String(!expanded));
+    }
+
+    var modalTrigger = null;
+
+    function openModal() {
+      modalTrigger = document.activeElement;
+      document.querySelector("#demo-modal dialog").showModal();
+    }
+
+    function closeModal() {
+      document.querySelector("#demo-modal dialog").close();
+      if (modalTrigger) modalTrigger.focus();
+    }
+
+    function retryEvaluation() {
+      // Example only: the doc's error state calls this; nothing to retry here.
+    }
+
+    // In-page links scroll within the page (the web app runs inside an iframe).
+    document.addEventListener("click", function (event) {
+      var link = event.target.closest("a[href^='#']");
+      if (!link) return;
+      var target = document.getElementById(link.getAttribute("href").slice(1));
+      if (!target) return;
+      event.preventDefault();
+      target.scrollIntoView({ behavior: "smooth" });
+    });
+
+    // Code samples are read from the untouched markup, before anything renders.
+    fillCodeBlocks();
+    renderPalette();
+    renderTable("table-color-usage", COLOR_USAGE);
+    renderTable("table-contrast", CONTRAST);
+    renderTypeScale();
+    renderTable("table-type-usage", TYPE_USAGE);
+    renderSpacing();
+    renderTable("table-spacing-usage", SPACING_USAGE);
+    renderTable("table-sidebar-widths", SIDEBAR_WIDTHS);
+    renderChecklists("a11y-checklists", A11Y_CHECKLISTS);
+    renderChecklists("migration-phases", MIGRATION_PHASES);
+  </script>
+</body>
+</html>
