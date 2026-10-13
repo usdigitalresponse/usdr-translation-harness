@@ -121,8 +121,8 @@ var VALID_PROPS = {
 };
 
 var HEADER_ROW = [
-  "fileId", "fileName", "processedAt", "status", "durationMs", "errorDetail",
-  "extractionFileId", "provider", "model",
+  "fileId", "fileName", "processedAt", "status", "durationMs", "errorDetails",
+  "outputJsonId", "provider", "model", "submittedBy", "outputDocUrl",
 ];
 
 describe("getConfig", () => {
@@ -195,6 +195,32 @@ describe("getProcessedFileIds", () => {
     expect(ids.plEval.has("file-1")).toBe(false);
   });
 
+  test("throws when row 1 isn't the expected header row", () => {
+    var sheetMock = mockSheet([
+      ["Last updated: Oct 1"],
+      HEADER_ROW,
+      ["file-1", "a.pdf", new Date(), "triggered", 100, ""],
+    ]);
+
+    var ctx = loadOrchestrator({ SpreadsheetApp: sheetMock });
+
+    expect(() => ctx.getProcessedFileIds("sheet-456")).toThrow("header row doesn't match");
+  });
+
+  test("throws when a column is renamed or moved", () => {
+    var renamed = HEADER_ROW.map(function (h) { return h === "outputJsonId" ? "extractionFileId" : h; });
+    var ctx = loadOrchestrator({ SpreadsheetApp: mockSheet([renamed]) });
+
+    expect(() => ctx.getProcessedFileIds("sheet-456")).toThrow("Found: fileId, fileName, processedAt, status, durationMs, errorDetails, extractionFileId");
+  });
+
+  test("accepts headers in any case, with extra columns after the expected ones", () => {
+    var header = HEADER_ROW.map(function (h) { return h.toUpperCase(); }).concat(["notes"]);
+    var ctx = loadOrchestrator({ SpreadsheetApp: mockSheet([header]) });
+
+    expect(ctx.getProcessedFileIds("sheet-456").extract.size).toBe(0);
+  });
+
   test("returns empty sets when sheet has only headers", () => {
     var sheetMock = mockSheet([HEADER_ROW]);
 
@@ -258,7 +284,7 @@ describe("logProcessingResult", () => {
     expect(row[5]).toBe("HTTP 500: Internal Server Error");
   });
 
-  test("writes Submitted By to column J, leaving G–I blank", () => {
+  test("writes Submitted By to column J, leaving G–I and K blank", () => {
     var sheetMock = mockSheet([HEADER_ROW]);
     var ctx = loadOrchestrator({ SpreadsheetApp: sheetMock });
     var file = makeFile("file-1", "test.pdf");
@@ -271,9 +297,10 @@ describe("logProcessingResult", () => {
     }, "triggered", "failed");
 
     var row = sheetMock._sheet.appendRow.mock.calls[0][0];
-    expect(row).toHaveLength(10);
+    expect(row).toHaveLength(11);
     expect(row.slice(6, 9)).toEqual(["", "", ""]);
     expect(row[9]).toBe("person@example.gov");
+    expect(row[10]).toBe("");
   });
 });
 
@@ -405,6 +432,23 @@ describe("callCloudRunFunction", () => {
 });
 
 describe("watchForNewFiles", () => {
+  test("fails the run without calling anything when the header row is wrong", () => {
+    var badHeader = HEADER_ROW.slice(0, 6).concat(["NEW COLUMN"], HEADER_ROW.slice(6));
+    var fetchMock = jest.fn();
+    var errorSpy = jest.spyOn(console, "error").mockImplementation();
+
+    var ctx = loadOrchestrator({
+      PropertiesService: mockScriptProperties(VALID_PROPS),
+      DriveApp: mockFolder([makeFile("file-1", "new.pdf")]),
+      SpreadsheetApp: mockSheet([badHeader]),
+      UrlFetchApp: { fetch: fetchMock },
+    });
+
+    expect(() => ctx.watchForNewFiles()).toThrow("header row doesn't match");
+    expect(fetchMock).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
   test("skips files already triggered for both services", () => {
     var sheetMock = mockSheet([
       HEADER_ROW,

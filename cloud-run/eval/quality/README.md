@@ -34,6 +34,10 @@ The Editor Add-on uses the second mode to evaluate the reviewer's current doc co
 | `eval-schema-*.json` | JSON schemas for validating LLM output |
 | `requirements.txt` | Python dependencies |
 
+## Results sheet
+
+Each model's scores are appended to the `EvalQuality` tab of `EVAL_QUALITY_RESULTS_SHEET_ID` (columns A–L). Column B, **Document ID**, is the output Google Doc's ID for evaluations run from the add-on (almost all of them). For runs started with a `translationJsonUrl`, it holds the translation JSON's ID instead. To find a doc's scores, search column B for the ID in the doc's URL.
+
 ## Model Config sheet
 
 Models come from the `Config!A:E` range of the Model Config sheet (`MODEL_CONFIG_SHEET_ID`). **Row 1 must be the header row** and include `Role`, `Provider`, `Model`, and `Active` (case-insensitive). Without `MODEL_CONFIG_SHEET_ID`, the service uses `fixtures/config.json` for local development, but **on Cloud Run a missing `MODEL_CONFIG_SHEET_ID` is an error** so a deploy that loses its env vars can't run on test models.

@@ -18,7 +18,7 @@ const COL_MODEL = "model";
 // matches, or a model is called with a blank name or provider
 const REQUIRED_CONFIG_COLUMNS = [COL_ROLE, COL_PROVIDER, COL_MODEL, COL_ACTIVE];
 const PROCESSING_LOG_TAB_NAME = "ProcessingLog";
-const PROCESSING_LOG_COLUMNS = "A:J";
+const PROCESSING_LOG_COLUMNS = "A:K";
 
 // https://developers.google.com/docs/api/reference/rest
 const DOCS_API_VERSION = "v1";
@@ -309,6 +309,22 @@ function formatTimestamp(date) {
     .replace(",", "");
 }
 
+/**
+ * Append a row to the Processing Log (columns A–K: fileId, fileName,
+ * processedAt, status, durationMs, errorDetails, outputJsonId, provider, model,
+ * submittedBy, outputDocUrl). Append-only: never edits an existing row.
+ *
+ * Translate writes two rows per model: `translated` (or `failed`) as soon as
+ * the translation JSON is saved, then `doc-created` (with the doc's URL in outputDocUrl) or
+ * `doc-failed` once the output doc step finishes.
+ *
+ * @param {string} sourceFileId
+ * @param {string} sourceFileName
+ * @param {{status: string, provider: string, model: string, outputFileId?: string,
+ *          outputDocUrl?: string, error?: string, durationMs?: number,
+ *          usage?: {duration_ms?: number}, submittedByEmail?: string}} translationResult
+ *   durationMs overrides usage.duration_ms (doc rows time the doc build)
+ */
 async function logTranslationResult(sourceFileId, sourceFileName, translationResult) {
   const sheetId = process.env.PROCESSING_LOG_SHEET_ID;
   if (!sheetId) {
@@ -328,12 +344,13 @@ async function logTranslationResult(sourceFileId, sourceFileName, translationRes
     sourceFileName,
     completedAt,
     translationResult.status,
-    translationResult.usage?.duration_ms || "",
+    translationResult.durationMs ?? translationResult.usage?.duration_ms ?? "",
     translationResult.error || "",
     translationResult.outputFileId || "",
     translationResult.provider,
     translationResult.model,
     translationResult.submittedByEmail || "",
+    translationResult.outputDocUrl || "",
   ];
 
   await sheets.spreadsheets.values.append({

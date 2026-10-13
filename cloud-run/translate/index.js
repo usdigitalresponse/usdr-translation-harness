@@ -6,12 +6,17 @@ const { callLlm } = require("./llm");
 const { loadConfig, loadStatuteUrls, writeOutput, logTranslationResult, stripExtension } = require("./loaders");
 const { createTranslationDoc } = require("./doc-writer");
 const { withRetry } = require("./retry");
-const { notifyDocCreated, notifyDocFailed } = require("./notifier");
+const { notifyDocCreated, notifyDocFailed, DOC_BASE_URL } = require("./notifier");
 
 const REQUIRED_FIELDS = ["extractionFileId", "sourceFileName"];
 const TRANSLATE_ROLE = "translate";
 const STATUS_TRANSLATED = "translated";
 const STATUS_FAILED = "failed";
+const STATUS_DOC_CREATED = "doc-created";
+const STATUS_DOC_FAILED = "doc-failed";
+// Separate stage so doc builds can be charted without changing the
+// pipeline_stage="translate" counts
+const DOC_PIPELINE_STAGE = "translate_doc";
 
 function logStructured(status, provider, model, sourceFileId, sourceFileName, extra = {}) {
   const entry = {
@@ -26,6 +31,48 @@ function logStructured(status, provider, model, sourceFileId, sourceFileName, ex
     ...extra,
   };
   console.log(JSON.stringify(entry));
+}
+
+/**
+ * Record the output doc step for one model: a structured log line and an
+ * appended Processing Log row (`doc-created` with the doc's URL in outputDocUrl, or `doc-failed`
+ * with the error). Never throws: logging must not fail the translation.
+ *
+ * @param {Object} t - The translation result (provider, model, outputFileId)
+ * @param {{docId?: string, error?: string, durationMs: number}} doc
+ * @param {{sourceFileId: string, sourceFileName: string, submittedByEmail: string}} source
+ */
+async function logDocResult(t, doc, { sourceFileId, sourceFileName, submittedByEmail }) {
+  const status = doc.docId ? STATUS_DOC_CREATED : STATUS_DOC_FAILED;
+  console.log(JSON.stringify({
+    severity: doc.docId ? "INFO" : "ERROR",
+    message: `translation doc ${doc.docId ? "created" : "failed"} for ${t.provider}/${t.model}`,
+    pipeline_stage: DOC_PIPELINE_STAGE,
+    status,
+    provider: t.provider,
+    model: t.model,
+    sourceFileId,
+    sourceFileName,
+    translationFileId: t.outputFileId,
+    duration_ms: doc.durationMs,
+    ...(doc.docId && { docId: doc.docId }),
+    ...(doc.error && { error: doc.error }),
+    ...(submittedByEmail && { submittedByEmail }),
+  }));
+  try {
+    await logTranslationResult(sourceFileId, sourceFileName, {
+      status,
+      provider: t.provider,
+      model: t.model,
+      outputFileId: t.outputFileId,
+      outputDocUrl: doc.docId ? DOC_BASE_URL + doc.docId : "",
+      error: doc.error,
+      durationMs: doc.durationMs,
+      submittedByEmail,
+    });
+  } catch (err) {
+    console.error(`Failed to log doc result for ${t.provider}/${t.model}:`, err.message);
+  }
 }
 
 /**
@@ -194,6 +241,7 @@ async function translate(req, res) {
   const stagingFolderId = process.env.DRIVE_TRANSLATION_DOC_STAGING_FOLDER_ID;
   const outputFolderId = process.env.DRIVE_TRANSLATION_DOC_FOLDER_ID;
   for (const t of succeeded) {
+    const docStart = Date.now();
     try {
       const docId = await withRetry(() =>
         createTranslationDoc({
@@ -208,10 +256,14 @@ async function translate(req, res) {
       );
       t.docId = docId;
       console.log(`Created translation doc ${docId} for ${t.provider}/${t.model}`);
+      await logDocResult(t, { docId, durationMs: Date.now() - docStart },
+        { sourceFileId, sourceFileName, submittedByEmail });
       await notifyDocCreated({ sourceFileName, provider: t.provider, model: t.model, docId, submittedByEmail });
     } catch (err) {
       console.error(`Failed to create doc for ${t.provider}/${t.model}:`, err.message);
       t.docError = err.message;
+      await logDocResult(t, { error: err.message, durationMs: Date.now() - docStart },
+        { sourceFileId, sourceFileName, submittedByEmail });
       await notifyDocFailed({ sourceFileName, provider: t.provider, model: t.model, error: err.message, submittedByEmail });
     }
   }

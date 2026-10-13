@@ -40,7 +40,9 @@ EVAL_RESULTS_HEADER_RANGE = f"{EVAL_RESULTS_SHEET_NAME}!A1:L1"
 # Column order must match build_result_row() in main.py.
 EVAL_RESULTS_HEADERS = [
     "Timestamp",
-    "Translation File ID",
+    # Add-on runs (almost all) record the output Google Doc's ID here; runs
+    # started with a translationJsonUrl record the translation JSON's ID.
+    "Document ID",
     "Provider",
     "Model",
     "Weighted Overall",

@@ -16,6 +16,19 @@ Two responsibilities:
    same Drift eval on a schedule, and backstops config changes made outside the
    Sheet UI (which the `onEdit` trigger can't see).
 
+## Processing Log header check
+
+Every service writes to the Processing Log by column position, and the watcher
+finds already-processed files by position too. So each run, `getProcessedFileIds`
+checks row 1 of the `ProcessingLog` tab against `PROCESSING_LOG_HEADERS`
+(case-insensitive; extra columns after K are fine):
+
+`fileId, fileName, processedAt, status, durationMs, errorDetails, outputJsonId, provider, model, submittedBy, outputDocUrl`
+
+If it doesn't match, the run throws (Executions shows **Failed** with the
+expected and found headers) and no files are sent, so a renamed or inserted
+column can't scramble rows or make the watcher re-send every input file.
+
 ## Script Properties
 
 Set under Project Settings → Script Properties (values come from the repo `.env`).
