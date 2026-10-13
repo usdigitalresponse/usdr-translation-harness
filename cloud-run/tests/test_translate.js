@@ -19,9 +19,9 @@ function glossaryTable(rows) {
   return { headers: GLOSSARY_HEADERS, rows };
 }
 
-/** Structured input-problem logs (glossary etc.) captured by a console.error spy. */
-function inputProblems(errorSpy) {
-  return errorSpy.mock.calls
+/** Structured input-problem logs (glossary etc.) captured by a console.log spy. */
+function inputProblems(logSpy) {
+  return logSpy.mock.calls
     .map((c) => { try { return JSON.parse(c[0]); } catch { return null; } })
     .filter((e) => e && e.input_problem);
 }
@@ -615,17 +615,19 @@ describe("buildTranslationPrompt", () => {
     loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
     loadSheetTable.mockRejectedValue(new Error("GLOSSARY_SHEET_ID not set in .env"));
 
-    const errorSpy = jest.spyOn(console, "error").mockImplementation();
+    const logSpy = jest.spyOn(console, "log").mockImplementation();
 
     const { prompt } = await buildTranslationPrompt("file123");
 
     expect(prompt).toContain("<extraction>");
     expect(prompt).not.toContain("<glossary>");
-    const [problem] = inputProblems(errorSpy);
+    const [problem] = inputProblems(logSpy);
     expect(problem.severity).toBe("ERROR");
     expect(problem.message).toContain("could not load");
+    // No pipeline_stage, or the pipeline_stage_status metric counts it as a run
+    expect(problem).not.toHaveProperty("pipeline_stage");
 
-    errorSpy.mockRestore();
+    logSpy.mockRestore();
   });
 
   test("prompt sections appear in correct order", async () => {
@@ -882,19 +884,16 @@ describe("buildGlossary", () => {
 
 describe("buildTranslationPrompt glossary logging", () => {
   const T = GLOSSARY_COLUMNS;
-  let errorSpy;
   let logSpy;
 
   beforeEach(() => {
     jest.clearAllMocks();
     loadExtractionJson.mockResolvedValue({ blocks: [] });
     loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
-    errorSpy = jest.spyOn(console, "error").mockImplementation();
     logSpy = jest.spyOn(console, "log").mockImplementation();
   });
 
   afterEach(() => {
-    errorSpy.mockRestore();
     logSpy.mockRestore();
   });
 
@@ -906,7 +905,7 @@ describe("buildTranslationPrompt glossary logging", () => {
 
     const { promptMetrics } = await buildTranslationPrompt("file123");
 
-    expect(inputProblems(errorSpy)).toEqual([]);
+    expect(inputProblems(logSpy)).toEqual([]);
     expect(promptMetrics.glossary_entries).toBe(2);
     expect(promptMetrics.glossary_entries_with_forbidden).toBe(1);
     expect(logSpy.mock.calls.flat().join("\n")).toContain("Glossary: 2 entries included in the prompt");
@@ -920,7 +919,7 @@ describe("buildTranslationPrompt glossary logging", () => {
 
     const { prompt, promptMetrics } = await buildTranslationPrompt("file123");
 
-    const problems = inputProblems(errorSpy);
+    const problems = inputProblems(logSpy);
     expect(problems.map((p) => p.input_problem)).toEqual(["glossary", "glossary"]);
     expect(problems[0].missing_columns).toContain(T.ENGLISH_TERM);
     expect(problems[0].found_headers).toEqual(["Last updated: Oct 1"]);
@@ -940,7 +939,7 @@ describe("buildTranslationPrompt glossary logging", () => {
 
     const { prompt, promptMetrics } = await buildTranslationPrompt("file123");
 
-    const [problem] = inputProblems(errorSpy);
+    const [problem] = inputProblems(logSpy);
     expect(problem.missing_columns).toEqual([T.FORBIDDEN_TERMS]);
     expect(prompt).toContain("<glossary>");
     expect(prompt).not.toContain("permiso");
@@ -953,7 +952,7 @@ describe("buildTranslationPrompt glossary logging", () => {
 
     await buildTranslationPrompt("file123");
 
-    const [problem] = inputProblems(errorSpy);
+    const [problem] = inputProblems(logSpy);
     expect(problem.message).toContain("no glossary entries were included in the prompt (0 rows read");
   });
 });

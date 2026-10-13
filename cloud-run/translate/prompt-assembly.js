@@ -44,7 +44,9 @@ const GLOSSARY_COLUMNS_USED = Object.values(GLOSSARY_COLUMNS).filter(
 );
 
 // Every input problem shares this message prefix and the input_problem field,
-// so one log-based alert can catch them all.
+// so one log-based alert can catch them all. These entries deliberately have no
+// pipeline_stage field: the pipeline_stage_status metric counts every entry
+// that has one as a stage execution.
 const INPUT_PROBLEM_PREFIX = "Translation input problem";
 const INPUT_GLOSSARY = "glossary";
 
@@ -58,10 +60,9 @@ const INPUT_GLOSSARY = "glossary";
  * @param {Object} [fields] - Extra structured fields
  */
 function logInputProblem(input, detail, fields = {}) {
-  console.error(JSON.stringify({
+  console.log(JSON.stringify({
     severity: "ERROR",
     message: `${INPUT_PROBLEM_PREFIX} (${input}): ${detail}`,
-    pipeline_stage: "translate",
     input_problem: input,
     ...fields,
   }));
