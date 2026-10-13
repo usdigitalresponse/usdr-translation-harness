@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const { loadDoc, loadSheet, loadExtractionJson, loadStatutes } = require("./loaders");
+const { loadDoc, loadSheetTable, loadExtractionJson, loadStatutes } = require("./loaders");
 
 const CONTENT_PLACEHOLDER = "[Paste content to be translated in the area below]";
 const DEFAULT_CONTENT_TYPE = "public_flyer";
@@ -36,6 +36,36 @@ const GLOSSARY_COLUMNS = {
   NOTES: "notes",
   STATUS: "status",
 };
+
+// Columns formatGlossaryEntry reads. A missing one means that field silently
+// drops out of every entry (or, for English Term, every entry drops out).
+const GLOSSARY_COLUMNS_USED = Object.values(GLOSSARY_COLUMNS).filter(
+  (column) => column !== GLOSSARY_COLUMNS.STATUS
+);
+
+// Every input problem shares this message prefix and the input_problem field,
+// so one log-based alert can catch them all.
+const INPUT_PROBLEM_PREFIX = "Translation input problem";
+const INPUT_GLOSSARY = "glossary";
+
+/**
+ * Log a problem with a supplemental prompt input (glossary, etc.) as a
+ * structured ERROR. Translation continues without that input, so this log is
+ * the only signal that the prompt is missing something.
+ *
+ * @param {string} input - Which input (e.g. "glossary")
+ * @param {string} detail - What's wrong, in words an operator can act on
+ * @param {Object} [fields] - Extra structured fields
+ */
+function logInputProblem(input, detail, fields = {}) {
+  console.error(JSON.stringify({
+    severity: "ERROR",
+    message: `${INPUT_PROBLEM_PREFIX} (${input}): ${detail}`,
+    pipeline_stage: "translate",
+    input_problem: input,
+    ...fields,
+  }));
+}
 
 /**
  * Format a single glossary entry into a readable block for the LLM.
@@ -110,6 +140,88 @@ function formatGlossary(glossaryRows) {
 }
 
 /**
+ * Build the glossary prompt section from a loaded sheet table, with counts of
+ * what actually made it in.
+ *
+ * @param {{headers: string[], rows: Object[]}} table - From loadSheetTable
+ * @returns {{text: string, included: number, withForbidden: number,
+ *            skippedRows: number, missingColumns: string[]}}
+ *   included: entries in the prompt; withForbidden: of those, entries with
+ *   forbidden terms; skippedRows: non-blank rows dropped for having no English
+ *   term; missingColumns: expected headers not found in row 1
+ */
+function buildGlossary({ headers, rows }) {
+  const normalizedHeaders = headers.map((h) => h.toLowerCase());
+  const missingColumns = GLOSSARY_COLUMNS_USED.filter(
+    (column) => !normalizedHeaders.includes(column)
+  );
+
+  const hasTerm = (row) => Boolean(row[GLOSSARY_COLUMNS.ENGLISH_TERM]);
+  const entries = rows.map(formatGlossaryEntry).filter(Boolean);
+  const withForbidden = rows.filter(
+    (row) => hasTerm(row) && row[GLOSSARY_COLUMNS.FORBIDDEN_TERMS]
+  ).length;
+  const skippedRows = rows.filter(
+    (row) => !hasTerm(row) && Object.values(row).some(Boolean)
+  ).length;
+
+  return {
+    text: entries.join("\n\n"),
+    included: entries.length,
+    withForbidden,
+    skippedRows,
+    missingColumns,
+  };
+}
+
+/**
+ * Load the glossary and log what was included, or an input problem if the
+ * sheet can't be read, its header row isn't as expected, or no entries made it
+ * into the prompt. Never throws: translation proceeds without a glossary.
+ *
+ * @returns {Promise<{text: string, included: number, withForbidden: number}>}
+ */
+async function loadGlossary() {
+  const tab = process.env.GLOSSARY_SHEET_TAB || DEFAULT_GLOSSARY_SHEET_TAB;
+  console.log(`Loading glossary ("${tab}" tab)...`);
+
+  let table;
+  try {
+    table = await loadSheetTable("GLOSSARY_SHEET_ID", `${tab}!${GLOSSARY_SHEET_COLUMNS}`);
+  } catch (err) {
+    logInputProblem(INPUT_GLOSSARY, `could not load the "${tab}" tab: ${err.message}`);
+    return { text: "", included: 0, withForbidden: 0 };
+  }
+
+  const glossary = buildGlossary(table);
+
+  if (glossary.missingColumns.length) {
+    logInputProblem(
+      INPUT_GLOSSARY,
+      `the "${tab}" tab is missing expected columns: ${glossary.missingColumns.join(", ")}. ` +
+        "Row 1 must be the header row, with these exact column names.",
+      { missing_columns: glossary.missingColumns, found_headers: table.headers }
+    );
+  }
+
+  if (!glossary.included) {
+    logInputProblem(
+      INPUT_GLOSSARY,
+      `no glossary entries were included in the prompt (${table.rows.length} rows read from the "${tab}" tab)`,
+      { rows_read: table.rows.length }
+    );
+  }
+
+  console.log(
+    `Glossary: ${glossary.included} entries included in the prompt ` +
+      `(${glossary.withForbidden} with forbidden terms; ` +
+      `${glossary.skippedRows} rows skipped with no English term; ` +
+      `${table.rows.length} rows read)`
+  );
+  return glossary;
+}
+
+/**
  * Load all inputs and assemble the full translation prompt.
  *
  * Loads the base prompt from the Google Doc, the glossary from Google Sheets,
@@ -127,16 +239,8 @@ async function buildTranslationPrompt(extractionFileId, contentType, { includeSt
   console.log("Loading base prompt from Google Doc (%s)...", promptEnvVar);
   const basePrompt = await loadDoc(promptEnvVar);
 
-  let glossaryText = "";
-  try {
-    console.log("Loading glossary...");
-    const tab = process.env.GLOSSARY_SHEET_TAB || DEFAULT_GLOSSARY_SHEET_TAB;
-    const glossaryRows = await loadSheet("GLOSSARY_SHEET_ID", `${tab}!${GLOSSARY_SHEET_COLUMNS}`);
-    glossaryText = formatGlossary(glossaryRows);
-    console.log(`Glossary loaded (${glossaryRows.length} entries)`);
-  } catch (err) {
-    console.warn("Could not load glossary, proceeding without:", err.message);
-  }
+  const glossary = await loadGlossary();
+  const glossaryText = glossary.text;
 
   let statutesText = "";
   if (includeStatutes) {
@@ -187,6 +291,8 @@ async function buildTranslationPrompt(extractionFileId, contentType, { includeSt
     prompt_template_tokens: promptTokenEstimate,
     extraction_tokens: extractionTokenEstimate,
     glossary_tokens: glossaryTokenEstimate,
+    glossary_entries: glossary.included,
+    glossary_entries_with_forbidden: glossary.withForbidden,
     statutes_tokens: statutesTokenEstimate,
     total_prompt_chars: prompt.length,
   };
@@ -201,6 +307,7 @@ module.exports = {
   GLOSSARY_SHEET_COLUMNS,
   formatGlossaryEntry,
   formatGlossary,
+  buildGlossary,
   formatStatutes,
   buildTranslationPrompt,
 };
