@@ -482,10 +482,12 @@ describe("runEval", () => {
 // Only the actual loaders (via requireActual) use googleapis; index.js gets the
 // mocked loaders above.
 const mockDriveCreate = jest.fn();
+const mockSheetsGet = jest.fn();
 jest.mock("../plain-language-eval/node_modules/googleapis", () => ({
   google: {
     auth: { GoogleAuth: jest.fn() },
     drive: () => ({ files: { create: mockDriveCreate } }),
+    sheets: () => ({ spreadsheets: { values: { get: mockSheetsGet } } }),
   },
 }));
 
@@ -494,6 +496,7 @@ const {
   parseSheetRows,
   stripExtension,
   writeOutput: actualWriteOutput,
+  loadConfig: actualLoadConfig,
 } = jest.requireActual("../plain-language-eval/loaders.js");
 
 describe("writeOutput", () => {
@@ -629,5 +632,75 @@ describe("stripExtension", () => {
 
   test("handles no extension", () => {
     expect(stripExtension("noext")).toBe("noext");
+  });
+});
+
+// --- loadConfig (actual loader, googleapis mocked) ---
+
+describe("loadConfig", () => {
+  let saved;
+  let logSpy;
+
+  /** Structured input-problem logs captured by the console.log spy. */
+  function inputProblems() {
+    return logSpy.mock.calls
+      .map((c) => { try { return JSON.parse(c[0]); } catch { return null; } })
+      .filter((e) => e && e.input_problem);
+  }
+
+  beforeEach(() => {
+    saved = { sheetId: process.env.MODEL_CONFIG_SHEET_ID, kService: process.env.K_SERVICE };
+    mockSheetsGet.mockReset();
+    logSpy = jest.spyOn(console, "log").mockImplementation();
+  });
+
+  afterEach(() => {
+    for (const [key, value] of [["MODEL_CONFIG_SHEET_ID", saved.sheetId], ["K_SERVICE", saved.kService]]) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    logSpy.mockRestore();
+  });
+
+  test("uses the local fixture outside Cloud Run", async () => {
+    process.env.MODEL_CONFIG_SHEET_ID = "";
+    delete process.env.K_SERVICE;
+
+    const config = await actualLoadConfig();
+
+    expect(config.models.length).toBeGreaterThan(0);
+  });
+
+  test("errors instead of using the fixture on Cloud Run", async () => {
+    process.env.MODEL_CONFIG_SHEET_ID = "";
+    process.env.K_SERVICE = "plain-language-eval";
+
+    await expect(actualLoadConfig()).rejects.toThrow("MODEL_CONFIG_SHEET_ID is not set");
+    expect(inputProblems()[0].input_problem).toBe("model_config");
+  });
+
+  test("errors and names missing columns when row 1 isn't the header row", async () => {
+    process.env.MODEL_CONFIG_SHEET_ID = "config-sheet";
+    mockSheetsGet.mockResolvedValue({ data: { values: [
+      ["Last updated: Oct 1"],
+      ["Role", "Provider", "Model", "Active"],
+    ] } });
+
+    await expect(actualLoadConfig()).rejects.toThrow("missing expected columns: role, provider, model, active");
+  });
+
+  test("parses a valid sheet", async () => {
+    process.env.MODEL_CONFIG_SHEET_ID = "config-sheet";
+    mockSheetsGet.mockResolvedValue({ data: { values: [
+      ["Role", "Provider", "Model", "Active"],
+      ["plain-language-eval", "Google", "gemini-3.8-flash", "YES"],
+    ] } });
+
+    const { models } = await actualLoadConfig();
+
+    expect(models).toEqual([
+      { role: "plain-language-eval", provider: "google", model: "gemini-3.8-flash", active: true },
+    ]);
+    expect(inputProblems()).toEqual([]);
   });
 });

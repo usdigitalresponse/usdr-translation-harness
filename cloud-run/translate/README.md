@@ -50,10 +50,20 @@ Read from the `GLOSSARY_SHEET_TAB` tab (default `FAMLI Spanish Glossary`) of `GL
 
 Each translation logs `Glossary: N entries included in the prompt (…with forbidden terms; …rows skipped; …rows read)`, and the structured log line includes `glossary_entries` and `glossary_entries_with_forbidden`.
 
-If the glossary can't be used as expected, Translate continues without it (or without the missing fields) and logs a structured **ERROR** with an `input_problem: "glossary"` field and a message starting `Translation input problem (glossary):`. This happens when:
+If the glossary can't be used as expected, Translate continues without it (or without the missing fields) and logs a structured **ERROR** with an `input_problem: "glossary"` field and a message starting `Translation input problem (glossary):`. All input problems (glossary, statutes, Model Config) share the `input_problem` field, so one log-based alert on `jsonPayload.input_problem:*` catches them. This happens when:
 - the tab can't be read (e.g. renamed tab, missing access)
 - expected columns are missing from row 1 (e.g. a row above the headers, or a renamed column); the log lists `missing_columns` and `found_headers`
 - no entries made it into the prompt
+
+## Statutes
+
+Statute files are read from `STATUTES_GCS_BUCKET` under `STATUTES_GCS_PREFIX` (default `statutes/md-labor-emply-t8.3/`). Each translation logs `Statutes: N sections included in the prompt`. If the files can't be read or none are found, Translate continues without statutes and logs a structured **ERROR** with `input_problem: "statutes"` (the bucket and prefix are in `statutes_bucket` / `statutes_prefix`).
+
+## Model Config sheet
+
+Models come from the `Config!A:F` range of the Model Config sheet (`MODEL_CONFIG_SHEET_ID`). **Row 1 must be the header row** and include `Role`, `Provider`, `Model`, and `Active` (case-insensitive). Without `MODEL_CONFIG_SHEET_ID`, the service uses `fixtures/config.json` for local development, but **on Cloud Run a missing `MODEL_CONFIG_SHEET_ID` is an error** so a deploy that loses its env vars can't run on test models.
+
+Config problems (missing env var on Cloud Run, missing columns, no data rows) stop the run and log a structured **ERROR** with `input_problem: "model_config"` and a message starting `Translation input problem (model_config):`. Missing columns are listed in `missing_columns`, with the headers found in `found_headers`.
 
 ## LLM backends (Vertex AI migration in progress)
 

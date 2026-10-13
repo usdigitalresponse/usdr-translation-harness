@@ -63,6 +63,10 @@ Terminology decisions are routed to one of three tabs in the derived glossary sh
 
 Each tab has columns: timestamp, aiTerm, reviewerTerm, blockId, reviewSignal, docUrl, translationJsonUrl.
 
+## Refinement log write problems
+
+Decisions are appended to the `Reviewed`, `ModelFlagged`, and `OtherChanges` tabs of `DERIVED_GLOSSARY_SHEET_ID` (the refinement log). Tabs are written independently, so one renamed or deleted tab doesn't stop the others. If a tab write fails, or `DERIVED_GLOSSARY_SHEET_ID` isn't set on Cloud Run, the feedback is still captured, a warning is returned to the add-on, and a structured **ERROR** is logged with `input_problem: "refinement_log"`, a message starting `Capture feedback input problem (refinement_log):`, and the failed tabs in `failed_tabs`.
+
 ## Sidebar key mapping
 
 The sidebar uses flat keys like `alt_translations::0`, `terms_flagged_for_clarification::3` to identify items. `buildSidebarKeyToBlockMap()` replays the same flattening logic as the add-on's `getSidebarData()` to map these keys back to block IDs. This lets `classifyBlockSignal()` only consider sidebar items that belong to the block being classified.

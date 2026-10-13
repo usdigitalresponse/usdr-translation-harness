@@ -23,6 +23,15 @@ load_dotenv(Path(__file__).resolve().parent.parent.parent.parent / ".env")
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 MODEL_CONFIG_SHEET_RANGE = "Config!A:E"
 ACTIVE_YES = "YES"
+# Columns every service needs to pick its models; a missing one means no model
+# matches, or a model is called with a blank name or provider
+REQUIRED_CONFIG_COLUMNS = ("role", "provider", "model", "active")
+
+# Every input problem shares this message prefix and the input_problem field,
+# so one log-based alert can catch them all. No pipeline_stage field: the
+# pipeline_stage_status metric counts every entry that has one as a stage run.
+INPUT_PROBLEM_PREFIX = "Quality eval input problem"
+INPUT_MODEL_CONFIG = "model_config"
 
 EVAL_RESULTS_SHEET_NAME = "EvalQuality"
 EVAL_RESULTS_SHEET_RANGE = f"{EVAL_RESULTS_SHEET_NAME}!A:L"
@@ -128,6 +137,24 @@ def _extract_structural_text(elements):
     return text
 
 
+def log_input_problem(input_name, detail, **fields):
+    """Log a problem with an input the pipeline depends on as a structured ERROR."""
+    entry = {
+        "severity": "ERROR",
+        "message": f"{INPUT_PROBLEM_PREFIX} ({input_name}): {detail}",
+        "input_problem": input_name,
+        **fields,
+    }
+    print(json.dumps(entry), flush=True)
+
+
+def _config_problem(detail, **fields):
+    """Log a Model Config problem and return a ValueError for the caller to raise.
+    Config problems stop the run (there's no model to call)."""
+    log_input_problem(INPUT_MODEL_CONFIG, detail, **fields)
+    return ValueError(f"Model Config problem: {detail}")
+
+
 def _load_config_from_sheet(sheet_id):
     credentials, _ = google.auth.default()
     service = build("sheets", SHEETS_API_VERSION, credentials=credentials)
@@ -138,8 +165,19 @@ def _load_config_from_sheet(sheet_id):
         .execute()
     )
     rows = result.get("values", [])
+    found_headers = [h.strip() for h in rows[0]] if rows else []
+    missing_columns = [
+        c for c in REQUIRED_CONFIG_COLUMNS if c not in [h.lower() for h in found_headers]
+    ]
+    if missing_columns:
+        raise _config_problem(
+            f"the {MODEL_CONFIG_SHEET_RANGE} range is missing expected columns: "
+            f"{', '.join(missing_columns)}. Row 1 must be the header row, with these exact column names.",
+            missing_columns=missing_columns,
+            found_headers=found_headers,
+        )
     if len(rows) < 2:
-        raise ValueError(f"Config sheet '{sheet_id}' has no data rows")
+        raise _config_problem(f"the {MODEL_CONFIG_SHEET_RANGE} range has no data rows")
 
     headers = [h.strip().lower() for h in rows[0]]
     models = []
@@ -163,9 +201,24 @@ def _load_config_from_fixture():
 
 
 def load_config():
+    """Load model config from the Model Config sheet, or the local fixture.
+
+    The fixture is for local development only: on Cloud Run (K_SERVICE is set)
+    a missing MODEL_CONFIG_SHEET_ID is an error, so a deploy that loses its env
+    vars can't quietly run on test models.
+
+    Raises:
+        ValueError: the sheet ID is missing on Cloud Run, or the Config tab has
+            no data rows or is missing a required column.
+    """
     sheet_id = os.environ.get("MODEL_CONFIG_SHEET_ID")
     if sheet_id:
         return _load_config_from_sheet(sheet_id)
+    if os.environ.get("K_SERVICE"):
+        raise _config_problem(
+            "MODEL_CONFIG_SHEET_ID is not set. Restore the env var on this service "
+            "(use --update-env-vars, not --set-env-vars)."
+        )
     return _load_config_from_fixture()
 
 

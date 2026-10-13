@@ -102,12 +102,15 @@ function callCloudRunFunction(file, url, label, contentType) {
 
   var submittedByEmail = "";
   try {
-    var meta = Drive.Files.get(file.getId(), { fields: "lastModifyingUser" });
+    // supportsAllDrives: without it, files on a Shared Drive come back "File not found"
+    var meta = Drive.Files.get(file.getId(), { fields: "lastModifyingUser", supportsAllDrives: true });
     if (meta.lastModifyingUser) {
       submittedByEmail = meta.lastModifyingUser.emailAddress || "";
     }
   } catch (e) {
-    Logger.log("Could not get lastModifyingUser for %s: %s", file.getName(), e.message);
+    // console.error (not Logger.log) so it shows as an error in Executions and Cloud Logging;
+    // the file is still processed, just with a blank Submitted By
+    console.error("Could not get lastModifyingUser for " + file.getName() + ": " + e.message);
   }
 
   var payload = {

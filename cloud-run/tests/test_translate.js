@@ -163,7 +163,7 @@ describe("translate", () => {
 
   test("returns 500 when config loading fails", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
-    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadDoc.mockResolvedValue("Base prompt");
     loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadConfig.mockRejectedValue(new Error("Config sheet not found"));
 
@@ -181,7 +181,7 @@ describe("translate", () => {
 
   test("returns 500 when no active translate models in config", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
-    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadDoc.mockResolvedValue("Base prompt");
     loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadConfig.mockResolvedValue({
       models: [{ role: "extract", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
@@ -201,7 +201,7 @@ describe("translate", () => {
 
   test("calls LLM and returns translations for valid direct call", async () => {
     const extractionJson = { blocks: [{ id: "b01", text: "Hello", translate: true }] };
-    const basePrompt = "Translate the following. [Paste content to be translated in the area below]";
+    const basePrompt = "Translate the following.";
 
     loadExtractionJson.mockResolvedValue(extractionJson);
     loadDoc.mockResolvedValue(basePrompt);
@@ -246,7 +246,7 @@ describe("translate", () => {
 
   test("runs multiple active models in parallel", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
-    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadDoc.mockResolvedValue("Base prompt");
     loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadConfig.mockResolvedValue({
       models: [
@@ -271,7 +271,7 @@ describe("translate", () => {
 
   test("returns 500 when all translation models fail", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
-    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadDoc.mockResolvedValue("Base prompt");
     loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadConfig.mockResolvedValue({
       models: [
@@ -305,7 +305,7 @@ describe("translate", () => {
 
   test("reports per-model errors without failing the whole request", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
-    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadDoc.mockResolvedValue("Base prompt");
     loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadConfig.mockResolvedValue({
       models: [
@@ -332,7 +332,7 @@ describe("translate", () => {
 
   test("handles Pub/Sub envelope end-to-end", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
-    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadDoc.mockResolvedValue("Base prompt");
     loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadConfig.mockResolvedValue({
       models: [{ role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
@@ -374,7 +374,7 @@ describe("translate structured logs", () => {
 
   beforeEach(() => {
     loadExtractionJson.mockResolvedValue({ blocks: [{ id: "b01", text: "Hello", translate: true }] });
-    loadDoc.mockResolvedValue("Translate. [Paste content to be translated in the area below]");
+    loadDoc.mockResolvedValue("Translate.");
     loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadConfig.mockResolvedValue({
       models: [{ role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
@@ -574,7 +574,7 @@ describe("buildTranslationPrompt", () => {
     };
     loadExtractionJson.mockResolvedValue(extractionJson);
     loadDoc.mockResolvedValue(
-      "Translate this. [Paste content to be translated in the area below]"
+      "Translate this."
     );
     loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
 
@@ -582,7 +582,6 @@ describe("buildTranslationPrompt", () => {
 
     expect(loadExtractionJson).toHaveBeenCalledWith("file123");
     expect(prompt).toContain("Translate this.");
-    expect(prompt).not.toContain("[Paste content to be translated in the area below]");
     expect(prompt).toContain("<extraction_context>");
     expect(prompt).toContain("<extraction>");
     expect(prompt).toContain('"id": "b01"');
@@ -594,7 +593,7 @@ describe("buildTranslationPrompt", () => {
 
   test("includes glossary when sheet has data", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
-    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadDoc.mockResolvedValue("Base prompt");
     loadSheetTable.mockResolvedValue(glossaryTable([
       {
         [GLOSSARY_COLUMNS.ENGLISH_TERM]: "actual leave",
@@ -612,7 +611,7 @@ describe("buildTranslationPrompt", () => {
 
   test("continues without glossary when sheet loading fails", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
-    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadDoc.mockResolvedValue("Base prompt");
     loadSheetTable.mockRejectedValue(new Error("GLOSSARY_SHEET_ID not set in .env"));
 
     const logSpy = jest.spyOn(console, "log").mockImplementation();
@@ -632,7 +631,7 @@ describe("buildTranslationPrompt", () => {
 
   test("prompt sections appear in correct order", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
-    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadDoc.mockResolvedValue("Base prompt");
     loadSheetTable.mockResolvedValue(glossaryTable([
       { [GLOSSARY_COLUMNS.ENGLISH_TERM]: "term" },
     ]));
@@ -654,7 +653,7 @@ describe("buildTranslationPrompt", () => {
 
   test("includes statutes when loadStatutes returns data", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
-    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadDoc.mockResolvedValue("Base prompt");
     loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadStatutes.mockResolvedValue([
       { section: "Subtitle 7 — Benefits", body: "§ 8.3-701. Eligibility for benefits.", filename: "subtitle-07-benefits.md" },
@@ -670,7 +669,7 @@ describe("buildTranslationPrompt", () => {
 
   test("omits statutes when includeStatutes is false", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
-    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadDoc.mockResolvedValue("Base prompt");
     loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadStatutes.mockResolvedValue([
       { section: "Subtitle 7 — Benefits", body: "§ 8.3-701. Eligibility for benefits.", filename: "subtitle-07-benefits.md" },
@@ -684,19 +683,39 @@ describe("buildTranslationPrompt", () => {
 
   test("continues without statutes when loading fails", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
-    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadDoc.mockResolvedValue("Base prompt");
     loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadStatutes.mockRejectedValue(new Error("GCS bucket not found"));
 
-    const warnSpy = jest.spyOn(console, "warn").mockImplementation();
+    const logSpy = jest.spyOn(console, "log").mockImplementation();
 
     const { prompt } = await buildTranslationPrompt("file123");
 
     expect(prompt).toContain("<extraction>");
     expect(prompt).not.toContain("<statutes>");
-    expect(warnSpy).toHaveBeenCalled();
+    const problem = inputProblems(logSpy).find((p) => p.input_problem === "statutes");
+    expect(problem.message).toContain("could not load statute files: GCS bucket not found");
 
-    warnSpy.mockRestore();
+    logSpy.mockRestore();
+  });
+
+  test("logs an input problem when no statute files are found", async () => {
+    loadExtractionJson.mockResolvedValue({ blocks: [] });
+    loadDoc.mockResolvedValue("Base prompt");
+    loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
+    loadStatutes.mockResolvedValue([]);
+
+    const logSpy = jest.spyOn(console, "log").mockImplementation();
+
+    const { prompt } = await buildTranslationPrompt("file123");
+
+    expect(prompt).not.toContain("<statutes>");
+    const problem = inputProblems(logSpy).find((p) => p.input_problem === "statutes");
+    expect(problem.severity).toBe("ERROR");
+    expect(problem.message).toContain("no statute files found");
+    expect(problem).toHaveProperty("statutes_bucket");
+
+    logSpy.mockRestore();
   });
 });
 
@@ -777,14 +796,18 @@ describe("formatTimestamp", () => {
 // --- logTranslationResult (actual loader, googleapis mocked) ---
 
 const mockSheetsAppend = jest.fn();
+const mockSheetsGet = jest.fn();
 jest.mock("../translate/node_modules/googleapis", () => ({
   google: {
     auth: { GoogleAuth: jest.fn() },
-    sheets: () => ({ spreadsheets: { values: { append: mockSheetsAppend } } }),
+    sheets: () => ({ spreadsheets: { values: { append: mockSheetsAppend, get: mockSheetsGet } } }),
   },
 }));
 
-const { logTranslationResult: actualLogTranslationResult } = jest.requireActual("../translate/loaders.js");
+const {
+  logTranslationResult: actualLogTranslationResult,
+  loadConfig: actualLoadConfig,
+} = jest.requireActual("../translate/loaders.js");
 
 describe("logTranslationResult", () => {
   // Processing log columns (A–J): File ID, File Name, Processed At, Status,
@@ -889,7 +912,8 @@ describe("buildTranslationPrompt glossary logging", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     loadExtractionJson.mockResolvedValue({ blocks: [] });
-    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    loadDoc.mockResolvedValue("Base prompt");
+    loadStatutes.mockResolvedValue([{ section: "S", body: "Statute text", filename: "s.md" }]);
     logSpy = jest.spyOn(console, "log").mockImplementation();
   });
 
@@ -954,5 +978,91 @@ describe("buildTranslationPrompt glossary logging", () => {
 
     const [problem] = inputProblems(logSpy);
     expect(problem.message).toContain("no glossary entries were included in the prompt (0 rows read");
+  });
+});
+
+// --- loadConfig (actual loader, googleapis mocked) ---
+
+describe("loadConfig", () => {
+  const CONFIG_HEADERS = ["Role", "Provider", "Model", "Active", "Effort"];
+  let saved;
+  let logSpy;
+
+  beforeEach(() => {
+    saved = { sheetId: process.env.MODEL_CONFIG_SHEET_ID, kService: process.env.K_SERVICE };
+    mockSheetsGet.mockReset();
+    logSpy = jest.spyOn(console, "log").mockImplementation();
+  });
+
+  afterEach(() => {
+    for (const [key, value] of [["MODEL_CONFIG_SHEET_ID", saved.sheetId], ["K_SERVICE", saved.kService]]) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    logSpy.mockRestore();
+  });
+
+  test("uses the local fixture when the sheet ID is unset outside Cloud Run", async () => {
+    process.env.MODEL_CONFIG_SHEET_ID = "";
+    delete process.env.K_SERVICE;
+
+    const config = await actualLoadConfig();
+
+    expect(config.models.length).toBeGreaterThan(0);
+    expect(inputProblems(logSpy)).toEqual([]);
+  });
+
+  test("errors instead of using the fixture when the sheet ID is unset on Cloud Run", async () => {
+    process.env.MODEL_CONFIG_SHEET_ID = "";
+    process.env.K_SERVICE = "translate";
+
+    await expect(actualLoadConfig()).rejects.toThrow("MODEL_CONFIG_SHEET_ID is not set");
+    const [problem] = inputProblems(logSpy);
+    expect(problem.input_problem).toBe("model_config");
+  });
+
+  test("parses a valid sheet", async () => {
+    process.env.MODEL_CONFIG_SHEET_ID = "config-sheet";
+    mockSheetsGet.mockResolvedValue({ data: { values: [
+      CONFIG_HEADERS,
+      ["translate", "Anthropic", "claude-opus-5", "yes", "high"],
+    ] } });
+
+    const { models } = await actualLoadConfig();
+
+    expect(models).toEqual([
+      { role: "translate", provider: "anthropic", model: "claude-opus-5", active: true, effort: "high" },
+    ]);
+    expect(inputProblems(logSpy)).toEqual([]);
+  });
+
+  test("errors and names missing columns when row 1 isn't the header row", async () => {
+    process.env.MODEL_CONFIG_SHEET_ID = "config-sheet";
+    mockSheetsGet.mockResolvedValue({ data: { values: [
+      ["Last updated: Oct 1"],
+      CONFIG_HEADERS,
+      ["translate", "anthropic", "claude-opus-5", "YES"],
+    ] } });
+
+    await expect(actualLoadConfig()).rejects.toThrow("missing expected columns: role, provider, model, active");
+    const [problem] = inputProblems(logSpy);
+    expect(problem.found_headers).toEqual(["Last updated: Oct 1"]);
+  });
+
+  test("errors on a renamed column", async () => {
+    process.env.MODEL_CONFIG_SHEET_ID = "config-sheet";
+    mockSheetsGet.mockResolvedValue({ data: { values: [
+      ["Role", "Provider", "Model", "Active?"],
+      ["translate", "anthropic", "claude-opus-5", "YES"],
+    ] } });
+
+    await expect(actualLoadConfig()).rejects.toThrow("missing expected columns: active");
+  });
+
+  test("errors when there are no data rows", async () => {
+    process.env.MODEL_CONFIG_SHEET_ID = "config-sheet";
+    mockSheetsGet.mockResolvedValue({ data: { values: [CONFIG_HEADERS] } });
+
+    await expect(actualLoadConfig()).rejects.toThrow("no data rows");
   });
 });
