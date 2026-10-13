@@ -16,7 +16,7 @@ Translates extracted content using an LLM and creates output Google Docs with a 
 6. Creates a Google Doc in the output Drive folder with the translated content in a two-column table (English source | Spanish translation)
 7. Sets a `usdr_translation_review` Drive file property on the output doc so the Editor Add-on can find the translation JSON
 8. Writes the full translation JSON to Drive
-9. Sends an email notification to the submitter
+9. Posts a "translation ready" (or doc-creation failure) message to a Google Chat space via an incoming webhook (`GOOGLE_CHAT_WEBHOOK_URL`); skipped if unset
 
 ## HTTP interface
 
@@ -38,11 +38,22 @@ Synchronous — the function returns after the output doc is created.
 | `llm.js` | LLM provider calls (Claude, Gemini) via Vertex AI or the direct APIs |
 | `doc-writer.js` | Creates the output Google Doc with the two-column translation table |
 | `loaders.js` | Google Drive and config I/O, output writing |
-| `notifier.js` | Email notifications via Gmail API |
+| `notifier.js` | Google Chat notifications via an incoming webhook |
 | `retry.js` | Retry wrapper for transient failures |
 | `translation-schema-*.json` | JSON schemas for validating LLM output |
 | `extraction-context.md` | Prompt fragment: instructions for handling extracted text blocks |
 | `prompt-statute-additions.md` | Prompt fragment: statute reference instructions |
+
+## Glossary
+
+Read from the `GLOSSARY_SHEET_TAB` tab (default `FAMLI Spanish Glossary`) of `GLOSSARY_SHEET_ID`, columns A:I. **Row 1 must be the header row**, with these column names (case-insensitive): English Term, Acronym or Abbreviation, Approved Spanish, Forbidden Terms, Definition/Context, Example English, Example Spanish, Notes. Status is in the sheet but not read (it's currently unused; draft and approved entries are treated the same). Rows without an English Term are skipped.
+
+Each translation logs `Glossary: N entries included in the prompt (…with forbidden terms; …rows skipped; …rows read)`, and the structured log line includes `glossary_entries` and `glossary_entries_with_forbidden`.
+
+If the glossary can't be used as expected, Translate continues without it (or without the missing fields) and logs a structured **ERROR** with an `input_problem: "glossary"` field and a message starting `Translation input problem (glossary):`. This happens when:
+- the tab can't be read (e.g. renamed tab, missing access)
+- expected columns are missing from row 1 (e.g. a row above the headers, or a renamed column); the log lists `missing_columns` and `found_headers`
+- no entries made it into the prompt
 
 ## LLM backends (Vertex AI migration in progress)
 
@@ -64,6 +75,6 @@ Model IDs in the Model Config sheet are the same for both backends.
 ## Dependencies
 
 - **@anthropic-ai/sdk** / **@anthropic-ai/vertex-sdk** / **@google/genai** — LLM provider SDKs (the Vertex SDK adds Claude-on-Vertex auth)
-- **googleapis** — Google Drive, Docs, Sheets, Gmail APIs
+- **googleapis** — Google Drive, Docs, Sheets APIs
 - **@google-cloud/storage** — Cloud Storage access
 - **http-status-codes** — standard HTTP status constants

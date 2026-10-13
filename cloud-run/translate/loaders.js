@@ -71,11 +71,14 @@ async function loadDoc(envVar) {
 }
 
 /**
- * Load rows from a Google Sheet identified by the given env var.
- * Used for loading the glossary. Returns an array of objects keyed by
- * the header row values.
+ * Load a table from a Google Sheet identified by the given env var.
+ * Used for loading the glossary. Row 1 of the range is treated as the header row.
+ *
+ * @returns {Promise<{headers: string[], rows: Object[]}>} The header row as written
+ *   (trimmed), so callers can check it, and the data rows as objects keyed by
+ *   lowercased header (see parseSheetRows)
  */
-async function loadSheet(envVar, range) {
+async function loadSheetTable(envVar, range) {
   const sheetId = process.env[envVar];
   if (!sheetId) {
     throw new Error(`${envVar} not set in .env`);
@@ -90,7 +93,11 @@ async function loadSheet(envVar, range) {
     range,
   });
 
-  return parseSheetRows(data.values || []);
+  const values = data.values || [];
+  return {
+    headers: (values[0] || []).map((h) => h.trim()),
+    rows: parseSheetRows(values),
+  };
 }
 
 /**
@@ -307,7 +314,7 @@ function stripExtension(fileName) {
 
 module.exports = {
   loadDoc,
-  loadSheet,
+  loadSheetTable,
   loadConfig,
   loadExtractionJson,
   loadStatutes,

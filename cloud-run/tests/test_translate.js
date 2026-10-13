@@ -6,8 +6,25 @@ const {
   formatGlossary,
   formatStatutes,
   buildTranslationPrompt,
+  buildGlossary,
   GLOSSARY_COLUMNS,
 } = require("../translate/prompt-assembly.js");
+
+// The glossary sheet's header row, as the pipeline expects it
+const GLOSSARY_HEADERS = Object.values(GLOSSARY_COLUMNS);
+const EMPTY_GLOSSARY = { headers: GLOSSARY_HEADERS, rows: [] };
+
+/** A glossary sheet table with the expected headers and these rows. */
+function glossaryTable(rows) {
+  return { headers: GLOSSARY_HEADERS, rows };
+}
+
+/** Structured input-problem logs (glossary etc.) captured by a console.log spy. */
+function inputProblems(logSpy) {
+  return logSpy.mock.calls
+    .map((c) => { try { return JSON.parse(c[0]); } catch { return null; } })
+    .filter((e) => e && e.input_problem);
+}
 const {
   loadTranslationSchema,
   PROVIDER_ANTHROPIC,
@@ -20,7 +37,7 @@ jest.mock("../translate/loaders.js", () => {
   const path = require("path");
   return {
     loadDoc: jest.fn(),
-    loadSheet: jest.fn(),
+    loadSheetTable: jest.fn(),
     loadExtractionJson: jest.fn(),
     loadConfig: jest.fn(),
     loadStatutes: jest.fn().mockResolvedValue([]),
@@ -44,7 +61,7 @@ const { createTranslationDoc } = require("../translate/doc-writer.js");
 
 const {
   loadDoc,
-  loadSheet,
+  loadSheetTable,
   loadExtractionJson,
   loadConfig,
   loadStatutes,
@@ -147,7 +164,7 @@ describe("translate", () => {
   test("returns 500 when config loading fails", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
     loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
-    loadSheet.mockResolvedValue([]);
+    loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadConfig.mockRejectedValue(new Error("Config sheet not found"));
 
     const res = mockRes();
@@ -165,7 +182,7 @@ describe("translate", () => {
   test("returns 500 when no active translate models in config", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
     loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
-    loadSheet.mockResolvedValue([]);
+    loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadConfig.mockResolvedValue({
       models: [{ role: "extract", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
     });
@@ -188,7 +205,7 @@ describe("translate", () => {
 
     loadExtractionJson.mockResolvedValue(extractionJson);
     loadDoc.mockResolvedValue(basePrompt);
-    loadSheet.mockResolvedValue([]);
+    loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadConfig.mockResolvedValue({
       models: [{ role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
     });
@@ -230,7 +247,7 @@ describe("translate", () => {
   test("runs multiple active models in parallel", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
     loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
-    loadSheet.mockResolvedValue([]);
+    loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadConfig.mockResolvedValue({
       models: [
         { role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true },
@@ -255,7 +272,7 @@ describe("translate", () => {
   test("returns 500 when all translation models fail", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
     loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
-    loadSheet.mockResolvedValue([]);
+    loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadConfig.mockResolvedValue({
       models: [
         { role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true },
@@ -289,7 +306,7 @@ describe("translate", () => {
   test("reports per-model errors without failing the whole request", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
     loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
-    loadSheet.mockResolvedValue([]);
+    loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadConfig.mockResolvedValue({
       models: [
         { role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true },
@@ -316,7 +333,7 @@ describe("translate", () => {
   test("handles Pub/Sub envelope end-to-end", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
     loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
-    loadSheet.mockResolvedValue([]);
+    loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadConfig.mockResolvedValue({
       models: [{ role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
     });
@@ -358,7 +375,7 @@ describe("translate structured logs", () => {
   beforeEach(() => {
     loadExtractionJson.mockResolvedValue({ blocks: [{ id: "b01", text: "Hello", translate: true }] });
     loadDoc.mockResolvedValue("Translate. [Paste content to be translated in the area below]");
-    loadSheet.mockResolvedValue([]);
+    loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadConfig.mockResolvedValue({
       models: [{ role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
     });
@@ -559,7 +576,7 @@ describe("buildTranslationPrompt", () => {
     loadDoc.mockResolvedValue(
       "Translate this. [Paste content to be translated in the area below]"
     );
-    loadSheet.mockResolvedValue([]);
+    loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
 
     const { prompt, promptMetrics } = await buildTranslationPrompt("file123");
 
@@ -578,12 +595,12 @@ describe("buildTranslationPrompt", () => {
   test("includes glossary when sheet has data", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
     loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
-    loadSheet.mockResolvedValue([
+    loadSheetTable.mockResolvedValue(glossaryTable([
       {
         [GLOSSARY_COLUMNS.ENGLISH_TERM]: "actual leave",
         [GLOSSARY_COLUMNS.APPROVED_SPANISH]: "duración real de la ausencia",
       },
-    ]);
+    ]));
 
     const { prompt, promptMetrics } = await buildTranslationPrompt("file123");
 
@@ -596,25 +613,29 @@ describe("buildTranslationPrompt", () => {
   test("continues without glossary when sheet loading fails", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
     loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
-    loadSheet.mockRejectedValue(new Error("GLOSSARY_SHEET_ID not set in .env"));
+    loadSheetTable.mockRejectedValue(new Error("GLOSSARY_SHEET_ID not set in .env"));
 
-    const warnSpy = jest.spyOn(console, "warn").mockImplementation();
+    const logSpy = jest.spyOn(console, "log").mockImplementation();
 
     const { prompt } = await buildTranslationPrompt("file123");
 
     expect(prompt).toContain("<extraction>");
     expect(prompt).not.toContain("<glossary>");
-    expect(warnSpy).toHaveBeenCalled();
+    const [problem] = inputProblems(logSpy);
+    expect(problem.severity).toBe("ERROR");
+    expect(problem.message).toContain("could not load");
+    // No pipeline_stage, or the pipeline_stage_status metric counts it as a run
+    expect(problem).not.toHaveProperty("pipeline_stage");
 
-    warnSpy.mockRestore();
+    logSpy.mockRestore();
   });
 
   test("prompt sections appear in correct order", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
     loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
-    loadSheet.mockResolvedValue([
+    loadSheetTable.mockResolvedValue(glossaryTable([
       { [GLOSSARY_COLUMNS.ENGLISH_TERM]: "term" },
-    ]);
+    ]));
     loadStatutes.mockResolvedValue([
       { section: "Subtitle 7 — Benefits", body: "§ 8.3-701. Eligibility for benefits.", filename: "subtitle-07-benefits.md" },
     ]);
@@ -634,7 +655,7 @@ describe("buildTranslationPrompt", () => {
   test("includes statutes when loadStatutes returns data", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
     loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
-    loadSheet.mockResolvedValue([]);
+    loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadStatutes.mockResolvedValue([
       { section: "Subtitle 7 — Benefits", body: "§ 8.3-701. Eligibility for benefits.", filename: "subtitle-07-benefits.md" },
     ]);
@@ -650,7 +671,7 @@ describe("buildTranslationPrompt", () => {
   test("omits statutes when includeStatutes is false", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
     loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
-    loadSheet.mockResolvedValue([]);
+    loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadStatutes.mockResolvedValue([
       { section: "Subtitle 7 — Benefits", body: "§ 8.3-701. Eligibility for benefits.", filename: "subtitle-07-benefits.md" },
     ]);
@@ -664,7 +685,7 @@ describe("buildTranslationPrompt", () => {
   test("continues without statutes when loading fails", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
     loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
-    loadSheet.mockResolvedValue([]);
+    loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
     loadStatutes.mockRejectedValue(new Error("GCS bucket not found"));
 
     const warnSpy = jest.spyOn(console, "warn").mockImplementation();
@@ -813,5 +834,125 @@ describe("logTranslationResult", () => {
     expect(row[COL_ERROR]).toBe("");
     expect(row[COL_OUTPUT_FILE_ID]).toBe("out-1");
     expect(row[COL_SUBMITTED_BY]).toBe("person@example.gov");
+  });
+});
+
+// --- Glossary checks (header row, counts, input problems) ---
+
+describe("buildGlossary", () => {
+  const T = GLOSSARY_COLUMNS;
+
+  test("counts included entries, forbidden terms, and skipped rows", () => {
+    const glossary = buildGlossary(glossaryTable([
+      { [T.ENGLISH_TERM]: "leave", [T.APPROVED_SPANISH]: "licencia", [T.FORBIDDEN_TERMS]: "permiso" },
+      { [T.ENGLISH_TERM]: "claim", [T.APPROVED_SPANISH]: "solicitud" },
+      { [T.ENGLISH_TERM]: "", [T.NOTES]: "orphan note" },
+      { [T.ENGLISH_TERM]: "", [T.NOTES]: "" },
+    ]));
+
+    expect(glossary.included).toBe(2);
+    expect(glossary.withForbidden).toBe(1);
+    expect(glossary.skippedRows).toBe(1); // the fully blank row isn't counted
+    expect(glossary.missingColumns).toEqual([]);
+    expect(glossary.text).toContain("Forbidden: permiso");
+  });
+
+  test("reports missing columns when row 1 isn't the header row", () => {
+    // e.g. a "Last updated" row above the headers: row 1 becomes the header row
+    const glossary = buildGlossary({
+      headers: ["Last updated: Oct 1"],
+      rows: [{ "last updated: oct 1": "English Term" }],
+    });
+
+    expect(glossary.included).toBe(0);
+    expect(glossary.missingColumns).toContain(T.ENGLISH_TERM);
+  });
+
+  test("reports a renamed column, ignoring case", () => {
+    const headers = GLOSSARY_HEADERS
+      .map((h) => (h === T.FORBIDDEN_TERMS ? "Forbidden Terms (Do Not Use)" : h.toUpperCase()));
+    const glossary = buildGlossary({ headers, rows: [] });
+
+    expect(glossary.missingColumns).toEqual([T.FORBIDDEN_TERMS]);
+  });
+
+  test("doesn't require the Status column (it isn't read)", () => {
+    const headers = GLOSSARY_HEADERS.filter((h) => h !== T.STATUS);
+    expect(buildGlossary({ headers, rows: [] }).missingColumns).toEqual([]);
+  });
+});
+
+describe("buildTranslationPrompt glossary logging", () => {
+  const T = GLOSSARY_COLUMNS;
+  let logSpy;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    loadExtractionJson.mockResolvedValue({ blocks: [] });
+    loadDoc.mockResolvedValue("Base prompt [Paste content to be translated in the area below]");
+    logSpy = jest.spyOn(console, "log").mockImplementation();
+  });
+
+  afterEach(() => {
+    logSpy.mockRestore();
+  });
+
+  test("valid glossary: logs included counts, no input problems", async () => {
+    loadSheetTable.mockResolvedValue(glossaryTable([
+      { [T.ENGLISH_TERM]: "leave", [T.FORBIDDEN_TERMS]: "permiso" },
+      { [T.ENGLISH_TERM]: "claim" },
+    ]));
+
+    const { promptMetrics } = await buildTranslationPrompt("file123");
+
+    expect(inputProblems(logSpy)).toEqual([]);
+    expect(promptMetrics.glossary_entries).toBe(2);
+    expect(promptMetrics.glossary_entries_with_forbidden).toBe(1);
+    expect(logSpy.mock.calls.flat().join("\n")).toContain("Glossary: 2 entries included in the prompt");
+  });
+
+  test("header row not in row 1: logs missing columns and zero entries", async () => {
+    loadSheetTable.mockResolvedValue({
+      headers: ["Last updated: Oct 1"],
+      rows: [{ "last updated: oct 1": "English Term" }, { "last updated: oct 1": "leave" }],
+    });
+
+    const { prompt, promptMetrics } = await buildTranslationPrompt("file123");
+
+    const problems = inputProblems(logSpy);
+    expect(problems.map((p) => p.input_problem)).toEqual(["glossary", "glossary"]);
+    expect(problems[0].missing_columns).toContain(T.ENGLISH_TERM);
+    expect(problems[0].found_headers).toEqual(["Last updated: Oct 1"]);
+    expect(problems[0].message).toContain("Row 1 must be the header row");
+    expect(problems[1].message).toContain("no glossary entries were included");
+    expect(prompt).not.toContain("<glossary>");
+    expect(promptMetrics.glossary_entries).toBe(0);
+  });
+
+  test("renamed Forbidden Terms column: logs it, still includes entries", async () => {
+    const headers = GLOSSARY_HEADERS
+      .map((h) => (h === T.FORBIDDEN_TERMS ? "Forbidden Terms (Do Not Use)" : h));
+    loadSheetTable.mockResolvedValue({
+      headers,
+      rows: [{ [T.ENGLISH_TERM]: "leave", "forbidden terms (do not use)": "permiso" }],
+    });
+
+    const { prompt, promptMetrics } = await buildTranslationPrompt("file123");
+
+    const [problem] = inputProblems(logSpy);
+    expect(problem.missing_columns).toEqual([T.FORBIDDEN_TERMS]);
+    expect(prompt).toContain("<glossary>");
+    expect(prompt).not.toContain("permiso");
+    expect(promptMetrics.glossary_entries).toBe(1);
+    expect(promptMetrics.glossary_entries_with_forbidden).toBe(0);
+  });
+
+  test("empty glossary: logs that no entries were included", async () => {
+    loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
+
+    await buildTranslationPrompt("file123");
+
+    const [problem] = inputProblems(logSpy);
+    expect(problem.message).toContain("no glossary entries were included in the prompt (0 rows read");
   });
 });
