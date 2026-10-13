@@ -30,11 +30,22 @@ var COL = {
   STATUS: 3,
   DURATION_MS: 4,
   ERROR_DETAIL: 5,
-  EXTRACTION_FILE_ID: 6,
+  OUTPUT_JSON_ID: 6,
   PROVIDER: 7,
   MODEL: 8,
   SUBMITTED_BY: 9,
+  OUTPUT_DOC_URL: 10,
 };
+
+// Row 1 of the ProcessingLog tab, in column order. Every writer (this script,
+// Extract, Translate, Plain Language Eval) writes by position, so a renamed,
+// inserted, or moved column silently scrambles rows; checkProcessingLogHeaders
+// stops the poll instead. Compared case-insensitively; extra columns after
+// these are allowed.
+var PROCESSING_LOG_HEADERS = [
+  "fileId", "fileName", "processedAt", "status", "durationMs", "errorDetails",
+  "outputJsonId", "provider", "model", "submittedBy", "outputDocUrl",
+];
 
 var CONTENT_TYPE_TWO = "content_type_two";
 
@@ -64,9 +75,38 @@ function getProcessingLogSheet(sheetId) {
   return SpreadsheetApp.openById(sheetId).getSheetByName("ProcessingLog");
 }
 
+/**
+ * Check the Processing Log's header row against PROCESSING_LOG_HEADERS.
+ *
+ * @param {Array} headerRow - Row 1 of the ProcessingLog tab
+ * @returns {string|null} A description of the mismatch, or null if it matches
+ */
+function checkProcessingLogHeaders(headerRow) {
+  var found = (headerRow || []).map(function (h) { return String(h).trim(); });
+  var mismatches = PROCESSING_LOG_HEADERS.filter(function (expected, i) {
+    return (found[i] || "").toLowerCase() !== expected.toLowerCase();
+  });
+  if (!mismatches.length) return null;
+  return "ProcessingLog header row doesn't match. Expected: " + PROCESSING_LOG_HEADERS.join(", ") +
+    ". Found: " + found.slice(0, PROCESSING_LOG_HEADERS.length).join(", ") + ".";
+}
+
+/**
+ * Read the Processing Log and return the file IDs already sent to Extract and
+ * to Plain Language Eval.
+ *
+ * @throws if the header row isn't PROCESSING_LOG_HEADERS: matching rows by
+ *   column position against the wrong layout could re-send every input file
+ */
 function getProcessedFileIds(sheetId) {
   var sheet = getProcessingLogSheet(sheetId);
   var data = sheet.getDataRange().getValues();
+
+  var headerProblem = checkProcessingLogHeaders(data[0]);
+  if (headerProblem) {
+    throw new Error(headerProblem);
+  }
+
   var rows = data.slice(HEADER_ROWS);
 
   var extract = new Set(
@@ -85,8 +125,8 @@ function getProcessedFileIds(sheetId) {
 
 function logProcessingResult(sheetId, file, result, successStatus, failedStatus) {
   var sheet = getProcessingLogSheet(sheetId);
-  // Output File ID, Provider and Model stay blank: those are written by the Cloud Run functions
-  var row = new Array(COL.SUBMITTED_BY + 1).fill("");
+  // outputJsonId, provider, model and outputDocUrl stay blank: those are written by the Cloud Run functions
+  var row = new Array(PROCESSING_LOG_HEADERS.length).fill("");
   row[COL.FILE_ID] = file.getId();
   row[COL.FILE_NAME] = file.getName();
   row[COL.PROCESSED_AT] = new Date();
@@ -237,8 +277,10 @@ function watchForNewFiles() {
   try {
     processed = getProcessedFileIds(config.PROCESSING_LOG_SHEET_ID);
   } catch (e) {
-    Logger.log("Cannot read processing log sheet %s: %s", config.PROCESSING_LOG_SHEET_ID, e.message);
-    return;
+    // Rethrow so the run shows as Failed in Executions (and the trigger owner
+    // gets Google's failure notification) instead of quietly skipping
+    console.error("Cannot use processing log sheet " + config.PROCESSING_LOG_SHEET_ID + ": " + e.message);
+    throw e;
   }
 
   for (var i = 0; i < INPUT_FOLDERS.length; i++) {

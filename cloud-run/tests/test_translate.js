@@ -53,6 +53,7 @@ jest.mock("../translate/doc-writer.js", () => ({
 }));
 
 jest.mock("../translate/notifier.js", () => ({
+  ...jest.requireActual("../translate/notifier.js"),
   notifyDocCreated: jest.fn().mockResolvedValue(),
   notifyDocFailed: jest.fn().mockResolvedValue(),
 }));
@@ -810,12 +811,13 @@ const {
 } = jest.requireActual("../translate/loaders.js");
 
 describe("logTranslationResult", () => {
-  // Processing log columns (A–J): File ID, File Name, Processed At, Status,
-  // Duration (ms), Error Detail, Output File ID, Provider, Model, Submitted By
+  // Processing log columns (A–K): fileId, fileName, processedAt, status,
+  // durationMs, errorDetails, outputJsonId, provider, model, submittedBy, outputDocUrl
   const COL_DURATION = 4;
   const COL_ERROR = 5;
   const COL_OUTPUT_FILE_ID = 6;
   const COL_SUBMITTED_BY = 9;
+  const COL_OUTPUT_DOC_URL = 10;
   let savedSheetId;
 
   beforeEach(() => {
@@ -852,11 +854,26 @@ describe("logTranslationResult", () => {
     });
 
     const row = loggedRow();
-    expect(row).toHaveLength(10);
+    expect(row).toHaveLength(11);
+    expect(row[COL_OUTPUT_DOC_URL]).toBe("");
     expect(row[COL_DURATION]).toBe(1234);
     expect(row[COL_ERROR]).toBe("");
     expect(row[COL_OUTPUT_FILE_ID]).toBe("out-1");
     expect(row[COL_SUBMITTED_BY]).toBe("person@example.gov");
+  });
+
+  test("writes a doc-created row with the doc URL in outputDocUrl and the doc build time", async () => {
+    await actualLogTranslationResult("src-1", "a.pdf", {
+      status: "doc-created", outputFileId: "json-1", outputDocUrl: "https://docs.google.com/document/d/doc-1",
+      provider: "google", model: "gemini", durationMs: 4200,
+    });
+
+    const row = loggedRow();
+    expect(row[3]).toBe("doc-created");
+    expect(row[COL_DURATION]).toBe(4200);
+    expect(row[COL_OUTPUT_FILE_ID]).toBe("json-1");
+    expect(row[COL_OUTPUT_DOC_URL]).toBe("https://docs.google.com/document/d/doc-1");
+    expect(mockSheetsAppend.mock.calls[0][0].range).toBe("ProcessingLog!A:K");
   });
 });
 
@@ -1064,5 +1081,68 @@ describe("loadConfig", () => {
     mockSheetsGet.mockResolvedValue({ data: { values: [CONFIG_HEADERS] } });
 
     await expect(actualLoadConfig()).rejects.toThrow("no data rows");
+  });
+});
+
+// --- Doc step rows (translate handler) ---
+
+describe("translate doc step logging", () => {
+  function mockRes() {
+    return { status: jest.fn().mockReturnThis(), json: jest.fn() };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    loadExtractionJson.mockResolvedValue({ blocks: [{ id: "b01", text: "Hello", translate: true }] });
+    loadDoc.mockResolvedValue("Translate.");
+    loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
+    loadStatutes.mockResolvedValue([]);
+    loadConfig.mockResolvedValue({
+      models: [{ role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
+    });
+    callLlm.mockResolvedValue({ text: '{"translated_text": "Hola"}', usage: { input_tokens: 1, output_tokens: 1, duration_ms: 1 } });
+    writeOutput.mockResolvedValue("translation-json-id");
+    jest.spyOn(console, "log").mockImplementation();
+    jest.spyOn(console, "error").mockImplementation();
+    jest.spyOn(console, "warn").mockImplementation();
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  test("writes translated, then doc-created with the doc URL", async () => {
+    createTranslationDoc.mockResolvedValue("output-doc-id");
+
+    await translate({ body: { extractionFileId: "f", sourceFileName: "a.pdf", sourceFileId: "src" } }, mockRes());
+
+    const rows = logTranslationResult.mock.calls.map((c) => c[2]);
+    expect(rows.map((r) => r.status)).toEqual(["translated", "doc-created"]);
+    expect(rows[1]).toMatchObject({
+      outputFileId: "translation-json-id",
+      outputDocUrl: "https://docs.google.com/document/d/output-doc-id",
+    });
+    expect(rows[1].durationMs).toEqual(expect.any(Number));
+  });
+
+  test("writes doc-failed with the error when the doc build fails", async () => {
+    createTranslationDoc.mockRejectedValue(new Error("Docs API rate limit"));
+
+    await translate({ body: { extractionFileId: "f", sourceFileName: "a.pdf", sourceFileId: "src" } }, mockRes());
+
+    const rows = logTranslationResult.mock.calls.map((c) => c[2]);
+    expect(rows.map((r) => r.status)).toEqual(["translated", "doc-failed"]);
+    expect(rows[1]).toMatchObject({ outputFileId: "translation-json-id", error: "Docs API rate limit" });
+    expect(rows[1].outputDocUrl).toBe("");
+  });
+
+  test("logs the doc step under its own pipeline stage", async () => {
+    createTranslationDoc.mockResolvedValue("output-doc-id");
+
+    await translate({ body: { extractionFileId: "f", sourceFileName: "a.pdf", sourceFileId: "src" } }, mockRes());
+
+    const entries = console.log.mock.calls
+      .map((c) => { try { return JSON.parse(c[0]); } catch { return null; } })
+      .filter(Boolean);
+    const doc = entries.find((e) => e.pipeline_stage === "translate_doc");
+    expect(doc).toMatchObject({ status: "doc-created", docId: "output-doc-id", translationFileId: "translation-json-id" });
   });
 });
