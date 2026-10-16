@@ -567,7 +567,7 @@
     }
     html += '<section>';
     if (fallback) {
-      html += '<div class="empty-sec">The model didn\'t return parseable JSON for this evaluation — see the full response below.</div>';
+      html += '<div class="empty-sec">The model\'s response for this evaluation couldn\'t be read. Click the &#8635; refresh button above to run it again.</div>';
     } else {
       DIMENSIONS.forEach(function(d) {
         var val        = scores[d.key];
