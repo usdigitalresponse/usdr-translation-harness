@@ -74,25 +74,6 @@
       color:var(--ink-soft); margin-bottom:4px; }
     .examples-text { font-size:12px; color:var(--ink-soft); white-space:pre-wrap; line-height:1.5; }
 
-    .debug-toggle {
-      width:100%; display:flex; align-items:center; justify-content:space-between;
-      background:none; border:none; cursor:pointer; padding:4px 0;
-      color:var(--ink-faint); font-size:12px;
-    }
-    .debug-toggle .chevron { font-size:12px; color:var(--ink-faint); transition:transform 120ms ease; }
-    .debug-toggle.open .chevron { transform:rotate(90deg); }
-    .debug-body { margin-top:6px; }
-    details.debug-item { border:none; border-top:1px solid var(--line-soft); }
-    details.debug-item summary {
-      cursor:pointer; padding:8px 0; font-size:12px; color:var(--ink-faint); list-style:none;
-    }
-    details.debug-item summary::-webkit-details-marker { display:none; }
-    details.debug-item summary::before { content:'\25b8'; margin-right:6px; display:inline-block; font-size:11px; }
-    details.debug-item[open] summary::before { transform: rotate(90deg); display:inline-block; }
-    .debug-body-inner { padding:0 0 10px; }
-    pre.json { margin:0; background:var(--code-bg); border:1px solid var(--line-soft); border-radius:7px;
-      padding:8px 9px; font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace; font-size:11px;
-      line-height:1.45; color:var(--code-ink); white-space:pre-wrap; word-break:break-word; overflow-x:auto; }
 
     .stage { text-align:center; color:var(--ink-soft); padding:56px 16px; font-size:12.5px; }
     .stage strong { display:block; color:var(--ink); font-size:13px; margin-bottom:6px; }
@@ -124,11 +105,6 @@
 
   function esc(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
-  function prettyJson(v) {
-    if (typeof v === 'string') return v;
-    try { return JSON.stringify(v, null, 2); } catch(e) { return String(v); }
   }
 
   function scoreClass(val) {
@@ -227,38 +203,7 @@
       html += '<section>' + detailBlock('Evaluation Notes', meta.evaluation_notes) + '</section>';
     }
 
-    html += '<section>'
-      + '<button class="debug-toggle" id="debugToggle"><span>Debug info</span><span class="chevron">&#9656;</span></button>'
-      + '<div class="debug-body" id="debugBody" style="display:none;">';
-
-    if (meta.document_type || meta.state) {
-      html += '<div class="metadata-row">';
-      if (meta.document_type) html += '<span>Type:</span> ' + esc(meta.document_type);
-      if (meta.document_type && meta.state) html += ' &middot; ';
-      if (meta.state) html += '<span>State:</span> ' + esc(meta.state);
-      html += '</div>';
-    }
-    if (DATA.provider || DATA.model) {
-      html += '<div class="metadata-row"><span>Model:</span> '
-        + esc((DATA.provider || '') + (DATA.provider && DATA.model ? '/' : '') + (DATA.model || ''))
-        + '</div>';
-    }
-
-    html += '<details class="debug-item"><summary>Full evaluation JSON</summary><div class="debug-body-inner"><pre class="json">'
-      +     esc(prettyJson(DATA))
-      +   '</pre></div></details>'
-      + '</div>'
-      + '</section>';
-
     document.getElementById('content').innerHTML = html;
-
-    var debugToggle = document.getElementById('debugToggle');
-    if (debugToggle) debugToggle.addEventListener('click', function() {
-      var body = document.getElementById('debugBody');
-      var open = body.style.display !== 'none';
-      body.style.display = open ? 'none' : 'block';
-      debugToggle.classList.toggle('open', !open);
-    });
   }
 
   function renderEmpty() {

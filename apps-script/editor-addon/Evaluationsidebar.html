@@ -175,36 +175,7 @@
     .dim-rubric-link { display:block; margin-top:10px; font-size:11px; color:var(--ink-faint); text-decoration:none; }
     .dim-rubric-link:hover { color:var(--accent); text-decoration:underline; }
 
-    .debug-toggle {
-      width:100%; display:flex; align-items:center; justify-content:space-between;
-      background:none; border:none; cursor:pointer; padding:4px 0;
-      color:var(--ink-faint); font-size:12px;
-    }
-    .debug-toggle .chevron { font-size:12px; color:var(--ink-faint); transition:transform 120ms ease; }
-    .debug-toggle.open .chevron { transform:rotate(90deg); }
-    .debug-body { margin-top:6px; }
-    details.debug-item { border:none; border-top:1px solid var(--line-soft); }
-    details.debug-item summary {
-      cursor:pointer; padding:8px 0; font-size:12px; color:var(--ink-faint); list-style:none;
-    }
-    details.debug-item summary::-webkit-details-marker { display:none; }
-    details.debug-item summary::before { content:'\25b8'; margin-right:6px; display:inline-block; font-size:11px; }
-    details.debug-item[open] summary::before { transform: rotate(90deg); display:inline-block; }
-    .debug-body-inner { padding:0 0 10px; }
-    .code-block-wrap { position:relative; }
-    .copy-btn {
-      position:absolute; top:7px; right:7px; width:26px; height:26px;
-      display:flex; align-items:center; justify-content:center;
-      background:var(--paper); border:1px solid var(--line-soft); border-radius:6px;
-      color:var(--ink-soft); cursor:pointer; padding:0;
-    }
-    .copy-btn:hover { background:var(--line-soft); color:var(--ink); }
-    .copy-btn.copied { color:var(--green-ink); border-color:var(--green-bdr); background:var(--green-bg); }
-    .code-block-wrap pre.json { padding-right:38px; }
 
-    pre.json { margin:0; background:var(--code-bg); border:1px solid var(--line-soft); border-radius:7px;
-      padding:8px 9px; font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace; font-size:11px;
-      line-height:1.45; color:var(--code-ink); white-space:pre-wrap; word-break:break-word; overflow-x:auto; }
     .text-block { font-size:12px; color:var(--ink-soft); white-space:pre-wrap; word-break:break-word; }
 
     .empty-sec { font-size:12px; color:var(--ink-faint); padding:9px 11px; border:1px dashed var(--line); border-radius:9px; }
@@ -282,7 +253,6 @@
   };
 
   function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-  function prettyJson(v){ if (typeof v==='string') return v; try { return JSON.stringify(v,null,2); } catch(e){ return String(v); } }
   function tryParse(s){ if (typeof s!=='string') return s; try { return JSON.parse(s); } catch(e){ return null; } }
 
   function dimNode(parsedRaw, rawKey) {
@@ -618,70 +588,7 @@
     }
     html += '</section>';
 
-    debugRawText = parsedRaw && Object.keys(parsedRaw).length ? prettyJson(parsedRaw) : (DATA.raw_eval_text || '—');
-
-    html += '<section>'
-      + '<button class="debug-toggle" id="debugToggle"><span>Debug info</span><span class="chevron">&#9656;</span></button>'
-      + '<div class="debug-body" id="debugBody" style="display:none;">'
-      +   '<div class="code-block-wrap">'
-      +     '<button type="button" class="copy-btn" id="copyDebugBtn" title="Copy to clipboard" aria-label="Copy to clipboard">'
-      +       '<svg id="copyIcon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>'
-      +     '</button>'
-      +     '<pre class="json" id="debugJson">' + esc(debugRawText) + '</pre>'
-      +   '</div>'
-      + '</div>'
-      + '</section>';
-
     document.getElementById('content').innerHTML = html;
-
-    var debugToggle = document.getElementById('debugToggle');
-    if (debugToggle) debugToggle.addEventListener('click', function() {
-      var body = document.getElementById('debugBody');
-      var open = body.style.display !== 'none';
-      body.style.display = open ? 'none' : 'block';
-      debugToggle.classList.toggle('open', !open);
-    });
-
-    var copyDebugBtn = document.getElementById('copyDebugBtn');
-    if (copyDebugBtn) copyDebugBtn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      copyDebugText();
-    });
-  }
-  
-  function copyDebugText() {
-    var btn = document.getElementById('copyDebugBtn');
-    var icon = document.getElementById('copyIcon');
-    if (!btn) return;
-
-    function showCopied() {
-      btn.classList.add('copied');
-      if (icon) icon.innerHTML = '<polyline points="20 6 9 17 4 12"></polyline>';
-      setTimeout(function() {
-        btn.classList.remove('copied');
-        if (icon) icon.innerHTML = '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>';
-      }, 1500);
-    }
-
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(debugRawText).then(showCopied, function() {
-        fallbackCopy_(debugRawText, showCopied);
-      });
-    } else {
-      fallbackCopy_(debugRawText, showCopied);
-    }
-  }
-
-  function fallbackCopy_(text, onDone) {
-    var ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.left = '-9999px';
-    document.body.appendChild(ta);
-    ta.select();
-    try { document.execCommand('copy'); } catch (e) {}
-    document.body.removeChild(ta);
-    if (onDone) onDone();
   }
 
   function renderEmpty() {

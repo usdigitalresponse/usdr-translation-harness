@@ -679,10 +679,6 @@ function revertAlternativeInDoc(snapshots) {
   return result;
 }
 
-function regenerateSuggestions() {
-  return { problem: "not_implemented", message: "Regeneration is not yet available." };
-}
-
 function generateReviewDocx() {
   var result = getSidebarData();
   if (!result || !result.data) return null;
@@ -876,7 +872,7 @@ function mostSeverePriority_(models) {
  * Evaluationsidebar.html renders: an averaged headline score plus a per-model
  * breakdown. With a single active model this collapses to that model's scores.
  */
-function compileEvalData_(evaluations, blocks) {
+function compileEvalData_(evaluations) {
   var models = evaluations.map(normalizeModelScores_);
 
   var compiled = {
@@ -887,21 +883,12 @@ function compileEvalData_(evaluations, blocks) {
     compiled[d.key] = averageField_(models, d.key);
   });
 
-  var sourceText = [];
-  var translatedText = [];
-  for (var i = 0; i < blocks.length; i++) {
-    sourceText.push(blocks[i].original_text);
-    translatedText.push(blocks[i].translated_text);
-  }
-
   return {
     timestamp: new Date().toISOString(),
     scores: compiled,
     models: models,
-    // Kept for single-model fallback rendering / the debug panel.
+    // Kept for single-model fallback rendering.
     raw_eval_text: JSON.stringify(models[0].raw),
-    source_text: sourceText.join("\n\n"),
-    translated_text: translatedText.join("\n\n"),
   };
 }
 
@@ -971,10 +958,8 @@ function loadEvalFromLocation_(fileId) {
   var succeeded = (parsed.evaluations || []).filter(function (e) { return !e.error; });
   if (!succeeded.length) return null;
 
-  // The stored file carries a contentHash (for staleness) but not the
-  // translation itself, so the debug panel's source/translated text is empty
-  // on a reload — it's populated only on a fresh in-session run.
-  var data = compileEvalData_(succeeded, []);
+  // The stored file carries a contentHash (for staleness).
+  var data = compileEvalData_(succeeded);
   data.contentHash = parsed.contentHash || "";
   if (parsed.evaluatedAt) data.timestamp = parsed.evaluatedAt;
   return data;
@@ -1059,7 +1044,7 @@ function evaluateTranslationFromSidebar() {
   // The eval function persisted the full result to Drive (tagged with this
   // doc's id). Return it for immediate rendering; the sidebar reads it back
   // from Drive on later opens. Nothing is stored in Document Properties.
-  var data = compileEvalData_(succeeded, blocks);
+  var data = compileEvalData_(succeeded);
   data.contentHash = hashBlocks_(blocks);
   data.stale = false;
   return data;

@@ -215,16 +215,6 @@ describe("compileEvalData_ (single model)", () => {
     expect(data.scores.accuracy).toBe("");
   });
 
-  test("joins block text for the debug panel", () => {
-    const s = loadAddon();
-    const data = s.compileEvalData_([evaluation("g", "m", makeScores())], [
-      { original_text: "A", translated_text: "X" },
-      { original_text: "B", translated_text: "Y" },
-    ]);
-
-    expect(data.source_text).toBe("A\n\nB");
-    expect(data.translated_text).toBe("X\n\nY");
-  });
 });
 
 describe("compileEvalData_ (multiple models)", () => {
