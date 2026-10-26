@@ -6,6 +6,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:wght@500;600;700&display=swap" rel="stylesheet">
+  <!-- Design item 9: Material Symbols, trimmed to the icons the sidebars use
+       (icon_names must stay alphabetical). display=block hides the icon names
+       while the font loads instead of flashing them as text. -->
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0&icon_names=expand_more,more_vert,navigate_before,navigate_next,open_in_new,refresh,undo&display=block" rel="stylesheet">
   <style>
     :root {
       --ink:        #071A51;
@@ -71,6 +75,7 @@
       font-size: 20px; font-weight: 700; line-height: 1; color: var(--ink);
       padding: 3px 6px; border-radius: 5px;
     }
+    .manage-btn .material-symbols-outlined { font-size: 20px; }
     .manage-btn:hover { background: var(--line-soft); }
     .manage-menu {
       display: none; position: absolute; right: 0; top: 28px; z-index: 20;
@@ -108,10 +113,10 @@
       font-family: var(--font-head); font-size: 14.5px; font-weight: 600; color: var(--ink);
     }
     .chevron {
-      display: inline-block; font-size: 11px; color: var(--ink);
-      transform: rotate(0deg); transition: transform 120ms ease;
+      display: inline-block; font-size: 18px; color: var(--ink);
+      transform: rotate(-90deg); transition: transform 120ms ease;
     }
-    .chevron.open { transform: rotate(90deg); }
+    .chevron.open { transform: rotate(0deg); }
 
     .divider { border-top: 1px solid var(--line); margin: 14px 0; }
 
@@ -135,6 +140,7 @@
       font-size: 15px; color: var(--ink); cursor: pointer;
       padding: 0; font-family: inherit; line-height: 1;
     }
+    .nav-arrow .material-symbols-outlined { font-size: 20px; }
     .nav-arrow:hover { background: var(--line-soft); border-color: var(--ink-soft); }
     .nav-count { font-size: 13px; font-weight: 600; color: var(--ink); }
 
@@ -222,6 +228,7 @@
     .rr-badge.fixed { background: var(--line-soft); color: var(--ink-soft); }
     .rr-revert     { font-size: 13px; color: var(--ink-soft); cursor: pointer; margin-right: 8px;
       border: none; background: none; padding: 0 2px; font-family: inherit; line-height: 1; }
+    .rr-revert .material-symbols-outlined { font-size: 16px; }
     .rr-revert:hover { color: var(--ink); }
     .rr-revert-failed { font-size: 10.5px; color: var(--ink-faint); margin-right: 8px; white-space: nowrap; }
     .reviewed-detail { padding: 0 0 10px; font-size: 12px; color: var(--ink-soft); }
@@ -249,7 +256,7 @@
       color: #7a9466;
     }
     .card-statutes-toggle:hover { color: #3b4f2a; }
-    .card-statutes-toggle .chevron { font-size: 9px; color: #7a9466; }
+    .card-statutes-toggle .chevron { font-size: 15px; color: #7a9466; }
     .card-statutes-drawer {
       margin-top: 8px; background: #f0f4ec; border: 1px solid #c5d4b8;
       border-radius: 7px; padding: 9px 10px;
@@ -342,6 +349,13 @@
     a:active,
     .fixed-manually-link:active,
     .always-show-link:active { color: var(--link-active); }
+    /* Design item 9: Material Symbols icons. Fixed 1em width so a slow font
+       load can't widen the layout with the icon's name. */
+    .material-symbols-outlined {
+      font-size: 18px; width: 1em; overflow: hidden;
+      vertical-align: middle; user-select: none;
+    }
+    .icon-ext { font-size: 14px; margin-left: 2px; vertical-align: -2px; }
   </style>
 </head>
 <body>
@@ -394,6 +408,14 @@
   var promptUrl = DEFAULT_PROMPT_URL;
 
   // ── Utilities ─────────────────────────────────────────────────────────
+  // Design item 9: Material Symbols icon markup. Decorative by default;
+  // the control around it carries the accessible name.
+  function icon(name, cls) {
+    return '<span class="material-symbols-outlined' + (cls ? ' ' + cls : '') + '" aria-hidden="true">' + name + '</span>';
+  }
+  // Appended to links that open a new tab.
+  var EXTERNAL_LINK_ICON = icon('open_in_new', 'icon-ext') + '<span class="sr-only"> (opens in new tab)</span>';
+
   function esc(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
@@ -549,10 +571,10 @@
       + '<div class="title-row"><h1>AI Suggestions - Spanish</h1></div>'
       + (ts ? '<div class="meta">Generated ' + esc(ts) + '</div>' : '')
       + '<div class="prompt-row">'
-      +   '<a href="' + esc(promptUrl) + '" target="_blank" rel="noopener" class="prompt-link" id="promptLink">View prompt</a>'
+      +   '<a href="' + esc(promptUrl) + '" target="_blank" rel="noopener" class="prompt-link" id="promptLink">View prompt' + EXTERNAL_LINK_ICON + '</a>'
       +   (SOURCE_FILE_ID ? '<a href="#" class="prompt-link" id="viewSourceBtn">View source</a>' : '')
       +   '<div class="manage-wrap">'
-      +     '<button type="button" class="manage-btn" id="manageBtn" aria-label="Manage">&#8942;</button>'
+      +     '<button type="button" class="manage-btn" id="manageBtn" aria-label="Manage">' + icon('more_vert') + '</button>'
       +     '<div class="manage-menu' + (manageOpen ? ' open' : '') + '" id="manageMenu">'
       +       '<button type="button" class="manage-item" id="changePromptItem">Change prompt</button>'
       +       '<button type="button" class="manage-item" id="downloadItem">Download</button>'
@@ -575,7 +597,7 @@
     var remaining = reviewablePool().length;
     html += '<button class="sec-toggle" id="needsReviewToggle"' + ariaToggle(needsReviewOpen, 'needsReviewBody') + '>'
       + '<span>Needs review (' + remaining + ')</span>'
-      + '<span class="chevron' + (needsReviewOpen ? ' open' : '') + '" id="needsReviewChevron" aria-hidden="true">&#9656;</span>'
+      + '<span class="material-symbols-outlined chevron' + (needsReviewOpen ? ' open' : '') + '" id="needsReviewChevron" aria-hidden="true">expand_more</span>'
       + '</button>';
 
     html += '<div id="needsReviewBody" style="display:' + (needsReviewOpen ? 'block' : 'none') + ';">';
@@ -589,7 +611,7 @@
     // ---- Glossary reference ----
     html += '<button class="sec-toggle" id="referenceToggle"' + ariaToggle(referenceOpen, 'referenceBody') + '>'
       + '<span>Glossary reference (' + refItems.length + ')</span>'
-      + '<span class="chevron' + (referenceOpen ? ' open' : '') + '" id="referenceChevron" aria-hidden="true">&#9656;</span>'
+      + '<span class="material-symbols-outlined chevron' + (referenceOpen ? ' open' : '') + '" id="referenceChevron" aria-hidden="true">expand_more</span>'
       + '</button>';
     html += '<div id="referenceBody" style="display:' + (referenceOpen ? 'block' : 'none') + ';">';
     html += renderReferenceList(refItems);
@@ -599,7 +621,7 @@
       html += '<div class="divider"></div>';
       html += '<button class="sec-toggle" id="statutesToggle"' + ariaToggle(statutesOpen, 'statutesBody') + '>'
         + '<span>Legal references (' + statItems.length + ')</span>'
-        + '<span class="chevron' + (statutesOpen ? ' open' : '') + '" id="statutesChevron" aria-hidden="true">&#9656;</span>'
+        + '<span class="material-symbols-outlined chevron' + (statutesOpen ? ' open' : '') + '" id="statutesChevron" aria-hidden="true">expand_more</span>'
         + '</button>';
       html += '<div id="statutesBody" style="display:' + (statutesOpen ? 'block' : 'none') + ';">';
       html += renderStatuteList(statItems);
@@ -658,9 +680,9 @@
       + 'data-original="' + esc(String(original)) + '" data-translation="' + esc(String(current)) + '">';
 
     html += '<div class="card-nav">'
-      + '<button type="button" class="nav-arrow" id="prevBtn" aria-label="Previous suggestion">&#8249;</button>'
+      + '<button type="button" class="nav-arrow" id="prevBtn" aria-label="Previous suggestion">' + icon('navigate_before') + '</button>'
       + '<span class="nav-count">' + (reviewPos + 1) + ' of ' + poolLength + '</span>'
-      + '<button type="button" class="nav-arrow" id="nextBtn" aria-label="Next suggestion">&#8250;</button>'
+      + '<button type="button" class="nav-arrow" id="nextBtn" aria-label="Next suggestion">' + icon('navigate_next') + '</button>'
       + '</div>';
 
     if (noHl) html += '<span class="no-hl-badge"><span class="sr-only">Status: </span>Highlighting not available</span>';
@@ -753,7 +775,7 @@
     if (!done.length) return '';
     var html = '<button class="list-toggle" id="reviewedToggle"' + ariaToggle(reviewedOpen, 'reviewedList') + '>'
       + '<span>Show reviewed (' + done.length + ')</span>'
-      + '<span class="chevron' + (reviewedOpen ? ' open' : '') + '" aria-hidden="true">&#9656;</span>'
+      + '<span class="material-symbols-outlined chevron' + (reviewedOpen ? ' open' : '') + '" aria-hidden="true">expand_more</span>'
       + '</button>';
     html += reviewedOpen
       ? '<div id="reviewedList">' + done.map(renderReviewedRow).join('') + '</div>'
@@ -770,7 +792,7 @@
     var marker = '';
     if (status === 'alternative') marker = '<span class="rr-badge alt"><span class="sr-only">Status: </span>Alternative used</span>';
     else if (status === 'fixed')  marker = '<span class="rr-badge fixed"><span class="sr-only">Status: </span>Fixed manually</span>';
-    var revert = '<button type="button" class="rr-revert" data-id="' + esc(it.id) + '" data-action="revert" aria-label="Review again">&#8630;</button>';
+    var revert = '<button type="button" class="rr-revert" data-id="' + esc(it.id) + '" data-action="revert" aria-label="Review again">' + icon('undo') + '</button>';
 
     // The text is a button so keyboard users can expand the row; clicks
     // anywhere else on the row still toggle it (handled on the row).
@@ -826,7 +848,7 @@
     return items.map(function(it) {
       var url = statuteUrl(it.section);
       var label = url
-        ? '<a href="' + esc(url) + '" target="_blank" rel="noopener" class="statute-link">' + esc(it.section) + '</a>'
+        ? '<a href="' + esc(url) + '" target="_blank" rel="noopener" class="statute-link">' + esc(it.section) + EXTERNAL_LINK_ICON + '</a>'
         : esc(it.section);
       return '<div class="statute-row">'
         + '<div class="statute-section-label">'
@@ -843,7 +865,7 @@
     if (!stats.length) return '';
 
     var html = '<button class="card-statutes-toggle" id="statuteDrawerToggle"' + ariaToggle(statuteDrawerOpen, 'statuteDrawer') + '>'
-      + '<span class="chevron' + (statuteDrawerOpen ? ' open' : '') + '" aria-hidden="true">&#9656;</span>'
+      + '<span class="material-symbols-outlined chevron' + (statuteDrawerOpen ? ' open' : '') + '" aria-hidden="true">expand_more</span>'
       + 'Statutes for this section (' + stats.length + ')'
       + '</button>';
 
@@ -855,7 +877,7 @@
       stats.forEach(function(s) {
         var url = statuteUrl(s.section);
         var label = url
-          ? '<a href="' + esc(url) + '" target="_blank" rel="noopener" class="card-statute-link">' + esc(s.section) + '</a>'
+          ? '<a href="' + esc(url) + '" target="_blank" rel="noopener" class="card-statute-link">' + esc(s.section) + EXTERNAL_LINK_ICON + '</a>'
           : esc(s.section);
         html += '<div class="card-statute-item">'
           + '<div class="card-statute-section">' + label + '</div>'

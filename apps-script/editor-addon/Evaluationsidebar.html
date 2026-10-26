@@ -6,6 +6,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:wght@500;600;700&display=swap" rel="stylesheet">
+  <!-- Design item 9: Material Symbols, trimmed to the icons the sidebars use
+       (icon_names must stay alphabetical). display=block hides the icon names
+       while the font loads instead of flashing them as text. -->
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0&icon_names=expand_more,more_vert,navigate_before,navigate_next,open_in_new,refresh,undo&display=block" rel="stylesheet">
   <style>
     :root {
       --ink: #071A51; --ink-soft: #4b5580; --ink-faint: #8b93b8;
@@ -54,6 +58,8 @@
       font-size:20px; font-weight:700; line-height:1; color:var(--ink);
       padding:3px 6px; border-radius:5px;
     }
+    .manage-btn .material-symbols-outlined,
+    .refresh-icon-btn .material-symbols-outlined { font-size:20px; }
     .manage-btn:hover { background:var(--line-soft); }
     .manage-menu {
       display:none; position:absolute; right:0; top:28px; z-index:20;
@@ -139,10 +145,12 @@
     }
     .dim-summary::-webkit-details-marker { display:none; }
     .dim-summary::after {
-      content:'\25b8'; font-size:11px; color:var(--ink-soft); margin-left:6px;
-      transition: transform 120ms ease; display:inline-block;
+      content:'expand_more'; font-family:'Material Symbols Outlined'; font-feature-settings:'liga'; line-height:1;
+      letter-spacing:normal; text-transform:none; white-space:nowrap; direction:ltr;
+      font-size:18px; color:var(--ink-soft); margin-left:6px;
+      transform: rotate(-90deg); transition: transform 120ms ease; display:inline-block;
     }
-    details.dim[open] .dim-summary::after { transform: rotate(90deg); }
+    details.dim[open] .dim-summary::after { transform: rotate(0deg); }
     .dim-name { font-family:var(--font-head); font-weight:600; font-size:13px; flex:1; color:var(--ink); }
     .dim-score-wrap { display:flex; align-items:center; gap:6px; }
     .score-dot { width:8px; height:8px; border-radius:50%; display:inline-block; flex:0 0 auto; }
@@ -224,6 +232,13 @@
       background-color: rgba(25, 118, 210, 0.08);
     }
     a:active { color: var(--link-active); }
+    /* Design item 9: Material Symbols icons. Fixed 1em width so a slow font
+       load can't widen the layout with the icon's name. */
+    .material-symbols-outlined {
+      font-size: 18px; width: 1em; overflow: hidden;
+      vertical-align: middle; user-select: none;
+    }
+    .icon-ext { font-size: 14px; margin-left: 2px; vertical-align: -2px; }
   </style>
 </head>
 <body>
@@ -303,6 +318,14 @@
       { n: 1, d: 'Inconsistent terms or formatting appear unprofessional.' }
     ]
   };
+
+  // Design item 9: Material Symbols icon markup. Decorative by default;
+  // the control around it carries the accessible name.
+  function icon(name, cls) {
+    return '<span class="material-symbols-outlined' + (cls ? ' ' + cls : '') + '" aria-hidden="true">' + name + '</span>';
+  }
+  // Appended to links that open a new tab.
+  var EXTERNAL_LINK_ICON = icon('open_in_new', 'icon-ext') + '<span class="sr-only"> (opens in new tab)</span>';
 
   function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function tryParse(s){ if (typeof s!=='string') return s; try { return JSON.parse(s); } catch(e){ return null; } }
@@ -418,12 +441,12 @@
 
   function buildTopHtml() {
     return '<div class="title-row"><h1>Evaluation Results</h1>'
-      +   '<button type="button" class="refresh-icon-btn" id="refreshIconBtn" title="Refresh" aria-label="Refresh">&#8635;</button>'
+      +   '<button type="button" class="refresh-icon-btn" id="refreshIconBtn" title="Refresh" aria-label="Refresh">' + icon('refresh') + '</button>'
       + '</div>'
       + '<div class="rubric-row">'
-      +   '<a href="' + esc(rubricUrl) + '" target="_blank" rel="noopener" class="rubric-link" id="rubricLink">View rubric</a>'
+      +   '<a href="' + esc(rubricUrl) + '" target="_blank" rel="noopener" class="rubric-link" id="rubricLink">View rubric' + EXTERNAL_LINK_ICON + '</a>'
       +   '<div class="manage-wrap">'
-      +     '<button type="button" class="manage-btn" id="manageBtn" aria-label="Manage">&#8942;</button>'
+      +     '<button type="button" class="manage-btn" id="manageBtn" aria-label="Manage">' + icon('more_vert') + '</button>'
       +     '<div class="manage-menu' + (manageOpen ? ' open' : '') + '" id="manageMenu">'
       +       '<button type="button" class="manage-item" id="changeRubricItem">Change rubric</button>'
       +     '</div>'
@@ -558,7 +581,7 @@
       var recs      = extractList_(node, ['recommendations','recommendation','suggestions','fixes']);
       var comment   = rawComment(node);
       var emptyMsg = DATA.detailTrimmed
-        ? 'Detail too large to cache — click &#8635; to re-run and view.'
+        ? 'Detail too large to cache — click <span class="material-symbols-outlined">refresh</span> to re-run and view.'
         : 'No additional detail provided.';
       // Recommendations is the only list rendered today (the strengths/issues
       // toggles are off), so it alone decides whether the container appears —
@@ -615,11 +638,11 @@
     var html = '';
     if (DATA.stale) {
       html += '<div class="stale-note">This document has changed since it was last evaluated. '
-        + 'Click the &#8635; refresh button above to re-evaluate.</div>';
+        + 'Click the <span class="material-symbols-outlined" aria-hidden="true">refresh</span> refresh button above to re-evaluate.</div>';
     }
     html += '<section>';
     if (fallback) {
-      html += '<div class="empty-sec">The model\'s response for this evaluation couldn\'t be read. Click the &#8635; refresh button above to run it again.</div>';
+      html += '<div class="empty-sec">The model\'s response for this evaluation couldn\'t be read. Click the <span class="material-symbols-outlined" aria-hidden="true">refresh</span> refresh button above to run it again.</div>';
     } else {
       DIMENSIONS.forEach(function(d) {
         var val        = scores[d.key];
@@ -633,7 +656,7 @@
           + '<div class="dim-body">'
           +   rubricScaleBlock(d.key, val, colorClass)
           +   buildDimDetail(d, models)
-          +   '<a href="' + esc(d.rubricUrl || rubricUrl) + '" target="_blank" rel="noopener" class="dim-rubric-link">View rubric &#8599;</a>'
+          +   '<a href="' + esc(d.rubricUrl || rubricUrl) + '" target="_blank" rel="noopener" class="dim-rubric-link">View rubric' + EXTERNAL_LINK_ICON + '</a>'
           + '</div>'
           + '</details>';
       });

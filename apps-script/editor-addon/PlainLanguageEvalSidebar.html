@@ -6,6 +6,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:wght@500;600;700&display=swap" rel="stylesheet">
+  <!-- Design item 9: Material Symbols, trimmed to the icons the sidebars use
+       (icon_names must stay alphabetical). display=block hides the icon names
+       while the font loads instead of flashing them as text. -->
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0&icon_names=expand_more,more_vert,navigate_before,navigate_next,open_in_new,refresh,undo&display=block" rel="stylesheet">
   <style>
     :root {
       --ink: #071A51; --ink-soft: #4b5580; --ink-faint: #8b93b8;
@@ -54,10 +58,12 @@
     }
     .dim-summary::-webkit-details-marker { display:none; }
     .dim-summary::after {
-      content:'\25b8'; font-size:11px; color:var(--ink-soft); margin-left:6px;
-      transition: transform 120ms ease; display:inline-block;
+      content:'expand_more'; font-family:'Material Symbols Outlined'; font-feature-settings:'liga'; line-height:1;
+      letter-spacing:normal; text-transform:none; white-space:nowrap; direction:ltr;
+      font-size:18px; color:var(--ink-soft); margin-left:6px;
+      transform: rotate(-90deg); transition: transform 120ms ease; display:inline-block;
     }
-    details.dim[open] .dim-summary::after { transform: rotate(90deg); }
+    details.dim[open] .dim-summary::after { transform: rotate(0deg); }
     .dim-name { font-family:var(--font-head); font-weight:600; font-size:13px; flex:1; color:var(--ink); }
     .dim-score-wrap { display:flex; align-items:center; gap:6px; }
     .score-dot { width:8px; height:8px; border-radius:50%; display:inline-block; flex:0 0 auto; }
