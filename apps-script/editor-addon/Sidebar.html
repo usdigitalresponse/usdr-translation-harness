@@ -36,6 +36,10 @@
       --link: #1976D2;
       --link-visited: #1565C0;
       --link-active: #0D47A1;
+          /* Design item 6: secondary button outlines reach 3:1 against white and
+         the card (3.7 / 3.5); primary buttons darken on hover instead of fading */
+      --btn-border: #7a83a9;
+      --accent-hover: #1565C0;
     }
 
     * { box-sizing: border-box; }
@@ -90,9 +94,9 @@
     .prompt-save, .prompt-cancel { font-size: 11px; font-weight: 600; border-radius: 6px;
       padding: 5px 10px; cursor: pointer; border: 1px solid transparent; }
     .prompt-save { background: var(--accent); color: #fff; }
-    .prompt-save:hover { opacity: .9; }
+    .prompt-save:hover { background: var(--accent-hover); }
     .prompt-save:disabled { opacity: .6; cursor: default; }
-    .prompt-cancel { background: none; border-color: var(--line); color: var(--ink-soft); }
+    .prompt-cancel { background: none; border-color: var(--btn-border); color: var(--ink-soft); }
     .prompt-cancel:hover { background: var(--line-soft); }
     .prompt-warn { margin-top: 7px; font-size: 11px; color: var(--red-ink); min-height: 0; }
 
@@ -125,11 +129,11 @@
     .card-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
     .nav-arrow {
       width: 26px; height: 26px; border-radius: 50%;
-      background: var(--paper); border: 1px solid var(--line);
+      background: var(--paper); border: 1px solid var(--btn-border);
       display: flex; align-items: center; justify-content: center;
       font-size: 15px; color: var(--ink); cursor: pointer;
     }
-    .nav-arrow:hover { background: var(--line-soft); border-color: var(--ink-faint); }
+    .nav-arrow:hover { background: var(--line-soft); border-color: var(--ink-soft); }
     .nav-count { font-size: 13px; font-weight: 600; color: var(--ink); }
 
     .no-hl-badge {
@@ -170,12 +174,12 @@
 
     .btn {
       flex: 1; font-size: 12.5px; font-weight: 600; padding: 8px 10px;
-      border-radius: 7px; border: 1px solid var(--line); background: var(--paper);
+      border-radius: 7px; border: 1px solid var(--btn-border); background: var(--paper);
       color: var(--ink-soft); cursor: pointer; text-align: center;
     }
     .btn:hover { background: var(--line-soft); color: var(--ink); }
     .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .btn.primary:hover { opacity: .9; }
+    .btn.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 
     .fixed-manually-row { text-align: center; margin-top: 10px; }
     .fixed-manually-link {

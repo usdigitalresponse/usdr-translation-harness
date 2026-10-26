@@ -22,6 +22,10 @@
       --link: #1976D2;
       --link-visited: #1565C0;
       --link-active: #0D47A1;
+          /* Design item 6: secondary button outlines reach 3:1 against white and
+         the card (3.7 / 3.5); primary buttons darken on hover instead of fading */
+      --btn-border: #7a83a9;
+      --accent-hover: #1565C0;
     }
     * { box-sizing: border-box; }
     html, body { margin:0; padding:0; height:100%; background:var(--paper); color:var(--ink);
@@ -73,9 +77,9 @@
     .rubric-save, .rubric-cancel { font-size:11px; font-weight:600; border-radius:6px;
       padding:5px 10px; cursor:pointer; border:1px solid transparent; }
     .rubric-save { background:var(--accent); color:#fff; }
-    .rubric-save:hover { opacity:.9; }
+    .rubric-save:hover { background:var(--accent-hover); }
     .rubric-save:disabled { opacity:.6; cursor:default; }
-    .rubric-cancel { background:none; border-color:var(--line); color:var(--ink-soft); }
+    .rubric-cancel { background:none; border-color:var(--btn-border); color:var(--ink-soft); }
     .rubric-cancel:hover { background:var(--line-soft); }
     .rubric-warn { margin-top:7px; font-size:11px; color:var(--red-ink); min-height:0; }
 
