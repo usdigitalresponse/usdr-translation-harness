@@ -813,12 +813,13 @@ const {
 
 describe("logTranslationResult", () => {
   // Processing log columns (A–K): fileId, fileName, processedAt, status,
-  // durationMs, errorDetails, outputJsonId, provider, model, submittedBy, outputDocUrl
+  // durationMs, errorDetails, outputJsonId, provider, model, submittedBy, outputDocUrl, outputDocId
   const COL_DURATION = 4;
   const COL_ERROR = 5;
   const COL_OUTPUT_FILE_ID = 6;
   const COL_SUBMITTED_BY = 9;
   const COL_OUTPUT_DOC_URL = 10;
+  const COL_OUTPUT_DOC_ID = 11;
   let savedSheetId;
 
   beforeEach(() => {
@@ -855,17 +856,19 @@ describe("logTranslationResult", () => {
     });
 
     const row = loggedRow();
-    expect(row).toHaveLength(11);
+    expect(row).toHaveLength(12);
     expect(row[COL_OUTPUT_DOC_URL]).toBe("");
+    expect(row[COL_OUTPUT_DOC_ID]).toBe("");
     expect(row[COL_DURATION]).toBe(1234);
     expect(row[COL_ERROR]).toBe("");
     expect(row[COL_OUTPUT_FILE_ID]).toBe("out-1");
     expect(row[COL_SUBMITTED_BY]).toBe("person@example.gov");
   });
 
-  test("writes a doc-created row with the doc URL in outputDocUrl and the doc build time", async () => {
+  test("writes a doc-created row with the doc URL and ID and the doc build time", async () => {
     await actualLogTranslationResult("src-1", "a.pdf", {
       status: "doc-created", outputFileId: "json-1", outputDocUrl: "https://docs.google.com/document/d/doc-1",
+      outputDocId: "doc-1",
       provider: "google", model: "gemini", durationMs: 4200,
     });
 
@@ -874,7 +877,8 @@ describe("logTranslationResult", () => {
     expect(row[COL_DURATION]).toBe(4200);
     expect(row[COL_OUTPUT_FILE_ID]).toBe("json-1");
     expect(row[COL_OUTPUT_DOC_URL]).toBe("https://docs.google.com/document/d/doc-1");
-    expect(mockSheetsAppend.mock.calls[0][0].range).toBe("ProcessingLog!A:K");
+    expect(row[COL_OUTPUT_DOC_ID]).toBe("doc-1");
+    expect(mockSheetsAppend.mock.calls[0][0].range).toBe("ProcessingLog!A:L");
   });
 });
 
@@ -1120,6 +1124,7 @@ describe("translate doc step logging", () => {
     expect(rows[1]).toMatchObject({
       outputFileId: "translation-json-id",
       outputDocUrl: "https://docs.google.com/document/d/output-doc-id",
+      outputDocId: "output-doc-id",
     });
     expect(rows[1].durationMs).toEqual(expect.any(Number));
   });
@@ -1133,6 +1138,7 @@ describe("translate doc step logging", () => {
     expect(rows.map((r) => r.status)).toEqual(["translated", "doc-failed"]);
     expect(rows[1]).toMatchObject({ outputFileId: "translation-json-id", error: "Docs API rate limit" });
     expect(rows[1].outputDocUrl).toBe("");
+    expect(rows[1].outputDocId).toBe("");
   });
 
   test("passes the submitter's name and email to the Chat notification", async () => {
