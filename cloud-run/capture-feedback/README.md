@@ -1,6 +1,6 @@
 # Capture Feedback
 
-Receives a Google Doc ID after a reviewer submits their review, diffs the reviewer's edits against the original AI translation, classifies each change with a review signal, and writes terminology decisions to a derived glossary sheet. Also stores full feedback JSON in Drive and emits structured logs for Cloud Logging dashboards.
+Receives a Google Doc ID after a reviewer submits their review, diffs the reviewer's edits against the original AI translation, classifies each change with a review signal, and writes terminology decisions to a refinement log sheet. Also stores full feedback JSON in Drive and emits structured logs for Cloud Logging dashboards.
 
 ## How it works
 
@@ -22,7 +22,7 @@ The function runs as a single HTTP request with ten sequential steps:
 
 8. **Emit structured log** — writes a JSON log line to stdout with all metrics, picked up by Cloud Logging for dashboards.
 
-9. **Write to derived glossary** — appends terminology decisions to the appropriate tabs in the derived glossary Google Sheet.
+9. **Write to refinement log** — appends terminology decisions to the appropriate tabs in the refinement log Google Sheet.
 
 10. **Store feedback JSON** — saves the full feedback result (metrics, decisions, diffs) as a JSON file in a Drive folder for archival.
 
@@ -55,7 +55,7 @@ Each block gets classified with the strongest signal from the reviewer's sidebar
 
 ## Glossary tab routing
 
-Terminology decisions are routed to one of three tabs in the derived glossary sheet:
+Terminology decisions are routed to one of three tabs in the refinement log sheet:
 
 - **Reviewed** — reviewer interacted with the sidebar for this block (highest confidence signals)
 - **ModelFlagged** — the changed text overlaps with a phrase the model flagged (alternative translations, clarification terms, etc.)
@@ -63,9 +63,15 @@ Terminology decisions are routed to one of three tabs in the derived glossary sh
 
 Each tab has columns: timestamp, aiTerm, reviewerTerm, blockId, reviewSignal, docUrl, translationJsonUrl.
 
+## Refinement log columns
+
+Each decision is one row (A–L): Timestamp, Reviewer Email, AI Term, Reviewer Term, Block ID, Review Signal, **AI Sentence** (the AI's full Spanish sentence for the block), Doc URL, Translation JSON URL, Content Type, **English Source** (the block's English), **Reviewer Sentence** (the reviewer's full edited Spanish sentence). Rows written before 2026-10 have K and L blank.
+
+**Header check:** rows are written by position, so before writing, each tab's row 1 is compared to these headers (`REFINEMENT_LOG_HEADERS` in `glossary-writer.js`; case-insensitive, extra columns after L allowed). A mismatched tab is skipped and reported as a failed tab (see below).
+
 ## Refinement log write problems
 
-Decisions are appended to the `Reviewed`, `ModelFlagged`, and `OtherChanges` tabs of `DERIVED_GLOSSARY_SHEET_ID` (the refinement log). Tabs are written independently, so one renamed or deleted tab doesn't stop the others. If a tab write fails, or `DERIVED_GLOSSARY_SHEET_ID` isn't set on Cloud Run, the feedback is still captured, a warning is returned to the add-on, and a structured **ERROR** is logged with `input_problem: "refinement_log"`, a message starting `Capture feedback input problem (refinement_log):`, and the failed tabs in `failed_tabs`.
+Decisions are appended to the `Reviewed`, `ModelFlagged`, and `OtherChanges` tabs of `DERIVED_GLOSSARY_SHEET_ID` (the refinement log). Tabs are written independently, so one renamed or deleted tab doesn't stop the others. If a tab write fails (including a header row mismatch), or `DERIVED_GLOSSARY_SHEET_ID` isn't set on Cloud Run, the feedback is still captured, a warning is returned to the add-on, and a structured **ERROR** is logged with `input_problem: "refinement_log"`, a message starting `Capture feedback input problem (refinement_log):`, and the failed tabs in `failed_tabs`.
 
 ## Sidebar key mapping
 
@@ -80,12 +86,12 @@ The sidebar uses flat keys like `alt_translations::0`, `terms_flagged_for_clarif
 | `differ.js` | Word-level diffing and Levenshtein edit distance |
 | `doc-reader.js` | Reads the translation table from a Google Doc via the Docs API (finds columns by header label; supports docs with or without the Block column) |
 | `loaders.js` | Drive operations — read translation JSON, store feedback JSON |
-| `glossary-writer.js` | Appends decisions to the derived glossary sheet via Sheets API |
+| `glossary-writer.js` | Appends decisions to the refinement log sheet via Sheets API |
 | `metrics.js` | Acceptance rate, edit distances, time-to-approve |
 
 ## Environment variables
 
 | Variable | Description |
 |---|---|
-| `DERIVED_GLOSSARY_SHEET_ID` | Google Sheet ID for the derived glossary (terminology decisions are written here) |
+| `DERIVED_GLOSSARY_SHEET_ID` | Google Sheet ID for the refinement log (terminology decisions are written here) |
 | `DRIVE_FEEDBACK_FOLDER_ID` | Drive folder ID where feedback JSON files are stored |

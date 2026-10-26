@@ -91,7 +91,10 @@ function extractDecisions(diffs, translationJson, sidebar = {}, docIds = {}) {
             translationFileId: docIds.translationFileId || "translation file ID not available",
             reviewerEmail: docIds.reviewerEmail || "",
             contentType: docIds.contentType || "",
+            // The AI's full Spanish sentence for the block ("AI Sentence" column)
             sourceText: aiBlock.translated_text || "",
+            englishSource: aiBlock.original_text || "",
+            reviewerSentence: block.reviewedText || "",
           });
           i += 2;
           continue;

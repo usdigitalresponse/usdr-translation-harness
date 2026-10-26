@@ -103,6 +103,19 @@ describe("extractDecisions", () => {
     expect(result[0].translationFileId).toBe("tf456");
   });
 
+  test("includes the English source and the reviewer's full sentence", () => {
+    const translationJson = {
+      blocks: [{ id: "b1", original_text: "You'll get your wages.", translated_text: "Recibirá su sueldo." }],
+    };
+    const diffs = diffBlocks(translationJson.blocks, [{ translated_text: "Recibirá su salario." }]);
+
+    const [decision] = extractDecisions(diffs, translationJson);
+
+    expect(decision.sourceText).toBe("Recibirá su sueldo.");
+    expect(decision.englishSource).toBe("You'll get your wages.");
+    expect(decision.reviewerSentence).toBe("Recibirá su salario.");
+  });
+
   test("classifies as Reviewed tab when reviewer accepted then changed text", () => {
     const translationJson = {
       blocks: [{
