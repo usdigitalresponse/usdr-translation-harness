@@ -699,8 +699,8 @@
     var showAlt = showingAltId === it.id || alwaysShowAlt;
     if (!showAlt) {
       return '<div class="btn-row">'
-        + '<button class="btn primary" id="looksGoodBtn">Looks good</button>'
-        + '<button class="btn" id="suggestAltBtn">Suggest alternative</button>'
+        + '<button class="btn primary" id="looksGoodBtn">Approve translation</button>'
+        + '<button class="btn" id="suggestAltBtn">Suggest changes</button>'
         + '</div>'
         + '<div class="fixed-manually-row"><button class="fixed-manually-link" id="fixedManuallyBtn">Fixed manually</button></div>';
     }
@@ -735,7 +735,7 @@
 
   function renderClarificationActions() {
     return '<div class="btn-row">'
-      + '<button class="btn primary" id="looksGoodBtn">Looks good</button>'
+      + '<button class="btn primary" id="looksGoodBtn">Approve translation</button>'
       + '<button class="btn" id="needsWorkBtn">Needs work</button>'
       + '</div>';
   }
