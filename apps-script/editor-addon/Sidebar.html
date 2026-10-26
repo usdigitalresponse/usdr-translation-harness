@@ -508,9 +508,9 @@
 
     // ---- Needs review ----
     var remaining = reviewablePool().length;
-    html += '<button class="sec-toggle" id="needsReviewToggle">'
+    html += '<button class="sec-toggle" id="needsReviewToggle"' + ariaToggle(needsReviewOpen, 'needsReviewBody') + '>'
       + '<span>Needs review (' + remaining + ')</span>'
-      + '<span class="chevron' + (needsReviewOpen ? ' open' : '') + '" id="needsReviewChevron">&#9656;</span>'
+      + '<span class="chevron' + (needsReviewOpen ? ' open' : '') + '" id="needsReviewChevron" aria-hidden="true">&#9656;</span>'
       + '</button>';
 
     html += '<div id="needsReviewBody" style="display:' + (needsReviewOpen ? 'block' : 'none') + ';">';
@@ -522,9 +522,9 @@
     html += '<div class="divider"></div>';
 
     // ---- Glossary reference ----
-    html += '<button class="sec-toggle" id="referenceToggle">'
+    html += '<button class="sec-toggle" id="referenceToggle"' + ariaToggle(referenceOpen, 'referenceBody') + '>'
       + '<span>Glossary reference (' + refItems.length + ')</span>'
-      + '<span class="chevron' + (referenceOpen ? ' open' : '') + '" id="referenceChevron">&#9656;</span>'
+      + '<span class="chevron' + (referenceOpen ? ' open' : '') + '" id="referenceChevron" aria-hidden="true">&#9656;</span>'
       + '</button>';
     html += '<div id="referenceBody" style="display:' + (referenceOpen ? 'block' : 'none') + ';">';
     html += renderReferenceList(refItems);
@@ -532,9 +532,9 @@
 
     if (statItems.length) {
       html += '<div class="divider"></div>';
-      html += '<button class="sec-toggle" id="statutesToggle">'
+      html += '<button class="sec-toggle" id="statutesToggle"' + ariaToggle(statutesOpen, 'statutesBody') + '>'
         + '<span>Legal references (' + statItems.length + ')</span>'
-        + '<span class="chevron' + (statutesOpen ? ' open' : '') + '" id="statutesChevron">&#9656;</span>'
+        + '<span class="chevron' + (statutesOpen ? ' open' : '') + '" id="statutesChevron" aria-hidden="true">&#9656;</span>'
         + '</button>';
       html += '<div id="statutesBody" style="display:' + (statutesOpen ? 'block' : 'none') + ';">';
       html += renderStatuteList(statItems);
@@ -673,17 +673,24 @@
       + '</div>';
   }
 
+  // Design item 3: tell assistive technology whether a toggle's panel is open,
+  // and which element it opens. Toggles re-render on every click, so the
+  // attributes always match the current state.
+  function ariaToggle(isOpen, controlsId) {
+    return ' aria-expanded="' + (isOpen ? 'true' : 'false') + '" aria-controls="' + controlsId + '"';
+  }
+
   // ── Render: reviewed list ────────────────────────────────────────────────
   function renderReviewedToggle() {
     var done = reviewedPool();
     if (!done.length) return '';
-    var html = '<button class="list-toggle" id="reviewedToggle">'
+    var html = '<button class="list-toggle" id="reviewedToggle"' + ariaToggle(reviewedOpen, 'reviewedList') + '>'
       + '<span>Show reviewed (' + done.length + ')</span>'
-      + '<span class="chevron' + (reviewedOpen ? ' open' : '') + '">&#9656;</span>'
+      + '<span class="chevron' + (reviewedOpen ? ' open' : '') + '" aria-hidden="true">&#9656;</span>'
       + '</button>';
-    if (reviewedOpen) {
-      html += '<div id="reviewedList">' + done.map(renderReviewedRow).join('') + '</div>';
-    }
+    html += reviewedOpen
+      ? '<div id="reviewedList">' + done.map(renderReviewedRow).join('') + '</div>'
+      : '<div id="reviewedList" hidden></div>';
     return html;
   }
 
@@ -766,13 +773,15 @@
     var stats = statutesForBlock(blockIndex);
     if (!stats.length) return '';
 
-    var html = '<button class="card-statutes-toggle" id="statuteDrawerToggle">'
-      + '<span class="chevron' + (statuteDrawerOpen ? ' open' : '') + '">&#9656;</span>'
+    var html = '<button class="card-statutes-toggle" id="statuteDrawerToggle"' + ariaToggle(statuteDrawerOpen, 'statuteDrawer') + '>'
+      + '<span class="chevron' + (statuteDrawerOpen ? ' open' : '') + '" aria-hidden="true">&#9656;</span>'
       + 'Statutes for this section (' + stats.length + ')'
       + '</button>';
 
-    if (statuteDrawerOpen) {
-      html += '<div class="card-statutes-drawer">'
+    if (!statuteDrawerOpen) {
+      html += '<div id="statuteDrawer" hidden></div>';
+    } else {
+      html += '<div class="card-statutes-drawer" id="statuteDrawer">'
         + '<div class="card-statutes-context">These statutes informed the translation of this section of the document, not just this specific term.</div>';
       stats.forEach(function(s) {
         var url = statuteUrl(s.section);
