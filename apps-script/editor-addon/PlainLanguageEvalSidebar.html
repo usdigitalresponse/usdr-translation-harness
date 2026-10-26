@@ -17,6 +17,7 @@
       --green-ink:  #1f7a5c; --green-bg:  #e9f7f1; --green-bdr:  #bfe3d3;
       --font-head: 'Lora', Georgia, 'Times New Roman', serif;
       --font-body: 'Inter', Roboto, -apple-system, 'Segoe UI', sans-serif;
+      --focus-ring: #1976D2;  /* design guide item 2 */
     }
     * { box-sizing: border-box; }
     html, body { margin:0; padding:0; height:100%; background:var(--paper); color:var(--ink);
@@ -83,6 +84,18 @@
     .metadata-row span { font-weight:600; color:var(--ink-soft); }
     .source-link { font-size:12px; font-weight:600; color:var(--accent); text-decoration:none; cursor:pointer; }
     .source-link:hover { text-decoration:underline; }
+
+    /* Design item 2: visible keyboard focus on every interactive element.
+       (Text inputs keep their own focus style: accent border.) */
+    button:focus-visible,
+    a:focus-visible,
+    summary:focus-visible,
+    [role="button"]:focus-visible,
+    [tabindex]:focus-visible,
+    .nav-arrow:focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
+    }
   </style>
 </head>
 <body>

@@ -31,6 +31,7 @@
       --card-label: #37474F;
       --font-head:  'Lora', Georgia, 'Times New Roman', serif;
       --font-body:  'Inter', Roboto, -apple-system, 'Segoe UI', sans-serif;
+      --focus-ring: #1976D2;  /* design guide item 2 */
     }
 
     * { box-sizing: border-box; }
@@ -295,6 +296,18 @@
     .error-bar-dismiss {
       background: none; border: none; color: var(--red-ink); font-size: 14px;
       cursor: pointer; line-height: 1; padding: 0 2px; flex: 0 0 auto;
+    }
+
+    /* Design item 2: visible keyboard focus on every interactive element.
+       (Text inputs keep their own focus style: accent border.) */
+    button:focus-visible,
+    a:focus-visible,
+    summary:focus-visible,
+    [role="button"]:focus-visible,
+    [tabindex]:focus-visible,
+    .nav-arrow:focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
     }
   </style>
 </head>
