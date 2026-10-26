@@ -73,7 +73,6 @@ The sidebar displays:
 - Per-dimension scores and priorities for: Accuracy & Relevance (30%), Clarity/Simplicity/Accessibility (25%), Structure for Action (20%), Active Voice & Tone (15%), Consistency & Style (10%)
 - Strengths, issues, recommendations, and examples for each dimension
 - A "View source" link to preview the source PDF
-- Debug section with the full evaluation JSON
 
 ### 8. Submit Review
 

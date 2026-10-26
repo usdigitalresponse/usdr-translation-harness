@@ -47,11 +47,7 @@
 
     /* ---------- Header ---------- */
     .title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    h1 { margin: 0; font-family: var(--font-head); font-size: 15px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ink); }    .refresh-icon-btn {
-      font-size: 15px; line-height: 1; color: var(--ink-soft); cursor: pointer;
-      padding: 2px 4px; border-radius: 5px;
-    }
-    .refresh-icon-btn:hover { background: var(--line-soft); color: var(--ink); }
+    h1 { margin: 0; font-family: var(--font-head); font-size: 15px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--ink); }
 
     /* ---------- Prompt row + manage menu ---------- */
     .prompt-row { margin-top: 10px; display: flex; align-items: center; gap: 10px; position: relative; }
@@ -280,26 +276,6 @@
     }
     
 
-    .modal-overlay {
-      position: fixed; inset: 0; background: rgba(28,27,26,0.35);
-      display: flex; align-items: center; justify-content: center;
-      z-index: 50; padding: 20px;
-    }
-    .modal-box {
-      background: var(--paper); border: 1px solid var(--line); border-radius: 10px;
-      padding: 16px; max-width: 320px; width: 100%; box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-    }
-    .modal-msg { font-size: 13px; color: var(--ink); margin-bottom: 14px; line-height: 1.5; }
-    .modal-actions { display: flex; gap: 8px; }
-    .modal-btn {
-      flex: 1; font-size: 12.5px; font-weight: 600; padding: 8px 10px;
-      border-radius: 7px; cursor: pointer; border: 1px solid var(--line);
-      background: var(--paper); color: var(--ink-soft); text-align: center;
-    }
-    .modal-btn:hover { background: var(--line-soft); color: var(--ink); }
-    .modal-btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .modal-btn.primary:hover { opacity: .9; }
-    .modal-btn:disabled { opacity: .6; cursor: default; }
 
 
     /* ---------- Transient error bar ---------- */
@@ -489,9 +465,7 @@
     var statItems = allStatuteItems();
 
     var html = '<div class="top">'
-      + '<div class="title-row"><h1>AI Suggestions - Spanish</h1>'
-      +   '<span class="refresh-icon-btn" id="refreshIconBtn" title="Refresh" aria-label="Refresh">&#8635;</span>'
-      + '</div>'
+      + '<div class="title-row"><h1>AI Suggestions - Spanish</h1></div>'
       + (ts ? '<div class="meta">Generated ' + esc(ts) + '</div>' : '')
       + '<div class="prompt-row">'
       +   '<a href="' + esc(promptUrl) + '" target="_blank" rel="noopener" class="prompt-link" id="promptLink">View prompt</a>'
@@ -1083,9 +1057,6 @@
       downloadDocx();
     };
 
-    var refreshIconBtn = document.getElementById('refreshIconBtn');
-    if (refreshIconBtn) refreshIconBtn.onclick = function() { showRegenerateConfirm(); };
-
     var viewSourceBtn = document.getElementById('viewSourceBtn');
     if (viewSourceBtn) viewSourceBtn.onclick = function(e) {
       e.preventDefault();
@@ -1396,52 +1367,6 @@
   }
 
   
-
-
-  // ── Regenerate confirmation modal ────────────────────────────────────
-  function showRegenerateConfirm() {
-    if (document.getElementById('regenOverlay')) return; // already showing
-
-    var overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.id = 'regenOverlay';
-    overlay.innerHTML =
-      '<div class="modal-box">' +
-        '<div class="modal-msg">Regenerating suggestions will reset review items &amp; statuses.</div>' +
-        '<div class="modal-actions">' +
-          '<button class="modal-btn primary" id="regenProceedBtn">Proceed</button>' +
-          '<button class="modal-btn" id="regenCancelBtn">Do not proceed</button>' +
-        '</div>' +
-      '</div>';
-    document.getElementById('root').appendChild(overlay);
-
-    document.getElementById('regenCancelBtn').onclick = function() {
-      overlay.remove();
-    };
-    document.getElementById('regenProceedBtn').onclick = function() {
-      var box = overlay.querySelector('.modal-box');
-      box.innerHTML = '<div class="modal-msg">Regenerating suggestions…</div>';
-      runRegeneration(overlay);
-    };
-  }
-
-  function runRegeneration(overlay) {
-    releaseHighlight();
-    google.script.run
-      .withSuccessHandler(function(res) {
-        if (overlay && overlay.parentNode) overlay.remove();
-        if (res && res.problem) {
-          showErrorBar('Refresh failed. Try again');
-          return;
-        }
-        reload();
-      })
-      .withFailureHandler(function() {
-        if (overlay && overlay.parentNode) overlay.remove();
-        showErrorBar('Refresh failed. Try again');
-      })
-      .regenerateSuggestions();
-  }
 
   var errorBarTimer = null;
   function showErrorBar(message) {
