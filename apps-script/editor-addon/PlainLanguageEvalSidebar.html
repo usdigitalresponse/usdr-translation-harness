@@ -18,6 +18,10 @@
       --font-head: 'Lora', Georgia, 'Times New Roman', serif;
       --font-body: 'Inter', Roboto, -apple-system, 'Segoe UI', sans-serif;
       --focus-ring: #1976D2;  /* design guide item 2 */
+          /* Design item 5: link colors */
+      --link: #1976D2;
+      --link-visited: #1565C0;
+      --link-active: #0D47A1;
     }
     * { box-sizing: border-box; }
     html, body { margin:0; padding:0; height:100%; background:var(--paper); color:var(--ink);
@@ -82,8 +86,7 @@
 
     .metadata-row { margin-top:6px; font-size:11px; color:var(--ink-faint); }
     .metadata-row span { font-weight:600; color:var(--ink-soft); }
-    .source-link { font-size:12px; font-weight:600; color:var(--accent); text-decoration:none; cursor:pointer; }
-    .source-link:hover { text-decoration:underline; }
+    .source-link { font-size:12px; font-weight:600; cursor:pointer; }
 
     /* Design item 2: visible keyboard focus on every interactive element.
        (Text inputs keep their own focus style: accent border.) */
@@ -103,6 +106,21 @@
       position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
       overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
     }
+
+    /* Design item 5: links are always underlined (not color alone), with the
+       designer's link colors. Each link's own class rule (above) sets only size/weight. */
+    a {
+      color: var(--link);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      text-decoration-skip-ink: auto;
+    }
+    a:visited { color: var(--link-visited); }
+    a:hover {
+      text-decoration-thickness: 2px;
+      background-color: rgba(25, 118, 210, 0.08);
+    }
+    a:active { color: var(--link-active); }
   </style>
 </head>
 <body>
