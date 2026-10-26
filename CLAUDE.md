@@ -38,7 +38,7 @@ When changing one component, check the other side of each interface it touches:
 
 | Caller | Callee | Contract |
 |---|---|---|
-| Orchestrator | Extract | `POST { fileId, fileName, mimeType }` → `202 Accepted` |
+| Orchestrator | Extract | `POST { fileId, fileName, mimeType, contentType, submittedByEmail, submittedByName }` → `202 Accepted` |
 | Editor Add-on | Capture Feedback | `POST { documentId }` → `200` with decisions |
 | Extract | Translate | Pub/Sub message with extraction JSON location |
 | Translate | Editor Add-on | `usdr_translation_review` document property on output docs |

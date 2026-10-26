@@ -357,6 +357,23 @@ describe("callCloudRunFunction", () => {
     expect(payload.mimeType).toBe("application/pdf");
   });
 
+  test("includes submittedByName (Drive displayName) alongside the email", () => {
+    var fetchMock = jest.fn().mockReturnValue({
+      getResponseCode: jest.fn().mockReturnValue(202),
+      getContentText: jest.fn().mockReturnValue(""),
+    });
+    var drive = { Files: { get: jest.fn().mockReturnValue({
+      lastModifyingUser: { emailAddress: "pat@example.gov", displayName: "Pat Lee" },
+    }) } };
+    var ctx = loadOrchestrator({ UrlFetchApp: { fetch: fetchMock }, Drive: drive });
+
+    ctx.callCloudRunFunction(makeFile("file-1", "test.pdf"), "https://extract.example.com", "Extract");
+
+    var payload = JSON.parse(fetchMock.mock.calls[0][1].payload);
+    expect(payload.submittedByEmail).toBe("pat@example.gov");
+    expect(payload.submittedByName).toBe("Pat Lee");
+  });
+
   test("includes submittedByEmail from Drive Advanced Service", () => {
     var fetchMock = jest.fn().mockReturnValue({
       getResponseCode: jest.fn().mockReturnValue(202),

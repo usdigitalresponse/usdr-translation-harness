@@ -18,14 +18,14 @@ Translates extracted content using an LLM and creates output Google Docs with a 
    Processing Log rows: a `translated` (or `failed`) row as soon as each model's translation JSON is saved (translation JSON ID in `outputJsonId`), then a second row once its doc step finishes: `doc-created` with the doc's URL in `outputDocUrl` (clickable in the sheet), or `doc-failed` with the error. Both are appended (the sheet is never edited in place), so a doc failure or a timeout during the doc build still leaves the `translated` row. The doc step is also logged as a structured entry with `pipeline_stage: "translate_doc"` (`status`, `docId`, `translationFileId`, `duration_ms`).
 7. Sets a `usdr_translation_review` Drive file property on the output doc so the Editor Add-on can find the translation JSON
 8. Writes the full translation JSON to Drive
-9. Posts a "translation ready" (or doc-creation failure) message to a Google Chat space via an incoming webhook (`GOOGLE_CHAT_WEBHOOK_URL`); skipped if unset
+9. Posts a "translation ready" (or doc-creation failure) message to a Google Chat space via an incoming webhook (`GOOGLE_CHAT_WEBHOOK_URL`); skipped if unset. The "translation ready" message starts with a `User: Name (email)` line for the submitter (whichever part is known; omitted if neither)
 
 ## HTTP interface
 
 Accepts either a Pub/Sub push envelope or a direct POST:
 
 ```
-POST { extractionFileId, sourceFileName, sourceFileId?, contentType?, submittedByEmail? }
+POST { extractionFileId, sourceFileName, sourceFileId?, contentType?, submittedByEmail?, submittedByName? }
 → 200 with translation results JSON
 ```
 

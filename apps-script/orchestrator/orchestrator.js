@@ -141,11 +141,14 @@ function callCloudRunFunction(file, url, label, contentType) {
   var token = ScriptApp.getIdentityToken();
 
   var submittedByEmail = "";
+  // Read here rather than in Cloud Run: the service account only sees the email prefix as displayName
+  var submittedByName = "";
   try {
     // supportsAllDrives: without it, files on a Shared Drive come back "File not found"
     var meta = Drive.Files.get(file.getId(), { fields: "lastModifyingUser", supportsAllDrives: true });
     if (meta.lastModifyingUser) {
       submittedByEmail = meta.lastModifyingUser.emailAddress || "";
+      submittedByName = meta.lastModifyingUser.displayName || "";
     }
   } catch (e) {
     // console.error (not Logger.log) so it shows as an error in Executions and Cloud Logging;
@@ -158,6 +161,7 @@ function callCloudRunFunction(file, url, label, contentType) {
     fileName: file.getName(),
     mimeType: file.getMimeType(),
     submittedByEmail: submittedByEmail,
+    submittedByName: submittedByName,
   };
   if (contentType) {
     payload.contentType = contentType;

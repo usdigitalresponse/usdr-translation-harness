@@ -15,11 +15,11 @@ Extracts structured text blocks from source documents (PDF, Google Docs, DOCX) f
 ## HTTP interface
 
 ```
-POST { fileId, fileName, mimeType?, contentType?, submittedByEmail? }
+POST { fileId, fileName, mimeType?, contentType?, submittedByEmail?, submittedByName? }
 → 202 Accepted
 ```
 
-Fire-and-forget: the function returns immediately and runs extraction on a background thread. The Pub/Sub message is the downstream signal that extraction is complete.
+Fire-and-forget: the function returns immediately and runs extraction on a background thread. The Pub/Sub message is the downstream signal that extraction is complete; it carries `contentType`, `submittedByEmail`, and `submittedByName` through to Translate.
 
 ## Files
 

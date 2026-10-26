@@ -82,8 +82,8 @@ weekly scheduled drift run is the backstop for that case).
 
 | Caller | Callee | Contract |
 |---|---|---|
-| Orchestrator | Extract | `POST { fileId, fileName, mimeType }` → `202` |
-| Orchestrator | Plain-Language Eval | `POST { fileId, fileName, mimeType, contentType }` → `202` |
+| Orchestrator | Extract | `POST { fileId, fileName, mimeType, contentType, submittedByEmail, submittedByName }` → `202` |
+| Orchestrator | Plain-Language Eval | `POST { fileId, fileName, mimeType, contentType, submittedByEmail, submittedByName }` → `202` |
 | Orchestrator | Eval: Drift | `POST { trigger: "model_change" \| "weekly" }` → `202` (fire-and-forget) |
 
 ## Files
