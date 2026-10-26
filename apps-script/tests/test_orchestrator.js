@@ -122,7 +122,7 @@ var VALID_PROPS = {
 
 var HEADER_ROW = [
   "fileId", "fileName", "processedAt", "status", "durationMs", "errorDetails",
-  "outputJsonId", "provider", "model", "submittedBy", "outputDocUrl",
+  "outputJsonId", "provider", "model", "submittedBy", "outputDocUrl", "outputDocId",
 ];
 
 describe("getConfig", () => {
@@ -284,7 +284,7 @@ describe("logProcessingResult", () => {
     expect(row[5]).toBe("HTTP 500: Internal Server Error");
   });
 
-  test("writes Submitted By to column J, leaving G–I and K blank", () => {
+  test("writes Submitted By to column J, leaving G–I, K and L blank", () => {
     var sheetMock = mockSheet([HEADER_ROW]);
     var ctx = loadOrchestrator({ SpreadsheetApp: sheetMock });
     var file = makeFile("file-1", "test.pdf");
@@ -297,10 +297,11 @@ describe("logProcessingResult", () => {
     }, "triggered", "failed");
 
     var row = sheetMock._sheet.appendRow.mock.calls[0][0];
-    expect(row).toHaveLength(11);
+    expect(row).toHaveLength(12);
     expect(row.slice(6, 9)).toEqual(["", "", ""]);
     expect(row[9]).toBe("person@example.gov");
     expect(row[10]).toBe("");
+    expect(row[11]).toBe("");
   });
 });
 

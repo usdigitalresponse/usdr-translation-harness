@@ -35,6 +35,7 @@ var COL = {
   MODEL: 8,
   SUBMITTED_BY: 9,
   OUTPUT_DOC_URL: 10,
+  OUTPUT_DOC_ID: 11,
 };
 
 // Row 1 of the ProcessingLog tab, in column order. Every writer (this script,
@@ -44,7 +45,7 @@ var COL = {
 // these are allowed.
 var PROCESSING_LOG_HEADERS = [
   "fileId", "fileName", "processedAt", "status", "durationMs", "errorDetails",
-  "outputJsonId", "provider", "model", "submittedBy", "outputDocUrl",
+  "outputJsonId", "provider", "model", "submittedBy", "outputDocUrl", "outputDocId",
 ];
 
 var CONTENT_TYPE_TWO = "content_type_two";
@@ -125,7 +126,7 @@ function getProcessedFileIds(sheetId) {
 
 function logProcessingResult(sheetId, file, result, successStatus, failedStatus) {
   var sheet = getProcessingLogSheet(sheetId);
-  // outputJsonId, provider, model and outputDocUrl stay blank: those are written by the Cloud Run functions
+  // outputJsonId, provider, model, outputDocUrl and outputDocId stay blank: those are written by the Cloud Run functions
   var row = new Array(PROCESSING_LOG_HEADERS.length).fill("");
   row[COL.FILE_ID] = file.getId();
   row[COL.FILE_NAME] = file.getName();

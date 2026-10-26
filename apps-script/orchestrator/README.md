@@ -21,9 +21,9 @@ Two responsibilities:
 Every service writes to the Processing Log by column position, and the watcher
 finds already-processed files by position too. So each run, `getProcessedFileIds`
 checks row 1 of the `ProcessingLog` tab against `PROCESSING_LOG_HEADERS`
-(case-insensitive; extra columns after K are fine):
+(case-insensitive; extra columns after L are fine):
 
-`fileId, fileName, processedAt, status, durationMs, errorDetails, outputJsonId, provider, model, submittedBy, outputDocUrl`
+`fileId, fileName, processedAt, status, durationMs, errorDetails, outputJsonId, provider, model, submittedBy, outputDocUrl, outputDocId`
 
 If it doesn't match, the run throws (Executions shows **Failed** with the
 expected and found headers) and no files are sent, so a renamed or inserted

@@ -35,7 +35,8 @@ function logStructured(status, provider, model, sourceFileId, sourceFileName, ex
 
 /**
  * Record the output doc step for one model: a structured log line and an
- * appended Processing Log row (`doc-created` with the doc's URL in outputDocUrl, or `doc-failed`
+ * appended Processing Log row (`doc-created` with the doc's URL in outputDocUrl and its ID in
+ * outputDocId, or `doc-failed`
  * with the error). Never throws: logging must not fail the translation.
  *
  * @param {Object} t - The translation result (provider, model, outputFileId)
@@ -66,6 +67,7 @@ async function logDocResult(t, doc, { sourceFileId, sourceFileName, submittedByE
       model: t.model,
       outputFileId: t.outputFileId,
       outputDocUrl: doc.docId ? DOC_BASE_URL + doc.docId : "",
+      outputDocId: doc.docId || "",
       error: doc.error,
       durationMs: doc.durationMs,
       submittedByEmail,

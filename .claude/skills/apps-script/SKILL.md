@@ -216,7 +216,7 @@ Script Properties are key-value pairs set in the Apps Script editor (Project Set
 |---|---|
 | `INPUT_FOLDER_ID` | Google Drive folder ID to watch for incoming PDFs |
 | `EXTRACT_FUNCTION_URL` | URL of the Extract Cloud Run function |
-| `PROCESSING_LOG_SHEET_ID` | Google Sheet ID for the processing log (tab named `ProcessingLog` with headers, exactly and in order: `fileId`, `fileName`, `processedAt`, `status`, `durationMs`, `errorDetails`, `outputJsonId`, `provider`, `model`, `submittedBy`, `outputDocUrl`; the watcher fails the run if row 1 doesn't match) |
+| `PROCESSING_LOG_SHEET_ID` | Google Sheet ID for the processing log (tab named `ProcessingLog` with headers, exactly and in order: `fileId`, `fileName`, `processedAt`, `status`, `durationMs`, `errorDetails`, `outputJsonId`, `provider`, `model`, `submittedBy`, `outputDocUrl`, `outputDocId`; the watcher fails the run if row 1 doesn't match) |
 
 **Editor add-on needs:**
 | Property | Description |
