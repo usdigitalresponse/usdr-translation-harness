@@ -34,15 +34,33 @@ function getWebhookUrl() {
  * No-ops when the webhook is unconfigured. Never throws.
  *
  * @param {{sourceFileName: string, provider: string, model: string,
- *          docId: string, submittedByEmail?: string}} params
+ *          docId: string, submittedByEmail?: string,
+ *          submittedByName?: string}} params
  */
-async function notifyDocCreated({ sourceFileName, provider, model, docId, submittedByEmail }) {
+async function notifyDocCreated({ sourceFileName, provider, model, docId, submittedByEmail,
+  submittedByName }) {
   const webhookUrl = getWebhookUrl();
   if (!webhookUrl) return;
 
   const docUrl = `${DOC_BASE_URL}${docId}`;
-  const text = `Translation ready: *${sourceFileName}* (${provider}/${model}) — <${docUrl}|Open doc>`;
+  const text =
+    formatUserLine(submittedByName, submittedByEmail) +
+    `Translation ready: *${sourceFileName}* (${provider}/${model})\n<${docUrl}|Open doc>`;
   await postToChat(webhookUrl, text);
+}
+
+/**
+ * Formats the "User: Name (email)" line, falling back to whichever part is
+ * known. Returns "" when neither is.
+ *
+ * @param {string} [name]
+ * @param {string} [email]
+ * @returns {string}
+ */
+function formatUserLine(name, email) {
+  if (name && email) return `User: ${name} (${email})\n`;
+  if (name || email) return `User: ${name || email}\n`;
+  return "";
 }
 
 /**

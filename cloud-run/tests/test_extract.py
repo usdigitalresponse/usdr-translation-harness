@@ -369,10 +369,11 @@ class TestPublishExtractionComplete:
         topic = "projects/my-project/topics/extraction-complete"
         with patch.dict("os.environ", {PUBSUB_TOPIC_ENV_VAR: topic}):
             publish_extraction_complete("source-file-id", "test.pdf", self.SAMPLE_RESULTS,
-                                        submitted_by_email="user@example.com")
+                                        submitted_by_email="user@example.com", submitted_by_name="Pat Lee")
 
         message = json.loads(mock_publisher.publish.call_args[0][1])
         assert message["submittedByEmail"] == "user@example.com"
+        assert message["submittedByName"] == "Pat Lee"
 
     @patch("extract.main.pubsub_v1.PublisherClient")
     def test_publishes_multiple_results(self, mock_client_cls):
@@ -451,27 +452,28 @@ class TestRunExtractionRouting:
     @patch("extract.main.run_text_extraction")
     def test_routes_google_docs_to_text_path(self, mock_text):
         run_extraction("file-id", "My Doc", MIME_GOOGLE_DOCS)
-        mock_text.assert_called_once_with("file-id", "My Doc", MIME_GOOGLE_DOCS, "public_flyer", "")
+        mock_text.assert_called_once_with("file-id", "My Doc", MIME_GOOGLE_DOCS, "public_flyer", "", "")
 
     @patch("extract.main.run_text_extraction")
     def test_routes_docx_to_text_path(self, mock_text):
         run_extraction("file-id", "report.docx", MIME_DOCX)
-        mock_text.assert_called_once_with("file-id", "report.docx", MIME_DOCX, "public_flyer", "")
+        mock_text.assert_called_once_with("file-id", "report.docx", MIME_DOCX, "public_flyer", "", "")
 
     @patch("extract.main.run_pdf_extraction")
     def test_routes_pdf_to_pdf_path(self, mock_pdf):
         run_extraction("file-id", "test.pdf", MIME_PDF)
-        mock_pdf.assert_called_once_with("file-id", "test.pdf", "public_flyer", "")
+        mock_pdf.assert_called_once_with("file-id", "test.pdf", "public_flyer", "", "")
 
     @patch("extract.main.run_text_extraction")
     def test_passes_submitted_by_email_to_text_path(self, mock_text):
-        run_extraction("file-id", "My Doc", MIME_GOOGLE_DOCS, "public_flyer", "user@example.com")
-        mock_text.assert_called_once_with("file-id", "My Doc", MIME_GOOGLE_DOCS, "public_flyer", "user@example.com")
+        run_extraction("file-id", "My Doc", MIME_GOOGLE_DOCS, "public_flyer", "user@example.com", "Pat Lee")
+        mock_text.assert_called_once_with("file-id", "My Doc", MIME_GOOGLE_DOCS, "public_flyer", "user@example.com",
+                                          "Pat Lee")
 
     @patch("extract.main.run_pdf_extraction")
     def test_passes_submitted_by_email_to_pdf_path(self, mock_pdf):
-        run_extraction("file-id", "test.pdf", MIME_PDF, "public_flyer", "user@example.com")
-        mock_pdf.assert_called_once_with("file-id", "test.pdf", "public_flyer", "user@example.com")
+        run_extraction("file-id", "test.pdf", MIME_PDF, "public_flyer", "user@example.com", "Pat Lee")
+        mock_pdf.assert_called_once_with("file-id", "test.pdf", "public_flyer", "user@example.com", "Pat Lee")
 
     @patch("extract.main.log_structured")
     def test_rejects_unsupported_mime_type(self, mock_log):

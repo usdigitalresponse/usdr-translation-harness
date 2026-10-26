@@ -101,6 +101,9 @@ function parseInput(body) {
  *   - sourceFileId — Drive file ID of the original PDF
  *   - model — model used for extraction
  *   - provider — LLM provider used for extraction
+ *   - contentType — selects the translation prompt (default public_flyer)
+ *   - submittedByEmail, submittedByName — who dropped the file in the input
+ *     folder (from the Orchestrator, via Extract); shown in the Chat notification
  */
 async function translate(req, res) {
   let input;
@@ -121,7 +124,7 @@ async function translate(req, res) {
 
   const { extractionFileId, sourceFileId, sourceFileName, model, provider,
     contentType = "public_flyer", includeStatutes = true,
-    submittedByEmail = "" } = input;
+    submittedByEmail = "", submittedByName = "" } = input;
 
   let prompt, promptMetrics;
   try {
@@ -258,7 +261,8 @@ async function translate(req, res) {
       console.log(`Created translation doc ${docId} for ${t.provider}/${t.model}`);
       await logDocResult(t, { docId, durationMs: Date.now() - docStart },
         { sourceFileId, sourceFileName, submittedByEmail });
-      await notifyDocCreated({ sourceFileName, provider: t.provider, model: t.model, docId, submittedByEmail });
+      await notifyDocCreated({ sourceFileName, provider: t.provider, model: t.model, docId,
+        submittedByEmail, submittedByName });
     } catch (err) {
       console.error(`Failed to create doc for ${t.provider}/${t.model}:`, err.message);
       t.docError = err.message;

@@ -59,6 +59,7 @@ jest.mock("../translate/notifier.js", () => ({
 }));
 
 const { createTranslationDoc } = require("../translate/doc-writer.js");
+const { notifyDocCreated } = require("../translate/notifier.js");
 
 const {
   loadDoc,
@@ -1132,6 +1133,19 @@ describe("translate doc step logging", () => {
     expect(rows.map((r) => r.status)).toEqual(["translated", "doc-failed"]);
     expect(rows[1]).toMatchObject({ outputFileId: "translation-json-id", error: "Docs API rate limit" });
     expect(rows[1].outputDocUrl).toBe("");
+  });
+
+  test("passes the submitter's name and email to the Chat notification", async () => {
+    createTranslationDoc.mockResolvedValue("output-doc-id");
+
+    await translate({ body: {
+      extractionFileId: "f", sourceFileName: "a.pdf", sourceFileId: "src",
+      submittedByEmail: "pat@example.gov", submittedByName: "Pat Lee",
+    } }, mockRes());
+
+    expect(notifyDocCreated).toHaveBeenCalledWith(expect.objectContaining({
+      docId: "output-doc-id", submittedByEmail: "pat@example.gov", submittedByName: "Pat Lee",
+    }));
   });
 
   test("logs the doc step under its own pipeline stage", async () => {

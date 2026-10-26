@@ -207,3 +207,42 @@ describe("postToChat status handling", () => {
     errorSpy.mockRestore();
   });
 });
+
+describe("notifyDocCreated user line", () => {
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv, GOOGLE_CHAT_WEBHOOK_URL: "https://chat.example.com/webhook" };
+    global.fetch = jest.fn().mockResolvedValue({ ok: true });
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+    delete global.fetch;
+  });
+
+  async function sentText(extra) {
+    await notifyDocCreated({
+      sourceFileName: "test.pdf", provider: "google", model: "gemini", docId: "doc123", ...extra,
+    });
+    return JSON.parse(fetch.mock.calls[0][1].body).text;
+  }
+
+  test("shows name and email when both are known, with the link on its own line", async () => {
+    const text = await sentText({ submittedByName: "Pat Lee", submittedByEmail: "pat@example.gov" });
+    expect(text).toBe(
+      "User: Pat Lee (pat@example.gov)\n" +
+      `Translation ready: *test.pdf* (google/gemini)\n<${DOC_BASE_URL}doc123|Open doc>`
+    );
+  });
+
+  test("falls back to whichever part is known", async () => {
+    expect(await sentText({ submittedByEmail: "pat@example.gov" })).toMatch(/^User: pat@example\.gov\n/);
+    fetch.mockClear();
+    expect(await sentText({ submittedByName: "Pat Lee" })).toMatch(/^User: Pat Lee\n/);
+  });
+
+  test("omits the user line when neither is known", async () => {
+    expect(await sentText({})).toMatch(/^Translation ready:/);
+  });
+});
