@@ -309,6 +309,13 @@
       outline: 2px solid var(--focus-ring);
       outline-offset: 2px;
     }
+
+    /* Design item 4: text read by screen readers but not shown (aria-label
+       isn't announced on plain spans, so badges and scores use this instead) */
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
   </style>
 </head>
 <body>
@@ -596,7 +603,7 @@
       + '<span class="nav-arrow" id="nextBtn">&#8250;</span>'
       + '</div>';
 
-    if (noHl) html += '<span class="no-hl-badge">Highlighting not available</span>';
+    if (noHl) html += '<span class="no-hl-badge"><span class="sr-only">Status: </span>Highlighting not available</span>';
     if (flagged) html += '<div class="flag-banner">Fix this manually in the doc</div>';
 
     html += '<div class="field-label">Original</div><div class="field-val">' + esc(original) + '</div>';
@@ -701,8 +708,8 @@
     // Plain "accepted" gets no marker — the row's presence in the reviewed
     // list already says it was reviewed.
     var marker = '';
-    if (status === 'alternative') marker = '<span class="rr-badge alt">Alternative used</span>';
-    else if (status === 'fixed')  marker = '<span class="rr-badge fixed">Fixed manually</span>';
+    if (status === 'alternative') marker = '<span class="rr-badge alt"><span class="sr-only">Status: </span>Alternative used</span>';
+    else if (status === 'fixed')  marker = '<span class="rr-badge fixed"><span class="sr-only">Status: </span>Fixed manually</span>';
     var revert = '<span class="rr-revert" data-id="' + esc(it.id) + '" data-action="revert">&#8630;</span>';
 
     var row = '<div class="reviewed-row" data-id="' + esc(it.id) + '" data-action="toggle">'
@@ -739,7 +746,7 @@
       var noHl      = NO_HL[it.id];
       return '<div class="ref-row" data-id="' + esc(it.id) + '" '
         + 'data-original="' + esc(String(original)) + '" data-translation="' + esc(String(current)) + '">'
-        + (noHl ? '<span class="no-hl-badge">Highlighting not available</span><br>' : '')
+        + (noHl ? '<span class="no-hl-badge"><span class="sr-only">Status: </span>Highlighting not available</span><br>' : '')
         + '<div class="ref-line">' + esc(original) + ' &rarr; ' + esc(current) + '</div>'
         + (note ? '<div class="ref-note">' + esc(note) + '</div>' : '')
         + '</div>';

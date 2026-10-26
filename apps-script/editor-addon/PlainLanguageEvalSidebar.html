@@ -96,6 +96,13 @@
       outline: 2px solid var(--focus-ring);
       outline-offset: 2px;
     }
+
+    /* Design item 4: text read by screen readers but not shown (aria-label
+       isn't announced on plain spans, so badges and scores use this instead) */
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
   </style>
 </head>
 <body>
@@ -166,7 +173,7 @@
       topHtml += '<div class="score-card">';
       if (overallScore != null) {
         var rounded = Math.round(parseFloat(overallScore) * 10) / 10;
-        topHtml += '<div class="score-big">' + esc(String(rounded)) + '<small>/5</small></div>';
+        topHtml += '<div class="score-big"><span class="sr-only">Overall score: </span>' + esc(String(rounded)) + '<small aria-hidden="true">/5</small><span class="sr-only"> out of 5</span></div>';
       }
       topHtml += '</div>';
     }
@@ -194,7 +201,7 @@
         + '<summary class="dim-summary">'
         +   '<span class="dim-name">' + esc(d.label) + '</span>'
         +   '<span class="dim-score-wrap">'
-        +     (val != null ? '<span class="score-dot ' + colorClass + '"></span><span class="dim-score">' + esc(String(val)) + '</span>' : '')
+        +     (val != null ? '<span class="score-dot ' + colorClass + '" aria-hidden="true"></span><span class="dim-score">' + esc(String(val)) + '<span class="sr-only"> out of 5</span></span>' : '')
         +   '</span>'
         + '</summary>'
         + '<div class="dim-body">';

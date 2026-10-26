@@ -195,6 +195,13 @@
       outline: 2px solid var(--focus-ring);
       outline-offset: 2px;
     }
+
+    /* Design item 4: text read by screen readers but not shown (aria-label
+       isn't announced on plain spans, so badges and scores use this instead) */
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
   </style>
 </head>
 <body>
@@ -559,7 +566,7 @@
       topHtml += '<div class="score-card">';
       if (scores.weightedOverall !== '') {
         topHtml += '<div class="score-wrap' + (multi ? ' has-breakdown" tabindex="0' : '') + '">'
-              +   '<div class="score-big">' + esc(scores.weightedOverall) + '<small>/5</small></div>'
+              +   '<div class="score-big"><span class="sr-only">Overall score: </span>' + esc(scores.weightedOverall) + '<small aria-hidden="true">/5</small><span class="sr-only"> out of 5</span></div>'
               +   (multi ? '<span class="score-hint">avg of ' + models.length + ' models &#9432;</span>' + buildBreakdown(models) : '')
               + '</div>';
       }
@@ -589,7 +596,7 @@
         html += '<details class="dim">'
           + '<summary class="dim-summary">'
           +   '<span class="dim-name">' + esc(d.label) + '</span>'
-          +   (val !== '' && val !== undefined ? '<span class="dim-score-wrap"><span class="score-dot ' + colorClass + '"></span><span class="dim-score">' + esc(val) + '</span></span>' : '')
+          +   (val !== '' && val !== undefined ? '<span class="dim-score-wrap"><span class="score-dot ' + colorClass + '" aria-hidden="true"></span><span class="dim-score">' + esc(val) + '<span class="sr-only"> out of 5</span></span></span>' : '')
           + '</summary>'
           + '<div class="dim-body">'
           +   rubricScaleBlock(d.key, val, colorClass)
