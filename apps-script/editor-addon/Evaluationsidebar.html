@@ -37,7 +37,7 @@
     .title-row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
     h1 { margin:0; font-family:var(--font-head); font-size:15px; font-weight:600; letter-spacing:0; text-transform:none; color:var(--ink); }    .refresh-icon-btn {
       font-size:15px; line-height:1; color:var(--ink-soft); cursor:pointer;
-      padding:2px 4px; border-radius:5px;
+      padding:2px 4px; border-radius:5px; border:none; background:none; font-family:inherit;
     }
     .refresh-icon-btn:hover { background:var(--line-soft); color:var(--ink); }
     .meta { margin-top:6px; font-size:11px; color:var(--ink-faint); }
@@ -62,6 +62,7 @@
     }
     .manage-menu.open { display:block; }
     .manage-item {
+      display:block; width:100%; text-align:left; border:none; background:none; font-family:inherit;
       font-size:12px; color:var(--ink-soft); padding:7px 9px; border-radius:6px;
       cursor:pointer; white-space:nowrap;
     }
@@ -235,6 +236,16 @@
   var DATA = null;
   var manageOpen = false;
 
+  // Escape closes the manage menu and returns focus to its button (design item 7).
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape' || !manageOpen) return;
+    manageOpen = false;
+    var menu = document.getElementById('manageMenu');
+    if (menu) menu.classList.remove('open');
+    var btn = document.getElementById('manageBtn');
+    if (btn) btn.focus();
+  });
+
   var EVAL_FIRST_RUN_MSG = 'Evaluating the translation…';
   var EVAL_RERUN_MSG     = 'Re-evaluating the translation…';
 
@@ -407,14 +418,14 @@
 
   function buildTopHtml() {
     return '<div class="title-row"><h1>Evaluation Results</h1>'
-      +   '<span class="refresh-icon-btn" id="refreshIconBtn" title="Refresh" aria-label="Refresh">&#8635;</span>'
+      +   '<button type="button" class="refresh-icon-btn" id="refreshIconBtn" title="Refresh" aria-label="Refresh">&#8635;</button>'
       + '</div>'
       + '<div class="rubric-row">'
       +   '<a href="' + esc(rubricUrl) + '" target="_blank" rel="noopener" class="rubric-link" id="rubricLink">View rubric</a>'
       +   '<div class="manage-wrap">'
       +     '<button type="button" class="manage-btn" id="manageBtn" aria-label="Manage">&#8942;</button>'
       +     '<div class="manage-menu' + (manageOpen ? ' open' : '') + '" id="manageMenu">'
-      +       '<div class="manage-item" id="changeRubricItem">Change rubric</div>'
+      +       '<button type="button" class="manage-item" id="changeRubricItem">Change rubric</button>'
       +     '</div>'
       +   '</div>'
       + '</div>'

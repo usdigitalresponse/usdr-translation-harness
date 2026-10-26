@@ -79,7 +79,8 @@
     }
     .manage-menu.open { display: block; }
     .manage-item {
-      font-size: 12px; color: var(--ink-soft); padding: 7px 9px; border-radius: 6px;
+      display: block; width: 100%; text-align: left; border: none; background: none;
+      font-family: inherit; font-size: 12px; color: var(--ink-soft); padding: 7px 9px; border-radius: 6px;
       cursor: pointer; white-space: nowrap;
     }
     .manage-item:hover { background: var(--line-soft); color: var(--ink); }
@@ -132,6 +133,7 @@
       background: var(--paper); border: 1px solid var(--btn-border);
       display: flex; align-items: center; justify-content: center;
       font-size: 15px; color: var(--ink); cursor: pointer;
+      padding: 0; font-family: inherit; line-height: 1;
     }
     .nav-arrow:hover { background: var(--line-soft); border-color: var(--ink-soft); }
     .nav-count { font-size: 13px; font-weight: 600; color: var(--ink); }
@@ -209,12 +211,17 @@
       padding: 8px 0; border-top: 1px solid var(--line); cursor: pointer;
     }
     .reviewed-row .rr-text { font-size: 12px; color: var(--ink-faint); flex: 1; word-break: break-word; }
+    .rr-toggle {
+      border: none; background: none; padding: 0; margin: 0; text-align: left;
+      font-family: inherit; cursor: pointer;
+    }
     .rr-badge {
       font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 5px; white-space: nowrap;
     }
     .rr-badge.alt   { background: var(--accent-bg); color: var(--accent); }
     .rr-badge.fixed { background: var(--line-soft); color: var(--ink-soft); }
-    .rr-revert     { font-size: 13px; color: var(--ink-soft); cursor: pointer; margin-right: 8px; }
+    .rr-revert     { font-size: 13px; color: var(--ink-soft); cursor: pointer; margin-right: 8px;
+      border: none; background: none; padding: 0 2px; font-family: inherit; line-height: 1; }
     .rr-revert:hover { color: var(--ink); }
     .rr-revert-failed { font-size: 10.5px; color: var(--ink-faint); margin-right: 8px; white-space: nowrap; }
     .reviewed-detail { padding: 0 0 10px; font-size: 12px; color: var(--ink-soft); }
@@ -496,6 +503,38 @@
     }, 350);
   }
 
+  // ── Focus across redraws (design item 7) ────────────────────────────────
+  /**
+   * Returns a selector for the focused element inside #root so render() can
+   * put focus back after rebuilding the DOM, or null if focus is elsewhere.
+   * Uses the element's id, or its first class plus data-id.
+   */
+  function focusSelector_(el) {
+    var root = document.getElementById('root');
+    if (!el || !root || !root.contains(el)) return null;
+    if (el.id) return '#' + CSS.escape(el.id);
+    var id = el.getAttribute('data-id');
+    if (id === null || !el.classList.length) return null;
+    return '.' + CSS.escape(el.classList[0]) + '[data-id="' + CSS.escape(id) + '"]';
+  }
+
+  /** Focuses the element matching sel, if it still exists after a redraw. */
+  function restoreFocus_(sel) {
+    if (!sel) return;
+    var el = document.querySelector(sel);
+    if (el) el.focus();
+  }
+
+  // Escape closes the manage menu and returns focus to its button.
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape' || !manageOpen) return;
+    manageOpen = false;
+    var menu = document.getElementById('manageMenu');
+    if (menu) menu.classList.remove('open');
+    var btn = document.getElementById('manageBtn');
+    if (btn) btn.focus();
+  });
+
   // ── Render: root ────────────────────────────────────────────────────────
   function render() {
     if (!DATA) { renderEmpty(); return; }
@@ -515,8 +554,8 @@
       +   '<div class="manage-wrap">'
       +     '<button type="button" class="manage-btn" id="manageBtn" aria-label="Manage">&#8942;</button>'
       +     '<div class="manage-menu' + (manageOpen ? ' open' : '') + '" id="manageMenu">'
-      +       '<div class="manage-item" id="changePromptItem">Change prompt</div>'
-      +       '<div class="manage-item" id="downloadItem">Download</div>'
+      +       '<button type="button" class="manage-item" id="changePromptItem">Change prompt</button>'
+      +       '<button type="button" class="manage-item" id="downloadItem">Download</button>'
       +     '</div>'
       +   '</div>'
       + '</div>'
@@ -569,8 +608,10 @@
 
     html += '</div>'; // .scroll
 
+    var focusSel = focusSelector_(document.activeElement);
     document.getElementById('root').innerHTML = html;
     wireEvents();
+    restoreFocus_(focusSel);
     updateProgress();
     syncHighlightAfterRender();
   }
@@ -617,9 +658,9 @@
       + 'data-original="' + esc(String(original)) + '" data-translation="' + esc(String(current)) + '">';
 
     html += '<div class="card-nav">'
-      + '<span class="nav-arrow" id="prevBtn">&#8249;</span>'
+      + '<button type="button" class="nav-arrow" id="prevBtn" aria-label="Previous suggestion">&#8249;</button>'
       + '<span class="nav-count">' + (reviewPos + 1) + ' of ' + poolLength + '</span>'
-      + '<span class="nav-arrow" id="nextBtn">&#8250;</span>'
+      + '<button type="button" class="nav-arrow" id="nextBtn" aria-label="Next suggestion">&#8250;</button>'
       + '</div>';
 
     if (noHl) html += '<span class="no-hl-badge"><span class="sr-only">Status: </span>Highlighting not available</span>';
@@ -729,10 +770,12 @@
     var marker = '';
     if (status === 'alternative') marker = '<span class="rr-badge alt"><span class="sr-only">Status: </span>Alternative used</span>';
     else if (status === 'fixed')  marker = '<span class="rr-badge fixed"><span class="sr-only">Status: </span>Fixed manually</span>';
-    var revert = '<span class="rr-revert" data-id="' + esc(it.id) + '" data-action="revert">&#8630;</span>';
+    var revert = '<button type="button" class="rr-revert" data-id="' + esc(it.id) + '" data-action="revert" aria-label="Review again">&#8630;</button>';
 
+    // The text is a button so keyboard users can expand the row; clicks
+    // anywhere else on the row still toggle it (handled on the row).
     var row = '<div class="reviewed-row" data-id="' + esc(it.id) + '" data-action="toggle">'
-      + '<div class="rr-text">' + esc(original) + '</div>'
+      + '<button type="button" class="rr-toggle rr-text" data-id="' + esc(it.id) + '" aria-expanded="' + (isOpen ? 'true' : 'false') + '">' + esc(original) + '</button>'
       + '<div style="display:flex;align-items:center;">' + (isOpen ? '' : revert) + marker + '</div>'
       + '</div>';
 
@@ -763,7 +806,7 @@
       var current   = pickVal(it.data, it.f.current);
       var note      = pickVal(it.data, it.f.note);
       var noHl      = NO_HL[it.id];
-      return '<div class="ref-row" data-id="' + esc(it.id) + '" '
+      return '<div class="ref-row" role="button" tabindex="0" data-id="' + esc(it.id) + '" '
         + 'data-original="' + esc(String(original)) + '" data-translation="' + esc(String(current)) + '">'
         + (noHl ? '<span class="no-hl-badge"><span class="sr-only">Status: </span>Highlighting not available</span><br>' : '')
         + '<div class="ref-line">' + esc(original) + ' &rarr; ' + esc(current) + '</div>'
@@ -1230,6 +1273,11 @@
       var original    = row.getAttribute('data-original') || '';
       var translation = row.getAttribute('data-translation') || '';
       row.addEventListener('mousedown', function() {
+        toggleHighlight(row, original, translation, id);
+      });
+      row.addEventListener('keydown', function(e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
         toggleHighlight(row, original, translation, id);
       });
     });
