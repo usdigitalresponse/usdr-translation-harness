@@ -1,11 +1,17 @@
 const mockSheetsAppend = jest.fn();
+const mockSheetsGet = jest.fn();
 jest.mock("../capture-feedback/node_modules/googleapis", () => ({
   google: {
-    sheets: () => ({ spreadsheets: { values: { append: mockSheetsAppend } } }),
+    sheets: () => ({ spreadsheets: { values: { append: mockSheetsAppend, get: mockSheetsGet } } }),
   },
 }));
 
-const { writeDecisions, recordDecisions } = require("../capture-feedback/glossary-writer");
+const { writeDecisions, recordDecisions, REFINEMENT_LOG_HEADERS } = require("../capture-feedback/glossary-writer");
+
+// Every tab has the expected header row unless a test says otherwise
+function headersOk() {
+  mockSheetsGet.mockReset().mockResolvedValue({ data: { values: [REFINEMENT_LOG_HEADERS] } });
+}
 const { TAB_REVIEWED, TAB_OTHER_CHANGES } = require("../capture-feedback/decisions");
 
 const SHEET_ID = "refinement-log-sheet";
@@ -22,7 +28,10 @@ function inputProblems(spy) {
 }
 
 describe("writeDecisions", () => {
-  beforeEach(() => mockSheetsAppend.mockReset());
+  beforeEach(() => {
+    mockSheetsAppend.mockReset();
+    headersOk();
+  });
 
   test("writes each tab's rows to that tab", async () => {
     mockSheetsAppend.mockResolvedValue({});
@@ -30,20 +39,63 @@ describe("writeDecisions", () => {
     await writeDecisions(DECISIONS, SHEET_ID, {});
 
     const ranges = mockSheetsAppend.mock.calls.map((c) => c[0].range);
-    expect(ranges).toEqual([`${TAB_REVIEWED}!A:J`, `${TAB_OTHER_CHANGES}!A:J`]);
+    expect(ranges).toEqual([`${TAB_REVIEWED}!A:L`, `${TAB_OTHER_CHANGES}!A:L`]);
+  });
+
+  test("writes English Source (K) and Reviewer Sentence (L)", async () => {
+    mockSheetsAppend.mockResolvedValue({});
+
+    await writeDecisions([{
+      tab: TAB_REVIEWED, aiTerm: "sueldo", reviewerTerm: "salario", blockId: "b01",
+      sourceText: "Recibirá su sueldo.", englishSource: "You'll get your wages.",
+      reviewerSentence: "Recibirá su salario.",
+    }], SHEET_ID, {});
+
+    const row = mockSheetsAppend.mock.calls[0][0].requestBody.values[0];
+    expect(row).toHaveLength(REFINEMENT_LOG_HEADERS.length);
+    expect(row[6]).toBe("Recibirá su sueldo.");
+    expect(row[10]).toBe("You'll get your wages.");
+    expect(row[11]).toBe("Recibirá su salario.");
+  });
+
+  test("skips a tab whose header row doesn't match, still writes the others", async () => {
+    mockSheetsAppend.mockResolvedValue({});
+    mockSheetsGet.mockImplementation(({ range }) => Promise.resolve({ data: { values: [
+      range.startsWith(TAB_REVIEWED)
+        ? REFINEMENT_LOG_HEADERS.map((h) => (h === "AI Sentence" ? "Source Text" : h))
+        : REFINEMENT_LOG_HEADERS,
+    ] } }));
+
+    const error = await writeDecisions(DECISIONS, SHEET_ID, {}).catch((e) => e);
+
+    expect(mockSheetsAppend.mock.calls.map((c) => c[0].range)).toEqual([`${TAB_OTHER_CHANGES}!A:L`]);
+    expect(error.message).toContain("Reviewed tab: header row doesn't match");
+    expect(error.message).toContain("Found: Timestamp, Reviewer Email, AI Term, Reviewer Term, Block ID, Review Signal, Source Text");
+    expect(error.failedTabs).toEqual([{ tab: TAB_REVIEWED, rows: 1 }]);
+  });
+
+  test("accepts headers in any case, with extra columns after L", async () => {
+    mockSheetsAppend.mockResolvedValue({});
+    mockSheetsGet.mockResolvedValue({ data: { values: [
+      REFINEMENT_LOG_HEADERS.map((h) => h.toUpperCase()).concat(["Notes"]),
+    ] } });
+
+    await writeDecisions(DECISIONS, SHEET_ID, {});
+
+    expect(mockSheetsAppend).toHaveBeenCalledTimes(2);
   });
 
   test("still writes the other tabs when one fails, and names the failed tab", async () => {
     mockSheetsAppend.mockImplementation(({ range }) =>
       range.startsWith(TAB_REVIEWED)
-        ? Promise.reject(new Error("Unable to parse range: Reviewed!A:J"))
+        ? Promise.reject(new Error("Unable to parse range: Reviewed!A:L"))
         : Promise.resolve({})
     );
 
     const error = await writeDecisions(DECISIONS, SHEET_ID, {}).catch((e) => e);
 
     expect(mockSheetsAppend).toHaveBeenCalledTimes(2);
-    expect(error.message).toBe("Reviewed tab: Unable to parse range: Reviewed!A:J");
+    expect(error.message).toBe("Reviewed tab: Unable to parse range: Reviewed!A:L");
     expect(error.failedTabs).toEqual([{ tab: TAB_REVIEWED, rows: 1 }]);
   });
 });
@@ -54,6 +106,7 @@ describe("recordDecisions", () => {
 
   beforeEach(() => {
     mockSheetsAppend.mockReset().mockResolvedValue({});
+    headersOk();
     savedKService = process.env.K_SERVICE;
     logSpy = jest.spyOn(console, "log").mockImplementation();
   });
@@ -96,7 +149,7 @@ describe("recordDecisions", () => {
   test("logs an input problem naming the failed tab when a write fails", async () => {
     mockSheetsAppend.mockImplementation(({ range }) =>
       range.startsWith(TAB_REVIEWED)
-        ? Promise.reject(new Error("Unable to parse range: Reviewed!A:J"))
+        ? Promise.reject(new Error("Unable to parse range: Reviewed!A:L"))
         : Promise.resolve({})
     );
 
