@@ -444,7 +444,7 @@
       +   '<button type="button" class="refresh-icon-btn" id="refreshIconBtn" title="Refresh" aria-label="Refresh">' + icon('refresh') + '</button>'
       + '</div>'
       + '<div class="rubric-row">'
-      +   '<a href="' + esc(rubricUrl) + '" target="_blank" rel="noopener" class="rubric-link" id="rubricLink">View rubric' + EXTERNAL_LINK_ICON + '</a>'
+      +   '<a href="' + esc(rubricUrl) + '" target="_blank" rel="noopener" class="rubric-link" id="rubricLink">Learn how we score' + EXTERNAL_LINK_ICON + '</a>'
       +   '<div class="manage-wrap">'
       +     '<button type="button" class="manage-btn" id="manageBtn" aria-label="Manage">' + icon('more_vert') + '</button>'
       +     '<div class="manage-menu' + (manageOpen ? ' open' : '') + '" id="manageMenu">'
@@ -656,7 +656,7 @@
           + '<div class="dim-body">'
           +   rubricScaleBlock(d.key, val, colorClass)
           +   buildDimDetail(d, models)
-          +   '<a href="' + esc(d.rubricUrl || rubricUrl) + '" target="_blank" rel="noopener" class="dim-rubric-link">View rubric' + EXTERNAL_LINK_ICON + '</a>'
+          +   '<a href="' + esc(d.rubricUrl || rubricUrl) + '" target="_blank" rel="noopener" class="dim-rubric-link">Learn how we score' + EXTERNAL_LINK_ICON + '</a>'
           + '</div>'
           + '</details>';
       });
