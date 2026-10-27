@@ -210,6 +210,9 @@
       outline: 2px solid var(--focus-ring);
       outline-offset: 2px;
     }
+    /* Criterion sections clip overflow (for their rounded corners), which hid
+       an outline drawn outside the summary, so draw it just inside instead. */
+    .dim-summary:focus-visible { outline-offset: -2px; border-radius: 9px; }
 
     /* Design item 4: text read by screen readers but not shown (aria-label
        isn't announced on plain spans, so badges and scores use this instead) */
