@@ -29,7 +29,7 @@
       --warn-bdr:   #ffd2ab;
       --red-ink:    #b23b3b;
       --red-bg:     #fdeceb;
-      --yellow-ink: #b07a3a;
+      --yellow-ink: #A84300;  /* designer, 2026-10-28: 5.5–6.1:1 (was #b07a3a, 3.4–3.7:1) */
       /* Label text on cards and reference rows, which turn yellow (#fffbcc) when
          highlighted: 9.2:1 there, 9.6:1 on white (design guide item 1) */
       --card-label: #37474F;
@@ -90,21 +90,6 @@
     }
     .manage-item:hover { background: var(--line-soft); color: var(--ink); }
 
-    .prompt-edit-panel { margin-top: 8px; padding: 10px; background: var(--raise);
-      border: 1px solid var(--line); border-radius: 8px; }
-    .prompt-input { width: 100%; font-size: 11.5px; font-family: inherit; color: var(--ink);
-      padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper);
-      margin-bottom: 8px; }
-    .prompt-input:focus { outline: none; border-color: var(--accent); }
-    .prompt-edit-actions { display: flex; gap: 8px; }
-    .prompt-save, .prompt-cancel { font-size: 11px; font-weight: 600; border-radius: 6px;
-      padding: 5px 10px; cursor: pointer; border: 1px solid transparent; }
-    .prompt-save { background: var(--accent); color: #fff; }
-    .prompt-save:hover { background: var(--accent-hover); }
-    .prompt-save:disabled { opacity: .6; cursor: default; }
-    .prompt-cancel { background: none; border-color: var(--btn-border); color: var(--ink-soft); }
-    .prompt-cancel:hover { background: var(--line-soft); }
-    .prompt-warn { margin-top: 7px; font-size: 11px; color: var(--red-ink); min-height: 0; }
 
     /* ---------- Collapsible section headers ---------- */
     .sec-toggle {
@@ -404,8 +389,7 @@
     public_flyer: 'https://docs.google.com/document/d/1gKwAkp8RjmN0QjUJwXD_cmVAnO27THVw5KPitNtzvhM/edit?tab=t.0#heading=h.jj3x0twkwyk',
     content_type_two: 'https://docs.google.com/document/d/1NZ30GQFfQSu_RjefjEVClDRNfeuRirquKeTqkQO7peE/edit',
   };
-  var DEFAULT_PROMPT_URL = PROMPT_URLS.public_flyer;
-  var promptUrl = DEFAULT_PROMPT_URL;
+  var promptUrl = PROMPT_URLS.public_flyer;  // set per content type in onData
 
   // ── Utilities ─────────────────────────────────────────────────────────
   // Design item 9: Material Symbols icon markup. Decorative by default;
@@ -576,18 +560,9 @@
       +   '<div class="manage-wrap">'
       +     '<button type="button" class="manage-btn" id="manageBtn" aria-label="Manage">' + icon('more_vert') + '</button>'
       +     '<div class="manage-menu' + (manageOpen ? ' open' : '') + '" id="manageMenu">'
-      +       '<button type="button" class="manage-item" id="changePromptItem">Change prompt</button>'
       +       '<button type="button" class="manage-item" id="downloadItem">Download</button>'
       +     '</div>'
       +   '</div>'
-      + '</div>'
-      + '<div class="prompt-edit-panel" id="promptEditPanel" hidden>'
-      +   '<input type="text" class="prompt-input" id="promptInput" placeholder="Paste new prompt doc URL" value="' + esc(promptUrl) + '">'
-      +   '<div class="prompt-edit-actions">'
-      +     '<button type="button" class="prompt-save" id="promptSaveBtn">Save</button>'
-      +     '<button type="button" class="prompt-cancel" id="promptCancelBtn">Cancel</button>'
-      +   '</div>'
-      +   '<div class="prompt-warn" id="promptWarn"></div>'
       + '</div>'
       + '</div>';
 
@@ -721,8 +696,8 @@
     var showAlt = showingAltId === it.id || alwaysShowAlt;
     if (!showAlt) {
       return '<div class="btn-row">'
-        + '<button class="btn primary" id="looksGoodBtn">Approve translation</button>'
-        + '<button class="btn" id="suggestAltBtn">Suggest changes</button>'
+        + '<button class="btn primary" id="looksGoodBtn">Accept translation</button>'
+        + '<button class="btn" id="suggestAltBtn">See alternative</button>'
         + '</div>'
         + '<div class="fixed-manually-row"><button class="fixed-manually-link" id="fixedManuallyBtn">Fixed manually</button></div>';
     }
@@ -1154,17 +1129,6 @@
       }
     });
 
-    var changePromptItem = document.getElementById('changePromptItem');
-    if (changePromptItem) changePromptItem.onclick = function(e) {
-      e.stopPropagation();
-      manageOpen = false;
-      document.getElementById('manageMenu').classList.remove('open');
-      var panel = document.getElementById('promptEditPanel');
-      var input = document.getElementById('promptInput');
-      input.value = promptUrl;
-      document.getElementById('promptWarn').textContent = '';
-      panel.hidden = !panel.hidden;
-    };
     var downloadItem = document.getElementById('downloadItem');
     if (downloadItem) downloadItem.onclick = function(e) {
       e.stopPropagation();
@@ -1180,8 +1144,6 @@
         .withFailureHandler(function(err) { showError(err.message || err); })
         .showSourcePreview(SOURCE_FILE_ID);
     };
-
-    wirePromptEditEvents();
 
     // Review card
     var card = document.getElementById('reviewCard');
@@ -1306,63 +1268,6 @@
 
   }
 
-  function wirePromptEditEvents() {
-    var panel     = document.getElementById('promptEditPanel');
-    var input     = document.getElementById('promptInput');
-    var saveBtn   = document.getElementById('promptSaveBtn');
-    var cancelBtn = document.getElementById('promptCancelBtn');
-    var warnEl    = document.getElementById('promptWarn');
-
-    if (cancelBtn) cancelBtn.addEventListener('click', function() {
-      panel.hidden = true;
-      warnEl.textContent = '';
-    });
-
-    if (saveBtn) saveBtn.addEventListener('click', function() {
-      var newUrl = (input.value || '').trim();
-      if (!newUrl) { warnEl.textContent = 'Please enter a URL.'; return; }
-      if (newUrl === promptUrl) { panel.hidden = true; return; }
-
-      var confirmed = window.confirm(
-        'Change the translator prompt link shown in this sidebar?\n\n' +
-        'New link:\n' + newUrl + '\n\n' +
-        'This updates the link for everyone who opens this sidebar. It does not change the prompt actually used to translate — only where this link points.'
-      );
-      if (!confirmed) return;
-
-      saveBtn.disabled = true;
-      warnEl.textContent = '';
-      google.script.run
-        .withSuccessHandler(function() {
-          promptUrl = newUrl;
-          saveBtn.disabled = false;
-          panel.hidden = true;
-          var link = document.getElementById('promptLink');
-          if (link) link.href = promptUrl;
-        })
-        .withFailureHandler(function(err) {
-          saveBtn.disabled = false;
-          warnEl.textContent = 'Couldn\'t save: ' + (err && err.message ? err.message : err);
-        })
-        .setPromptUrl(newUrl);
-    });
-  }
-
-  function loadPromptUrl() {
-    google.script.run
-      .withSuccessHandler(function(url) {
-        if (url) {
-          promptUrl = url;
-          var link = document.getElementById('promptLink');
-          if (link) link.href = promptUrl;
-          var input = document.getElementById('promptInput');
-          if (input) input.value = promptUrl;
-        }
-      })
-      .withFailureHandler(function() { /* keep default prompt link silently */ })
-      .getPromptUrl();
-  }
-
   // ── Download ──────────────────────────────────────────────────────────
   function downloadDocx() {
     google.script.run
@@ -1451,13 +1356,9 @@
     statuteDrawerOpen = false;
 
     var ct = DATA.contentType || 'public_flyer';
-    if (PROMPT_URLS[ct]) {
-      DEFAULT_PROMPT_URL = PROMPT_URLS[ct];
-      promptUrl = DEFAULT_PROMPT_URL;
-    }
+    if (PROMPT_URLS[ct]) promptUrl = PROMPT_URLS[ct];
 
     render();
-    loadPromptUrl();
     markUnhighlightableItems(function() {
       _hlCheckDone = true;
       render();

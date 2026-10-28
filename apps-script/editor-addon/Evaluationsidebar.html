@@ -17,7 +17,7 @@
       --accent: #0066FF; --accent-bg: #e8f0ff;
       --code-bg: #f3f6fb; --code-ink: #1c2540;
       --red-ink:    #b23b3b; --red-bg:    #fdeceb; --red-bdr:    #f3c6c2;
-      --yellow-ink: #b07a3a; --yellow-bg: #fef3e2; --yellow-bdr: #f5d9a8;
+      --yellow-ink: #A84300; --yellow-bg: #fef3e2; --yellow-bdr: #f5d9a8;
       --green-ink:  #1f7a5c; --green-bg:  #e9f7f1; --green-bdr:  #bfe3d3;
       --font-head: 'Lora', Georgia, 'Times New Roman', serif;
       --font-body: 'Inter', Roboto, -apple-system, 'Segoe UI', sans-serif;
@@ -48,47 +48,11 @@
     .stale-note { margin:0 0 12px; padding:8px 10px; font-size:12px; line-height:1.4; border-radius:6px;
       color:var(--yellow-ink); background:var(--yellow-bg); border:1px solid var(--yellow-bdr); }
 
-    /* Rubric link row + manage menu */
+    /* Rubric link row */
     .rubric-row { margin-top:8px; display:flex; align-items:center; gap:10px; position:relative; }
     .rubric-link { font-size:12px; font-weight:600; }
 
-    .manage-wrap { margin-left:auto; position:relative; }
-    .manage-btn {
-      border:none; background:none; cursor:pointer;
-      font-size:20px; font-weight:700; line-height:1; color:var(--ink);
-      padding:3px 6px; border-radius:5px;
-    }
-    .manage-btn .material-symbols-outlined,
     .refresh-icon-btn .material-symbols-outlined { font-size:20px; }
-    .manage-btn:hover { background:var(--line-soft); }
-    .manage-menu {
-      display:none; position:absolute; right:0; top:28px; z-index:20;
-      background:var(--paper); border:1px solid var(--line); border-radius:8px;
-      padding:5px; min-width:150px; box-shadow:0 4px 14px rgba(0,0,0,0.08);
-    }
-    .manage-menu.open { display:block; }
-    .manage-item {
-      display:block; width:100%; text-align:left; border:none; background:none; font-family:inherit;
-      font-size:12px; color:var(--ink-soft); padding:7px 9px; border-radius:6px;
-      cursor:pointer; white-space:nowrap;
-    }
-    .manage-item:hover { background:var(--line-soft); color:var(--ink); }
-
-    .rubric-edit-panel { margin-top:8px; padding:10px; background:var(--raise);
-      border:1px solid var(--line); border-radius:8px; }
-    .rubric-input { width:100%; font-size:11.5px; font-family:inherit; color:var(--ink);
-      padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--paper);
-      margin-bottom:8px; }
-    .rubric-input:focus { outline:none; border-color:var(--accent); }
-    .rubric-edit-actions { display:flex; gap:8px; }
-    .rubric-save, .rubric-cancel { font-size:11px; font-weight:600; border-radius:6px;
-      padding:5px 10px; cursor:pointer; border:1px solid transparent; }
-    .rubric-save { background:var(--accent); color:#fff; }
-    .rubric-save:hover { background:var(--accent-hover); }
-    .rubric-save:disabled { opacity:.6; cursor:default; }
-    .rubric-cancel { background:none; border-color:var(--btn-border); color:var(--ink-soft); }
-    .rubric-cancel:hover { background:var(--line-soft); }
-    .rubric-warn { margin-top:7px; font-size:11px; color:var(--red-ink); min-height:0; }
 
     .score-card { margin-top:14px; display:flex; align-items:center; gap:14px; }
     .score-big { font-family:var(--font-head); font-size:32px; font-weight:600; color:var(--ink); line-height:1; }    .score-big small { font-size:14px; font-weight:600; color:var(--ink-faint); }
@@ -252,23 +216,10 @@
 
 <script>
   var DATA = null;
-  var manageOpen = false;
-
-  // Escape closes the manage menu and returns focus to its button (design item 7).
-  document.addEventListener('keydown', function(e) {
-    if (e.key !== 'Escape' || !manageOpen) return;
-    manageOpen = false;
-    var menu = document.getElementById('manageMenu');
-    if (menu) menu.classList.remove('open');
-    var btn = document.getElementById('manageBtn');
-    if (btn) btn.focus();
-  });
-
   var EVAL_FIRST_RUN_MSG = 'Evaluating the translation…';
   var EVAL_RERUN_MSG     = 'Re-evaluating the translation…';
 
-  var DEFAULT_RUBRIC_URL = 'https://docs.google.com/document/d/1JldVu3T0OCSddWIqL6BVfrD0_HR8hjzS7W8WB7Ukx7E/edit?tab=t.chdst7j0fwjs#heading=h.32t2w6jzxg1e';
-  var rubricUrl = DEFAULT_RUBRIC_URL;
+  var RUBRIC_URL = 'https://docs.google.com/document/d/1JldVu3T0OCSddWIqL6BVfrD0_HR8hjzS7W8WB7Ukx7E/edit?tab=t.chdst7j0fwjs#heading=h.32t2w6jzxg1e';
 
   var DIMENSIONS = [
     { key: 'accuracy',    rawKey: 'accuracy_and_relevance',   label: 'Accuracy & Relevance',
@@ -447,21 +398,7 @@
       +   '<button type="button" class="refresh-icon-btn" id="refreshIconBtn" title="Refresh" aria-label="Refresh">' + icon('refresh') + '</button>'
       + '</div>'
       + '<div class="rubric-row">'
-      +   '<a href="' + esc(rubricUrl) + '" target="_blank" rel="noopener" class="rubric-link" id="rubricLink">Learn how we score' + EXTERNAL_LINK_ICON + '</a>'
-      +   '<div class="manage-wrap">'
-      +     '<button type="button" class="manage-btn" id="manageBtn" aria-label="Manage">' + icon('more_vert') + '</button>'
-      +     '<div class="manage-menu' + (manageOpen ? ' open' : '') + '" id="manageMenu">'
-      +       '<button type="button" class="manage-item" id="changeRubricItem">Change rubric</button>'
-      +     '</div>'
-      +   '</div>'
-      + '</div>'
-      + '<div class="rubric-edit-panel" id="rubricEditPanel" hidden>'
-      +   '<input type="text" class="rubric-input" id="rubricInput" placeholder="Paste new rubric doc URL" value="' + esc(rubricUrl) + '">'
-      +   '<div class="rubric-edit-actions">'
-      +     '<button type="button" class="rubric-save" id="rubricSaveBtn">Save</button>'
-      +     '<button type="button" class="rubric-cancel" id="rubricCancelBtn">Cancel</button>'
-      +   '</div>'
-      +   '<div class="rubric-warn" id="rubricWarn"></div>'
+      +   '<a href="' + esc(RUBRIC_URL) + '" target="_blank" rel="noopener" class="rubric-link" id="rubricLink">Learn how we score' + EXTERNAL_LINK_ICON + '</a>'
       + '</div>';
   }
 
@@ -469,76 +406,6 @@
     var refreshIconBtn = document.getElementById('refreshIconBtn');
     if (refreshIconBtn) refreshIconBtn.addEventListener('click', function() {
       runEvaluation(EVAL_RERUN_MSG);
-    });
-
-    var manageBtn = document.getElementById('manageBtn');
-    if (manageBtn) manageBtn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      manageOpen = !manageOpen;
-      document.getElementById('manageMenu').classList.toggle('open', manageOpen);
-    });
-    document.addEventListener('click', function() {
-      if (manageOpen) {
-        manageOpen = false;
-        var menu = document.getElementById('manageMenu');
-        if (menu) menu.classList.remove('open');
-      }
-    });
-
-    var panel    = document.getElementById('rubricEditPanel');
-    var input    = document.getElementById('rubricInput');
-    var saveBtn  = document.getElementById('rubricSaveBtn');
-    var cancelBtn = document.getElementById('rubricCancelBtn');
-    var warnEl   = document.getElementById('rubricWarn');
-
-    var changeRubricItem = document.getElementById('changeRubricItem');
-    if (changeRubricItem) changeRubricItem.addEventListener('click', function(e) {
-      e.stopPropagation();
-      manageOpen = false;
-      document.getElementById('manageMenu').classList.remove('open');
-      input.value = rubricUrl;
-      warnEl.textContent = '';
-      panel.hidden = !panel.hidden;
-    });
-
-    if (cancelBtn) cancelBtn.addEventListener('click', function () {
-      panel.hidden = true;
-      warnEl.textContent = '';
-    });
-
-    if (saveBtn) saveBtn.addEventListener('click', function () {
-      var newUrl = (input.value || '').trim();
-      if (!newUrl) {
-        warnEl.textContent = 'Please enter a URL.';
-        return;
-      }
-      if (newUrl === rubricUrl) {
-        panel.hidden = true;
-        return;
-      }
-
-      var confirmed = window.confirm(
-        'Change the rubric link shown in this sidebar?\n\n' +
-        'New link:\n' + newUrl + '\n\n' +
-        'This updates the link for everyone who opens this sidebar. It does not change how evaluations are scored.'
-      );
-      if (!confirmed) return;
-
-      saveBtn.disabled = true;
-      warnEl.textContent = '';
-      google.script.run
-        .withSuccessHandler(function () {
-          rubricUrl = newUrl;
-          saveBtn.disabled = false;
-          panel.hidden = true;
-          var link = document.getElementById('rubricLink');
-          if (link) link.href = rubricUrl;
-        })
-        .withFailureHandler(function (err) {
-          saveBtn.disabled = false;
-          warnEl.textContent = 'Couldn\'t save: ' + (err && err.message ? err.message : err);
-        })
-        .setRubricUrl(newUrl);
     });
   }
 
@@ -659,7 +526,7 @@
           + '<div class="dim-body">'
           +   rubricScaleBlock(d.key, val, colorClass)
           +   buildDimDetail(d, models)
-          +   '<a href="' + esc(d.rubricUrl || rubricUrl) + '" target="_blank" rel="noopener" class="dim-rubric-link">Learn how we score' + EXTERNAL_LINK_ICON + '</a>'
+          +   '<a href="' + esc(d.rubricUrl || RUBRIC_URL) + '" target="_blank" rel="noopener" class="dim-rubric-link">Learn how we score' + EXTERNAL_LINK_ICON + '</a>'
           + '</div>'
           + '</details>';
       });
@@ -718,18 +585,6 @@
   function boot() {
     document.getElementById('topBar').innerHTML = buildTopHtml();
     attachTopBarListeners();
-    google.script.run
-      .withSuccessHandler(function (url) {
-        if (url) {
-          rubricUrl = url;
-          var link = document.getElementById('rubricLink');
-          if (link) link.href = rubricUrl;
-          var input = document.getElementById('rubricInput');
-          if (input) input.value = rubricUrl;
-        }
-      })
-      .withFailureHandler(function () { /* keep default rubric link silently */ })
-      .getRubricUrl();
 
     // Show the previous evaluation if one exists; only run automatically the
     // first time (nothing cached). The ↻ button re-runs on demand, and a
