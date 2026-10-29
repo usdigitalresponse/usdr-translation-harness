@@ -19,7 +19,7 @@ const WHAT_TO_DO = {
 
   // Prompt and rubric docs
   doc_unreadable:
-    "Share the doc with the pipeline service account (Viewer), or fix the doc ID in the service's settings.",
+    "Share the doc with the pipeline service account (Viewer), or fix the doc ID in the service's settings if it was moved or deleted.",
   doc_empty:
     "The doc has no text. Restore its content (File > Version history) before the next file is processed.",
 
@@ -33,7 +33,7 @@ const WHAT_TO_DO = {
 
   // Model Config
   model_config_unreadable:
-    "Check the Model Config sheet is shared with the service account and still has a tab named 'Config'.",
+    "Share the Model Config sheet with the service account, or rename the tab back to 'Config' if it was renamed.",
   model_config_missing_columns:
     "Restore the role / provider / model / active headers in row 1 of the Config tab. Services fail until they're back.",
   model_config_no_active_model:
@@ -41,7 +41,7 @@ const WHAT_TO_DO = {
 
   // Processing Log
   processing_log_unreadable:
-    "Check the Processing Log sheet is shared with the service account and still has a tab named 'ProcessingLog'.",
+    "Share the Processing Log sheet with the service account, or rename the tab back to 'ProcessingLog' if it was renamed.",
   processing_log_headers:
     "Restore row 1 to the expected headers. The Orchestrator stops processing files until they match.",
   processing_log_blank_submitter:

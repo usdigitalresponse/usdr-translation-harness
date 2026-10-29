@@ -163,8 +163,10 @@ function fakeClients({
   };
 }
 
+const quiet = () => {};
+
 async function run(opts) {
-  return runChecks({ project: PROJECT, region: REGION, clients: fakeClients(opts) });
+  return runChecks({ project: PROJECT, region: REGION, clients: fakeClients(opts), log: quiet });
 }
 
 const codes = (outcome) => outcome.problems.map((p) => p.code);
@@ -383,6 +385,14 @@ describe("Drive folders check", () => {
   });
 });
 
+test("an input folder only needs to be readable", async () => {
+  const env = baseEnv();
+  env.extract.DRIVE_INPUT_FOLDER_ID = "f-input";
+  const folders = baseFolders();
+  folders["f-input"] = { id: "f-input", name: "Input", mimeType: FOLDER, trashed: false, capabilities: { canAddChildren: false } };
+  expect((await run({ env, folders })).problems).toEqual([]);
+});
+
 describe("Statutes check", () => {
   test("no statute files under the prefix", async () => {
     expect(codes(await run({ statuteFiles: ["statutes/md-labor-emply-t8.3/readme.pdf"] }))).toEqual(["statutes_empty"]);
@@ -441,7 +451,7 @@ describe("Logged problems check", () => {
 
   test("filters to the last 24 hours and skips the health check's own logs", async () => {
     const clients = fakeClients();
-    await runChecks({ project: PROJECT, region: REGION, clients });
+    await runChecks({ project: PROJECT, region: REGION, clients, log: quiet });
     const filters = clients.logging.entries.list.mock.calls.map((c) => c[0].requestBody.filter);
     const since = new Date(NOW - MS_PER_DAY).toISOString();
     for (const f of filters) expect(f).toContain(`timestamp>="${since}"`);
@@ -454,9 +464,14 @@ describe("crash isolation and the message", () => {
     jest.spyOn(console, "error").mockImplementation();
     const boom = { name: "Boom", run: async () => { throw new Error("kaboom"); } };
     const fine = { name: "Fine", run: async () => [{ check: "Fine", resource: "x", status: "ok" }] };
-    const outcome = await runChecks({ project: PROJECT, region: REGION, clients: fakeClients(), checks: [boom, fine] });
+    const log = jest.fn();
+    const outcome = await runChecks({ project: PROJECT, region: REGION, clients: fakeClients(), checks: [boom, fine], log });
     expect(codes(outcome)).toEqual(["check_crashed"]);
     expect(outcome.results).toHaveLength(2);
+    // One log line per check: the crashed one as a warning, the other as info
+    expect(log.mock.calls.map((c) => [c[0], c[2].check, c[2].items])).toEqual([
+      ["WARNING", "Boom", 1], ["INFO", "Fine", 1],
+    ]);
   });
 
   test("problem message names the resource, what's wrong and what to do", async () => {
@@ -495,5 +510,34 @@ describe("healthCheck handler", () => {
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json.mock.calls[0][0].error).toContain("HEALTH_CHECK_REGION");
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("access error messages", () => {
+  const { describeAccessError } = require("../health-check/checks/access-errors");
+  const err = (code, message = "x") => Object.assign(new Error(message), { code });
+
+  test("403: exists but not shared", () => {
+    expect(describeAccessError(err(403), "doc", "abc")).toMatch(/doesn't have access to doc abc .*isn't shared/);
+  });
+
+  test("404: wrong ID, deleted, or not shared", () => {
+    expect(describeAccessError(err(404), "sheet", "abc")).toMatch(/^Sheet abc wasn't found: the ID is wrong, it was deleted, or it isn't shared/);
+  });
+
+  test("400 bad range: the tab doesn't exist", () => {
+    expect(describeAccessError(err(400, "Unable to parse range: 'Config'!A:F"), "sheet", "abc"))
+      .toBe("The tab doesn't exist in sheet abc (renamed or deleted?).");
+  });
+
+  test("anything else keeps Google's message", () => {
+    expect(describeAccessError(err(500, "Backend error"), "folder", "abc")).toBe("Can't open folder abc: Backend error");
+  });
+
+  test("a renamed glossary tab is reported as a missing tab", async () => {
+    const env = baseEnv();
+    env.translate.GLOSSARY_SHEET_TAB = "Renamed";
+    const outcome = await run({ env });
+    expect(outcome.problems[0].detail).toBe(`The tab doesn't exist in sheet ${IDS.glossary} (renamed or deleted?).`);
   });
 });

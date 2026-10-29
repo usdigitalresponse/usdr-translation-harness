@@ -4,6 +4,7 @@
 const rules = require("../rules");
 const { ok, problem } = require("../results");
 const { valuesOf } = require("../settings");
+const { describeAccessError } = require("./access-errors");
 
 const FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
 const FOLDER_FIELDS = "id,name,mimeType,trashed,capabilities(canAddChildren)";
@@ -16,8 +17,10 @@ function foldersToCheck(settings) {
   for (const [service, s] of Object.entries(settings)) {
     for (const [name, value] of Object.entries(s.env || {})) {
       if (!rules.DRIVE_FOLDER_ENV_PATTERN.test(name) || !value) continue;
-      const entry = byId.get(value) || { folderId: value, usedBy: [] };
+      // Writable is required if any service writes to it
+      const entry = byId.get(value) || { folderId: value, usedBy: [], mustBeWritable: false };
       entry.usedBy.push(`${service} ${name}`);
+      entry.mustBeWritable = entry.mustBeWritable || !rules.READ_ONLY_FOLDER_ENV_PATTERN.test(name);
       byId.set(value, entry);
     }
   }
@@ -27,13 +30,13 @@ function foldersToCheck(settings) {
 async function checkDriveFolders({ settings, clients }) {
   const CHECK = "Drive folders";
   const results = [];
-  for (const { folderId, usedBy } of foldersToCheck(settings)) {
+  for (const { folderId, usedBy, mustBeWritable } of foldersToCheck(settings)) {
     const label = usedBy.join(", ");
     let data;
     try {
       ({ data } = await clients.drive.files.get({ fileId: folderId, fields: FOLDER_FIELDS, supportsAllDrives: true }));
     } catch (err) {
-      results.push(problem(CHECK, label, "drive_folder_unreadable", `Can't open folder ${folderId}: ${err.message}`));
+      results.push(problem(CHECK, label, "drive_folder_unreadable", describeAccessError(err, "folder", folderId)));
       continue;
     }
     const resource = `'${data.name}' (${label})`;
@@ -41,7 +44,7 @@ async function checkDriveFolders({ settings, clients }) {
       results.push(problem(CHECK, resource, "drive_folder_not_folder", `${folderId} is a ${data.mimeType}, not a folder.`));
     } else if (data.trashed) {
       results.push(problem(CHECK, resource, "drive_folder_trashed", "The folder is in the trash."));
-    } else if (!(data.capabilities && data.capabilities.canAddChildren)) {
+    } else if (mustBeWritable && !(data.capabilities && data.capabilities.canAddChildren)) {
       results.push(problem(CHECK, resource, "drive_folder_read_only", "The service account can't add files here."));
     } else {
       results.push(ok(CHECK, resource));

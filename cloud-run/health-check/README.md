@@ -15,7 +15,7 @@ It reads each pipeline service's **live settings** from Cloud Run, so it checks 
 | Processing Log | The `ProcessingLog` header row differs from the Orchestrator's, or files submitted in the last 24 hours have a blank Submitted By |
 | Refinement log | Reviewed / ModelFlagged / OtherChanges is missing or its header row differs from Capture Feedback's |
 | Eval results | The `EvalQuality` header row differs from Eval Quality's (a missing tab or empty row is fine: the service creates them) |
-| Drive folders | Any `DRIVE_*_FOLDER_ID` folder can't be opened, is in the trash, isn't a folder, or the service account can't add files to it |
+| Drive folders | Any `DRIVE_*_FOLDER_ID` folder can't be opened, is in the trash, or isn't a folder; or the service account can't add files to one the pipeline writes to (`*_INPUT_*` folders only need to be readable) |
 | Statutes | `STATUTES_GCS_BUCKET` / `STATUTES_GCS_PREFIX` can't be listed or has no `.txt`/`.md` files |
 | Extract → Translate hand-off | The `PUBSUB_TOPIC_EXTRACTION_COMPLETE` topic is missing, has no subscription, or a subscription's ack deadline is under 600s |
 | Logged problems | Any `input_problem` entry, or a "Chat webhook" error from a pipeline service, in the last 24 hours |

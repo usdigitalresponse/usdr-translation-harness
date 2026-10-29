@@ -18,6 +18,16 @@ const AUTH_SCOPES = [
   "https://www.googleapis.com/auth/spreadsheets.readonly",
 ];
 
+const SEVERITY_INFO = "INFO";
+const SEVERITY_WARNING = "WARNING";
+
+/**
+ * One structured log line (Cloud Logging reads severity and fields from JSON).
+ */
+function logStructured(severity, message, fields = {}) {
+  console.log(JSON.stringify({ severity, message, ...fields }));
+}
+
 // In run order. Each takes the shared context and returns a list of results.
 const CHECKS = [
   { name: "Services", run: checkServices },
@@ -50,10 +60,14 @@ function createClients(auth) {
  * Run every check. A check that throws becomes a "check_crashed" problem, so
  * one broken check never hides the others' results.
  *
- * @param {{project: string, region: string, clients?: Object, checks?: Object[]}} options
+ * Logs one line per check (items, problems, time taken), so the service's
+ * logs show what ran even when the Chat message says "all clear".
+ *
+ * @param {{project: string, region: string, clients?: Object, checks?: Object[],
+ *   log?: Function}} options
  * @returns {Promise<{results: Object[], problems: Object[], checksRun: number}>}
  */
-async function runChecks({ project, region, clients, checks = CHECKS }) {
+async function runChecks({ project, region, clients, checks = CHECKS, log = logStructured }) {
   if (!clients) {
     const auth = new google.auth.GoogleAuth({ scopes: AUTH_SCOPES });
     clients = createClients(auth);
@@ -63,12 +77,23 @@ async function runChecks({ project, region, clients, checks = CHECKS }) {
 
   const results = [];
   for (const check of checks) {
+    const started = Date.now();
+    let checkResults;
     try {
-      results.push(...(await check.run(ctx)));
+      checkResults = await check.run(ctx);
     } catch (err) {
       console.error(`Health check "${check.name}" crashed:`, err);
-      results.push(problem(check.name, "the check itself", "check_crashed", err.message));
+      checkResults = [problem(check.name, "the check itself", "check_crashed", err.message)];
     }
+    results.push(...checkResults);
+    const found = checkResults.filter((r) => r.status === STATUS_PROBLEM);
+    log(found.length ? SEVERITY_WARNING : SEVERITY_INFO,
+      `Check "${check.name}": ${checkResults.length} items, ${found.length} problems`, {
+        check: check.name,
+        items: checkResults.length,
+        problems: found.map((p) => `${p.resource}: ${p.detail}`),
+        duration_ms: Date.now() - started,
+      });
   }
   return {
     results,
@@ -77,4 +102,4 @@ async function runChecks({ project, region, clients, checks = CHECKS }) {
   };
 }
 
-module.exports = { runChecks, createClients, CHECKS, AUTH_SCOPES };
+module.exports = { runChecks, createClients, logStructured, CHECKS, AUTH_SCOPES, SEVERITY_INFO, SEVERITY_WARNING };

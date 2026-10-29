@@ -106,8 +106,10 @@ const EVAL_RESULTS_HEADERS = [
   "Active Voice & Tone", "Consistency & Style", "Result File ID",
 ];
 
-// Drive folders the services write to: every DRIVE_*_FOLDER_ID setting
+// Drive folders the services use: every DRIVE_*_FOLDER_ID setting. Input
+// folders are only read, so they don't need to be writable.
 const DRIVE_FOLDER_ENV_PATTERN = /^DRIVE_\w+_FOLDER_ID$/;
+const READ_ONLY_FOLDER_ENV_PATTERN = /_INPUT_/;
 
 // Statutes (source: translate/loaders.js loadStatutes)
 const STATUTES_BUCKET_ENV = "STATUTES_GCS_BUCKET";
@@ -146,6 +148,7 @@ module.exports = {
   EVAL_RESULTS_TAB,
   EVAL_RESULTS_HEADERS,
   DRIVE_FOLDER_ENV_PATTERN,
+  READ_ONLY_FOLDER_ENV_PATTERN,
   STATUTES_BUCKET_ENV,
   STATUTES_PREFIX_ENV,
   DEFAULT_STATUTES_PREFIX,

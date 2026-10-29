@@ -1,5 +1,6 @@
 const { DOC_ID_ENV_PATTERN } = require("../rules");
 const { ok, problem } = require("../results");
+const { describeAccessError } = require("./access-errors");
 
 const CHECK = "Prompt and rubric docs";
 // Services read rubric tables too (eval/quality/quality_loaders.py); prompt
@@ -60,7 +61,7 @@ async function checkDocs({ settings, clients }) {
     try {
       ({ data } = await clients.docs.documents.get({ documentId: docId }));
     } catch (err) {
-      results.push(problem(CHECK, label, "doc_unreadable", `Can't open doc ${docId}: ${err.message}`));
+      results.push(problem(CHECK, label, "doc_unreadable", describeAccessError(err, "doc", docId)));
       continue;
     }
     const resource = `'${data.title}' (${label})`;

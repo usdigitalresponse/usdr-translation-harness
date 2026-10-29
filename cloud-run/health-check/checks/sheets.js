@@ -1,6 +1,7 @@
 const rules = require("../rules");
 const { ok, problem } = require("../results");
 const { valuesOf } = require("../settings");
+const { describeAccessError } = require("./access-errors");
 const { tabRange, readValues, headerMismatch, missingColumns, normalize, columnLetter } = require("./sheet-utils");
 
 const HEADER_ROW = "1:1";
@@ -51,7 +52,7 @@ async function checkGlossary({ settings, clients }) {
     try {
       rows = await readValues(clients.sheets, sheetId, tabRange(tab, rules.GLOSSARY_SHEET_COLUMNS));
     } catch (err) {
-      results.push(problem(CHECK, resource, "glossary_unreadable", `Can't read sheet ${sheetId}: ${err.message}`));
+      results.push(problem(CHECK, resource, "glossary_unreadable", describeAccessError(err, "sheet", sheetId)));
       continue;
     }
     const [header = [], ...data] = rows;
@@ -80,7 +81,7 @@ async function checkModelConfig({ settings, clients }) {
     try {
       rows = await readValues(clients.sheets, sheetId, rules.MODEL_CONFIG_SHEET_RANGE);
     } catch (err) {
-      results.push(problem(CHECK, resource, "model_config_unreadable", `Can't read sheet ${sheetId}: ${err.message}`));
+      results.push(problem(CHECK, resource, "model_config_unreadable", describeAccessError(err, "sheet", sheetId)));
       continue;
     }
     const [header = [], ...data] = rows;
@@ -117,7 +118,7 @@ async function checkProcessingLog({ settings, clients, now = Date.now() }) {
     try {
       rows = await readValues(clients.sheets, sheetId, tabRange(rules.PROCESSING_LOG_TAB, `A:${lastColumn}`), SERIAL_DATES);
     } catch (err) {
-      results.push(problem(CHECK, resource, "processing_log_unreadable", `Can't read sheet ${sheetId}: ${err.message}`));
+      results.push(problem(CHECK, resource, "processing_log_unreadable", describeAccessError(err, "sheet", sheetId)));
       continue;
     }
     const [header = [], ...data] = rows;
@@ -155,7 +156,7 @@ async function checkRefinementLog({ settings, clients }) {
       try {
         rows = await readValues(clients.sheets, sheetId, tabRange(tab, HEADER_ROW));
       } catch (err) {
-        results.push(problem(CHECK, resource, "refinement_log_unreadable", `Can't read sheet ${sheetId}: ${err.message}`));
+        results.push(problem(CHECK, resource, "refinement_log_unreadable", describeAccessError(err, "sheet", sheetId)));
         continue;
       }
       const mismatch = headerMismatch(rows[0], rules.REFINEMENT_LOG_HEADERS);
@@ -184,7 +185,7 @@ async function checkEvalResults({ settings, clients }) {
       if (err.code === HTTP_BAD_REQUEST) {
         results.push(ok(CHECK, resource, "not created yet (Eval Quality creates it on first use)"));
       } else {
-        results.push(problem(CHECK, resource, "eval_results_unreadable", `Can't read sheet ${sheetId}: ${err.message}`));
+        results.push(problem(CHECK, resource, "eval_results_unreadable", describeAccessError(err, "sheet", sheetId)));
       }
       continue;
     }
