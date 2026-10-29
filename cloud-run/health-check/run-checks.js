@@ -5,7 +5,11 @@ const { loadServiceSettings } = require("./settings");
 const { problem, STATUS_PROBLEM } = require("./results");
 const { checkServices } = require("./checks/services");
 const { checkDocs } = require("./checks/docs");
-const { checkGlossary, checkModelConfig, checkProcessingLog, checkRefinementLog } = require("./checks/sheets");
+const {
+  checkGlossary, checkModelConfig, checkProcessingLog, checkRefinementLog, checkEvalResults,
+} = require("./checks/sheets");
+const { checkDriveFolders, checkStatutes, checkPubSub } = require("./checks/infrastructure");
+const { checkLoggedProblems } = require("./checks/logs");
 
 const AUTH_SCOPES = [
   "https://www.googleapis.com/auth/cloud-platform",
@@ -22,6 +26,11 @@ const CHECKS = [
   { name: "Model Config", run: checkModelConfig },
   { name: "Processing Log", run: checkProcessingLog },
   { name: "Refinement log", run: checkRefinementLog },
+  { name: "Eval results", run: checkEvalResults },
+  { name: "Drive folders", run: checkDriveFolders },
+  { name: "Statutes", run: checkStatutes },
+  { name: "Extract → Translate hand-off", run: checkPubSub },
+  { name: "Logged problems", run: checkLoggedProblems },
 ];
 
 /** googleapis clients the checks use, all authenticated as the service account. */
@@ -31,6 +40,9 @@ function createClients(auth) {
     docs: google.docs({ version: "v1", auth }),
     sheets: google.sheets({ version: "v4", auth }),
     drive: google.drive({ version: "v3", auth }),
+    storage: google.storage({ version: "v1", auth }),
+    pubsub: google.pubsub({ version: "v1", auth }),
+    logging: google.logging({ version: "v2", auth }),
   };
 }
 

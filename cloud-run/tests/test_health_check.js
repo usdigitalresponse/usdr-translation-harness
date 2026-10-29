@@ -93,10 +93,29 @@ function baseSheets() {
     ],
     ...Object.fromEntries(rules.REFINEMENT_LOG_TABS.map((tab) =>
       [`${IDS.refinementLog}|'${tab}'!1:1`, [rules.REFINEMENT_LOG_HEADERS]])),
+    ["sheet-evals|'EvalQuality'!1:1"]: [rules.EVAL_RESULTS_HEADERS],
   };
 }
 
-function fakeClients({ env = baseEnv(), services = {}, docs, sheets = baseSheets(), runError = {} } = {}) {
+const FOLDER = "application/vnd.google-apps.folder";
+function baseFolders() {
+  return Object.fromEntries(["f1", "f2", "f3", "f4", "f5", "f6", "f7"].map((id) =>
+    [id, { id, name: `Folder ${id}`, mimeType: FOLDER, trashed: false, capabilities: { canAddChildren: true } }]));
+}
+
+const TOPIC = "projects/proj/topics/extraction-complete";
+const SUBSCRIPTION = "projects/proj/subscriptions/eventarc-us-central1-extraction-to-translate-sub-123";
+function basePubSub() {
+  return { topics: { [TOPIC]: [SUBSCRIPTION] }, subscriptions: { [SUBSCRIPTION]: { ackDeadlineSeconds: 600 } } };
+}
+
+const badRange = (range) => Object.assign(new Error(`Unable to parse range: ${range}`), { code: 400 });
+
+function fakeClients({
+  env = baseEnv(), services = {}, docs, sheets = baseSheets(), runError = {},
+  folders = baseFolders(), statuteFiles = ["statutes/md-labor-emply-t8.3/8.3-101.txt"],
+  pubsub = basePubSub(), logEntries = [],
+} = {}) {
   const docMap = docs || {
     [IDS.extractPrompt]: textDoc("Extract prompt", "Extract the text."),
     [IDS.translatePrompt]: textDoc("Translate prompt", "Translate it."),
@@ -118,10 +137,29 @@ function fakeClients({ env = baseEnv(), services = {}, docs, sheets = baseSheets
     }) } },
     sheets: { spreadsheets: { values: { get: jest.fn(async ({ spreadsheetId, range }) => {
       const key = `${spreadsheetId}|${range}`;
-      if (!(key in sheets)) throw new Error(`Unable to parse range: ${range}`);
+      if (!(key in sheets)) throw badRange(range);
       return { data: { values: sheets[key] } };
     }) } } },
-    drive: {},
+    drive: { files: { get: jest.fn(async ({ fileId }) => {
+      if (!folders[fileId]) throw new Error("File not found");
+      return { data: folders[fileId] };
+    }) } },
+    storage: { objects: { list: jest.fn(async ({ prefix }) => ({
+      data: { items: statuteFiles.filter((n) => n.startsWith(prefix)).map((name) => ({ name })) },
+    })) } },
+    pubsub: { projects: {
+      topics: {
+        get: jest.fn(async ({ topic }) => {
+          if (!pubsub.topics[topic]) throw new Error("Resource not found");
+          return { data: { name: topic } };
+        }),
+        subscriptions: { list: jest.fn(async ({ topic }) => ({ data: { subscriptions: pubsub.topics[topic] } })) },
+      },
+      subscriptions: { get: jest.fn(async ({ subscription }) => ({ data: pubsub.subscriptions[subscription] })) },
+    } },
+    logging: { entries: { list: jest.fn(async ({ requestBody }) => ({
+      data: { entries: logEntries.filter((e) => e.matches(requestBody.filter)) },
+    })) } },
   };
 }
 
@@ -313,6 +351,101 @@ describe("Refinement log check", () => {
     delete sheets[`${IDS.refinementLog}|'OtherChanges'!1:1`];
     const outcome = await run({ sheets });
     expect(codes(outcome)).toEqual(["refinement_log_headers", "refinement_log_unreadable"]);
+  });
+});
+
+describe("Eval results check", () => {
+  test("tab not created yet is fine", async () => {
+    const sheets = baseSheets();
+    delete sheets["sheet-evals|'EvalQuality'!1:1"];
+    expect((await run({ sheets })).problems).toEqual([]);
+  });
+
+  test("header row changed", async () => {
+    const sheets = baseSheets();
+    sheets["sheet-evals|'EvalQuality'!1:1"] = [["Timestamp", "Translation File ID"]];
+    expect(codes(await run({ sheets }))).toEqual(["eval_results_headers"]);
+  });
+});
+
+describe("Drive folders check", () => {
+  test("missing, trashed, read-only, and a file instead of a folder", async () => {
+    const folders = baseFolders();
+    delete folders.f1;
+    folders.f2.trashed = true;
+    folders.f3.capabilities.canAddChildren = false;
+    folders.f4.mimeType = "application/pdf";
+    const outcome = await run({ folders });
+    expect(codes(outcome)).toEqual([
+      "drive_folder_unreadable", "drive_folder_trashed", "drive_folder_read_only", "drive_folder_not_folder",
+    ]);
+    expect(outcome.problems[0].resource).toContain("DRIVE_EXTRACTION_JSON_FOLDER_ID");
+  });
+});
+
+describe("Statutes check", () => {
+  test("no statute files under the prefix", async () => {
+    expect(codes(await run({ statuteFiles: ["statutes/md-labor-emply-t8.3/readme.pdf"] }))).toEqual(["statutes_empty"]);
+  });
+
+  test("uses STATUTES_GCS_PREFIX when set", async () => {
+    const env = baseEnv();
+    env.translate.STATUTES_GCS_PREFIX = "statutes/other/";
+    const outcome = await run({ env });
+    expect(codes(outcome)).toEqual(["statutes_empty"]);
+    expect(outcome.problems[0].resource).toContain("statutes/other/");
+  });
+});
+
+describe("Extract → Translate hand-off check", () => {
+  test("topic missing", async () => {
+    expect(codes(await run({ pubsub: { topics: {}, subscriptions: {} } }))).toEqual(["pubsub_topic_missing"]);
+  });
+
+  test("no subscription", async () => {
+    expect(codes(await run({ pubsub: { topics: { [TOPIC]: [] }, subscriptions: {} } }))).toEqual(["pubsub_no_subscription"]);
+  });
+
+  test("ack deadline too short", async () => {
+    const pubsub = basePubSub();
+    pubsub.subscriptions[SUBSCRIPTION].ackDeadlineSeconds = 10;
+    const outcome = await run({ pubsub });
+    expect(codes(outcome)).toEqual(["pubsub_ack_deadline_short"]);
+    expect(outcome.problems[0].detail).toContain("10s");
+  });
+});
+
+describe("Logged problems check", () => {
+  const inputProblem = (service, input, message) => ({
+    matches: (f) => f.includes("input_problem"),
+    resource: { labels: { service_name: service } },
+    jsonPayload: { input_problem: input, message },
+  });
+  const webhookError = (message) => ({
+    matches: (f) => f.includes("Chat webhook"),
+    resource: { labels: { service_name: "translate" } },
+    textPayload: message,
+  });
+
+  test("groups input problems by service and input, newest message first", async () => {
+    const outcome = await run({ logEntries: [
+      inputProblem("translate", "glossary", "newest"),
+      inputProblem("translate", "glossary", "older"),
+      inputProblem("extract", "model_config", "config gone"),
+      webhookError("Chat webhook rejected with 403 Forbidden"),
+    ] });
+    expect(codes(outcome)).toEqual(["logged_input_problem", "logged_input_problem", "logged_chat_webhook_error"]);
+    expect(outcome.problems[0].resource).toBe("translate: glossary");
+    expect(outcome.problems[0].detail).toBe("2 times in the last 24 hours. Latest: newest");
+  });
+
+  test("filters to the last 24 hours and skips the health check's own logs", async () => {
+    const clients = fakeClients();
+    await runChecks({ project: PROJECT, region: REGION, clients });
+    const filters = clients.logging.entries.list.mock.calls.map((c) => c[0].requestBody.filter);
+    const since = new Date(NOW - MS_PER_DAY).toISOString();
+    for (const f of filters) expect(f).toContain(`timestamp>="${since}"`);
+    expect(filters[1]).toContain('resource.labels.service_name!="health-check"');
   });
 });
 

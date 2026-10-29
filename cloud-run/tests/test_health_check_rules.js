@@ -64,6 +64,24 @@ describe("health-check rules match the services", () => {
     expect(rules.REFINEMENT_LOG_TABS).toEqual([TAB_REVIEWED, TAB_MODEL_FLAGGED, TAB_OTHER_CHANGES]);
   });
 
+  test("eval results tab and headers match Eval Quality", () => {
+    const src = read("cloud-run/eval/quality/quality_loaders.py");
+    expect(rules.EVAL_RESULTS_TAB).toBe(stringConstant("cloud-run/eval/quality/quality_loaders.py", "EVAL_RESULTS_SHEET_NAME"));
+    const block = src.match(/EVAL_RESULTS_HEADERS = \[([\s\S]*?)\]/)[1];
+    const headers = [...block.matchAll(/^\s*"([^"]+)",/gm)].map((m) => m[1]);
+    expect(rules.EVAL_RESULTS_HEADERS).toEqual(headers);
+  });
+
+  test("statutes default prefix and file types match Translate", () => {
+    const src = read("cloud-run/translate/loaders.js");
+    expect(src).toContain(`process.env.STATUTES_GCS_PREFIX || "${rules.DEFAULT_STATUTES_PREFIX}"`);
+    for (const ext of rules.STATUTE_FILE_EXTENSIONS) expect(src).toContain(`f.endsWith("${ext}")`);
+  });
+
+  test("Pub/Sub topic setting matches Extract", () => {
+    expect(rules.PUBSUB_TOPIC_ENV).toBe(stringConstant("cloud-run/extract/main.py", "PUBSUB_TOPIC_ENV_VAR"));
+  });
+
   test("required env vars are ones the services actually read", () => {
     const sources = {
       extract: ["cloud-run/extract/main.py", "cloud-run/extract/loaders.py"],

@@ -53,6 +53,42 @@ const WHAT_TO_DO = {
   refinement_log_headers:
     "Restore row 1 of this tab to the expected headers. Until then, reviewer decisions for this tab aren't recorded.",
 
+  // Eval results sheet
+  eval_results_unreadable:
+    "Check the eval results sheet is shared with the service account (Editor), or fix EVAL_QUALITY_RESULTS_SHEET_ID.",
+  eval_results_headers:
+    "Restore row 1 of the EvalQuality tab to the expected headers. Rows are written by position, so new results land in the wrong columns.",
+
+  // Drive folders
+  drive_folder_unreadable:
+    "Share the folder (or its Shared Drive) with the pipeline service account as Content manager, or fix the folder ID setting.",
+  drive_folder_not_folder:
+    "The setting points at a file, not a folder. Copy the folder's ID from its URL into the setting.",
+  drive_folder_trashed:
+    "Restore the folder from the trash (Drive > Trash), or point the setting at a new folder.",
+  drive_folder_read_only:
+    "Give the pipeline service account Content manager (or Editor) on the folder or its Shared Drive.",
+
+  // Statutes
+  statutes_unreadable:
+    "Check STATUTES_GCS_BUCKET is right and the service account has Storage Object Viewer on the bucket.",
+  statutes_empty:
+    "Upload the statute files, or fix STATUTES_GCS_PREFIX. Until then, translations run without statutes.",
+
+  // Extract -> Translate hand-off
+  pubsub_topic_missing:
+    "Recreate the topic (setup guide 4), or fix PUBSUB_TOPIC_EXTRACTION_COMPLETE on extract. Until then, no file gets translated.",
+  pubsub_no_subscription:
+    "Recreate the Eventarc trigger from the topic to Translate (setup guide 5). Until then, no file gets translated.",
+  pubsub_ack_deadline_short:
+    "Set the subscription's ack deadline to 600s: gcloud pubsub subscriptions update <subscription> --ack-deadline=600.",
+
+  // Problems the services logged
+  logged_input_problem:
+    "A service reported a problem with one of its inputs. Search Logs Explorer for jsonPayload.input_problem in the last day for details.",
+  logged_chat_webhook_error:
+    "Translate couldn't post to the translators' Chat space. Check GOOGLE_CHAT_WEBHOOK_URL and the space's webhook settings.",
+
   // The check itself
   check_crashed:
     "The health check hit an unexpected error. See the health-check service logs in Cloud Run.",

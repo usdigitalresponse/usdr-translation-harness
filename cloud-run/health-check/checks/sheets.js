@@ -167,8 +167,42 @@ async function checkRefinementLog({ settings, clients }) {
   return results;
 }
 
+// ── Check 7: Eval results sheet ───────────────────────────────────────────
+
+const HTTP_BAD_REQUEST = 400;
+
+async function checkEvalResults({ settings, clients }) {
+  const CHECK = "Eval results";
+  const results = [];
+  for (const { value: sheetId } of distinctSettings(settings, rules.EVAL_RESULTS_SHEET_ENV)) {
+    const resource = `${rules.EVAL_RESULTS_TAB} tab`;
+    let rows;
+    try {
+      rows = await readValues(clients.sheets, sheetId, tabRange(rules.EVAL_RESULTS_TAB, HEADER_ROW));
+    } catch (err) {
+      // 400 = the tab doesn't exist yet; Eval Quality creates it on its first run
+      if (err.code === HTTP_BAD_REQUEST) {
+        results.push(ok(CHECK, resource, "not created yet (Eval Quality creates it on first use)"));
+      } else {
+        results.push(problem(CHECK, resource, "eval_results_unreadable", `Can't read sheet ${sheetId}: ${err.message}`));
+      }
+      continue;
+    }
+    if (!rows.length || !rows[0].length) {
+      results.push(ok(CHECK, resource, "empty (Eval Quality writes the header on first use)"));
+      continue;
+    }
+    const mismatch = headerMismatch(rows[0], rules.EVAL_RESULTS_HEADERS);
+    results.push(mismatch
+      ? problem(CHECK, resource, "eval_results_headers", `Row 1 doesn't match: ${mismatch}.`)
+      : ok(CHECK, resource));
+  }
+  return results;
+}
+
 module.exports = {
   checkGlossary,
+  checkEvalResults,
   checkModelConfig,
   checkProcessingLog,
   checkRefinementLog,

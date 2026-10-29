@@ -96,6 +96,31 @@ const REFINEMENT_LOG_HEADERS = [
   "Reviewer Sentence",
 ];
 
+// Eval Quality results (source: eval/quality/quality_loaders.py). The service
+// creates the tab and header if they're missing, but never checks an existing one.
+const EVAL_RESULTS_SHEET_ENV = "EVAL_QUALITY_RESULTS_SHEET_ID";
+const EVAL_RESULTS_TAB = "EvalQuality";
+const EVAL_RESULTS_HEADERS = [
+  "Timestamp", "Document ID", "Provider", "Model", "Weighted Overall", "Priority",
+  "Accuracy & Relevance", "Clarity & Simplicity", "Cultural Sensitivity",
+  "Active Voice & Tone", "Consistency & Style", "Result File ID",
+];
+
+// Drive folders the services write to: every DRIVE_*_FOLDER_ID setting
+const DRIVE_FOLDER_ENV_PATTERN = /^DRIVE_\w+_FOLDER_ID$/;
+
+// Statutes (source: translate/loaders.js loadStatutes)
+const STATUTES_BUCKET_ENV = "STATUTES_GCS_BUCKET";
+const STATUTES_PREFIX_ENV = "STATUTES_GCS_PREFIX";
+const DEFAULT_STATUTES_PREFIX = "statutes/md-labor-emply-t8.3/";
+const STATUTE_FILE_EXTENSIONS = [".txt", ".md"];
+
+// Extract -> Translate hand-off (source: extract/main.py; ack deadline from
+// setup guide 5: Translate can take up to its 600s timeout, and a shorter
+// deadline makes Pub/Sub redeliver, translating the same file twice)
+const PUBSUB_TOPIC_ENV = "PUBSUB_TOPIC_EXTRACTION_COMPLETE";
+const MIN_ACK_DEADLINE_SECONDS = 600;
+
 module.exports = {
   SERVICES,
   DOC_ID_ENV_PATTERN,
@@ -117,4 +142,14 @@ module.exports = {
   REFINEMENT_LOG_SHEET_ENV,
   REFINEMENT_LOG_TABS,
   REFINEMENT_LOG_HEADERS,
+  EVAL_RESULTS_SHEET_ENV,
+  EVAL_RESULTS_TAB,
+  EVAL_RESULTS_HEADERS,
+  DRIVE_FOLDER_ENV_PATTERN,
+  STATUTES_BUCKET_ENV,
+  STATUTES_PREFIX_ENV,
+  DEFAULT_STATUTES_PREFIX,
+  STATUTE_FILE_EXTENSIONS,
+  PUBSUB_TOPIC_ENV,
+  MIN_ACK_DEADLINE_SECONDS,
 };

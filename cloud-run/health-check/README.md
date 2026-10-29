@@ -14,6 +14,11 @@ It reads each pipeline service's **live settings** from Cloud Run, so it checks 
 | Model Config | The `Config` tab can't be read, is missing role/provider/model/active, or a service's role has no row with active = YES |
 | Processing Log | The `ProcessingLog` header row differs from the Orchestrator's, or files submitted in the last 24 hours have a blank Submitted By |
 | Refinement log | Reviewed / ModelFlagged / OtherChanges is missing or its header row differs from Capture Feedback's |
+| Eval results | The `EvalQuality` header row differs from Eval Quality's (a missing tab or empty row is fine: the service creates them) |
+| Drive folders | Any `DRIVE_*_FOLDER_ID` folder can't be opened, is in the trash, isn't a folder, or the service account can't add files to it |
+| Statutes | `STATUTES_GCS_BUCKET` / `STATUTES_GCS_PREFIX` can't be listed or has no `.txt`/`.md` files |
+| Extract → Translate hand-off | The `PUBSUB_TOPIC_EXTRACTION_COMPLETE` topic is missing, has no subscription, or a subscription's ack deadline is under 600s |
+| Logged problems | Any `input_problem` entry, or a "Chat webhook" error from a pipeline service, in the last 24 hours |
 
 The expected headers, tabs and roles are copies of the owning services' rules (`rules.js`); `cloud-run/tests/test_health_check_rules.js` fails if a copy drifts. The "what to do" text for each problem is in `runbook.js`.
 
@@ -26,7 +31,13 @@ The expected headers, tabs and roles are copies of the owning services' rules (`
 | `HEALTH_CHECK_ENVIRONMENT` | Name shown in the message, e.g. `USDR` or `Maryland` |
 | `GOOGLE_CLOUD_PROJECT` | Optional; defaults to the project it runs in |
 
-Runs as the **pipeline service account**, so "the check can read it" means "the pipeline can read it". That account needs **Cloud Run Viewer** (`roles/run.viewer`) in addition to the Drive/Sheets/Docs sharing it already has.
+Runs as the **pipeline service account**, so "the check can read it" means "the pipeline can read it". Besides the Drive/Sheets/Docs sharing and statutes bucket access it already has, that account needs three read-only project roles:
+
+| Role | For |
+|---|---|
+| Cloud Run Viewer (`roles/run.viewer`) | Reading the services' settings and traffic |
+| Pub/Sub Viewer (`roles/pubsub.viewer`) | The topic and subscription check |
+| Logs Viewer (`roles/logging.viewer`) | The logged-problems check |
 
 ## Run it locally
 
