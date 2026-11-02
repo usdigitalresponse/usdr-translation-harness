@@ -507,27 +507,6 @@ function checkItemsExist() {
   return orphans;
 }
 
-// ── Prompt URL persistence ──────────────────────────────────────────────
-
-var PROMPT_URL_KEY = "PROMPT_URL";
-var RUBRIC_URL_KEY = "RUBRIC_URL";
-
-function setPromptUrl(url) {
-  PropertiesService.getDocumentProperties().setProperty(PROMPT_URL_KEY, url);
-}
-
-function getPromptUrl() {
-  return PropertiesService.getDocumentProperties().getProperty(PROMPT_URL_KEY) || "";
-}
-
-function setRubricUrl(url) {
-  PropertiesService.getDocumentProperties().setProperty(RUBRIC_URL_KEY, url);
-}
-
-function getRubricUrl() {
-  return PropertiesService.getDocumentProperties().getProperty(RUBRIC_URL_KEY) || "";
-}
-
 // ── Sidebar actions ─────────────────────────────────────────────────────
 
 /**

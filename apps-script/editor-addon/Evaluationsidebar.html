@@ -6,6 +6,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Lora:wght@500;600;700&display=swap" rel="stylesheet">
+  <!-- Design item 9: Material Symbols, trimmed to the icons the sidebars use
+       (icon_names must stay alphabetical). display=block hides the icon names
+       while the font loads instead of flashing them as text. -->
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0&icon_names=expand_more,more_vert,navigate_before,navigate_next,open_in_new,refresh,undo&display=block" rel="stylesheet">
   <style>
     :root {
       --ink: #071A51; --ink-soft: #4b5580; --ink-faint: #8b93b8;
@@ -13,10 +17,19 @@
       --accent: #0066FF; --accent-bg: #e8f0ff;
       --code-bg: #f3f6fb; --code-ink: #1c2540;
       --red-ink:    #b23b3b; --red-bg:    #fdeceb; --red-bdr:    #f3c6c2;
-      --yellow-ink: #b07a3a; --yellow-bg: #fef3e2; --yellow-bdr: #f5d9a8;
+      --yellow-ink: #A84300; --yellow-bg: #fef3e2; --yellow-bdr: #f5d9a8;
       --green-ink:  #1f7a5c; --green-bg:  #e9f7f1; --green-bdr:  #bfe3d3;
       --font-head: 'Lora', Georgia, 'Times New Roman', serif;
       --font-body: 'Inter', Roboto, -apple-system, 'Segoe UI', sans-serif;
+      --focus-ring: #1976D2;  /* design guide item 2 */
+          /* Design item 5: link colors */
+      --link: #1976D2;
+      --link-visited: #1565C0;
+      --link-active: #0D47A1;
+          /* Design item 6: secondary button outlines reach 3:1 against white and
+         the card (3.7 / 3.5); primary buttons darken on hover instead of fading */
+      --btn-border: #7a83a9;
+      --accent-hover: #1565C0;
     }
     * { box-sizing: border-box; }
     html, body { margin:0; padding:0; height:100%; background:var(--paper); color:var(--ink);
@@ -28,52 +41,18 @@
     .title-row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
     h1 { margin:0; font-family:var(--font-head); font-size:15px; font-weight:600; letter-spacing:0; text-transform:none; color:var(--ink); }    .refresh-icon-btn {
       font-size:15px; line-height:1; color:var(--ink-soft); cursor:pointer;
-      padding:2px 4px; border-radius:5px;
+      padding:2px 4px; border-radius:5px; border:none; background:none; font-family:inherit;
     }
     .refresh-icon-btn:hover { background:var(--line-soft); color:var(--ink); }
     .meta { margin-top:6px; font-size:11px; color:var(--ink-faint); }
     .stale-note { margin:0 0 12px; padding:8px 10px; font-size:12px; line-height:1.4; border-radius:6px;
       color:var(--yellow-ink); background:var(--yellow-bg); border:1px solid var(--yellow-bdr); }
 
-    /* Rubric link row + manage menu */
+    /* Rubric link row */
     .rubric-row { margin-top:8px; display:flex; align-items:center; gap:10px; position:relative; }
-    .rubric-link { font-size:12px; font-weight:600; color:var(--accent); text-decoration:none; }
-    .rubric-link:hover { text-decoration:underline; }
+    .rubric-link { font-size:12px; font-weight:600; }
 
-    .manage-wrap { margin-left:auto; position:relative; }
-    .manage-btn {
-      border:none; background:none; cursor:pointer;
-      font-size:20px; font-weight:700; line-height:1; color:var(--ink);
-      padding:3px 6px; border-radius:5px;
-    }
-    .manage-btn:hover { background:var(--line-soft); }
-    .manage-menu {
-      display:none; position:absolute; right:0; top:28px; z-index:20;
-      background:var(--paper); border:1px solid var(--line); border-radius:8px;
-      padding:5px; min-width:150px; box-shadow:0 4px 14px rgba(0,0,0,0.08);
-    }
-    .manage-menu.open { display:block; }
-    .manage-item {
-      font-size:12px; color:var(--ink-soft); padding:7px 9px; border-radius:6px;
-      cursor:pointer; white-space:nowrap;
-    }
-    .manage-item:hover { background:var(--line-soft); color:var(--ink); }
-
-    .rubric-edit-panel { margin-top:8px; padding:10px; background:var(--raise);
-      border:1px solid var(--line); border-radius:8px; }
-    .rubric-input { width:100%; font-size:11.5px; font-family:inherit; color:var(--ink);
-      padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:var(--paper);
-      margin-bottom:8px; }
-    .rubric-input:focus { outline:none; border-color:var(--accent); }
-    .rubric-edit-actions { display:flex; gap:8px; }
-    .rubric-save, .rubric-cancel { font-size:11px; font-weight:600; border-radius:6px;
-      padding:5px 10px; cursor:pointer; border:1px solid transparent; }
-    .rubric-save { background:var(--accent); color:#fff; }
-    .rubric-save:hover { opacity:.9; }
-    .rubric-save:disabled { opacity:.6; cursor:default; }
-    .rubric-cancel { background:none; border-color:var(--line); color:var(--ink-soft); }
-    .rubric-cancel:hover { background:var(--line-soft); }
-    .rubric-warn { margin-top:7px; font-size:11px; color:var(--red-ink); min-height:0; }
+    .refresh-icon-btn .material-symbols-outlined { font-size:20px; }
 
     .score-card { margin-top:14px; display:flex; align-items:center; gap:14px; }
     .score-big { font-family:var(--font-head); font-size:32px; font-weight:600; color:var(--ink); line-height:1; }    .score-big small { font-size:14px; font-weight:600; color:var(--ink-faint); }
@@ -130,10 +109,12 @@
     }
     .dim-summary::-webkit-details-marker { display:none; }
     .dim-summary::after {
-      content:'\25b8'; font-size:11px; color:var(--ink-soft); margin-left:6px;
-      transition: transform 120ms ease; display:inline-block;
+      content:'expand_more'; font-family:'Material Symbols Outlined'; font-feature-settings:'liga'; line-height:1;
+      letter-spacing:normal; text-transform:none; white-space:nowrap; direction:ltr;
+      font-size:18px; color:var(--ink-soft); margin-left:6px;
+      transform: rotate(-90deg); transition: transform 120ms ease; display:inline-block;
     }
-    details.dim[open] .dim-summary::after { transform: rotate(90deg); }
+    details.dim[open] .dim-summary::after { transform: rotate(0deg); }
     .dim-name { font-family:var(--font-head); font-weight:600; font-size:13px; flex:1; color:var(--ink); }
     .dim-score-wrap { display:flex; align-items:center; gap:6px; }
     .score-dot { width:8px; height:8px; border-radius:50%; display:inline-block; flex:0 0 auto; }
@@ -172,8 +153,7 @@
     .rec-check { flex:0 0 auto; width:12px; height:12px; margin-top:3px; accent-color: var(--ink-faint); cursor:pointer; }
     .rec-text { font-size:12px; color:var(--ink-soft); line-height:1.45; cursor:pointer; }
     .rec-row.checked .rec-text { color:var(--ink-faint); text-decoration:line-through; }
-    .dim-rubric-link { display:block; margin-top:10px; font-size:11px; color:var(--ink-faint); text-decoration:none; }
-    .dim-rubric-link:hover { color:var(--accent); text-decoration:underline; }
+    .dim-rubric-link { display:inline-block; margin-top:10px; font-size:11px; }
 
 
     .text-block { font-size:12px; color:var(--ink-soft); white-space:pre-wrap; word-break:break-word; }
@@ -182,6 +162,50 @@
     .stage { text-align:center; color:var(--ink-soft); padding:56px 16px; font-size:12.5px; }
     .stage strong { display:block; color:var(--ink); font-size:13px; margin-bottom:6px; }
     .stage .hint { color:var(--ink-faint); margin-top:8px; font-size:12px; }
+
+    /* Design item 2: visible keyboard focus on every interactive element.
+       (Text inputs keep their own focus style: accent border.) */
+    button:focus-visible,
+    a:focus-visible,
+    summary:focus-visible,
+    [role="button"]:focus-visible,
+    [tabindex]:focus-visible,
+    .nav-arrow:focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: 2px;
+    }
+    /* Criterion sections clip overflow (for their rounded corners), which hid
+       an outline drawn outside the summary, so draw it just inside instead. */
+    .dim-summary:focus-visible { outline-offset: -2px; border-radius: 9px; }
+
+    /* Design item 4: text read by screen readers but not shown (aria-label
+       isn't announced on plain spans, so badges and scores use this instead) */
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
+
+    /* Design item 5: links are always underlined (not color alone), with the
+       designer's link colors. Each link's own class rule (above) sets only size/weight. */
+    a {
+      color: var(--link);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      text-decoration-skip-ink: auto;
+    }
+    a:visited { color: var(--link-visited); }
+    a:hover {
+      text-decoration-thickness: 2px;
+      background-color: rgba(25, 118, 210, 0.08);
+    }
+    a:active { color: var(--link-active); }
+    /* Design item 9: Material Symbols icons. Fixed 1em width so a slow font
+       load can't widen the layout with the icon's name. */
+    .material-symbols-outlined {
+      font-size: 18px; width: 1em; overflow: hidden;
+      vertical-align: middle; user-select: none;
+    }
+    .icon-ext { font-size: 14px; margin-left: 2px; vertical-align: -2px; }
   </style>
 </head>
 <body>
@@ -192,13 +216,10 @@
 
 <script>
   var DATA = null;
-  var manageOpen = false;
-
   var EVAL_FIRST_RUN_MSG = 'Evaluating the translation…';
   var EVAL_RERUN_MSG     = 'Re-evaluating the translation…';
 
-  var DEFAULT_RUBRIC_URL = 'https://docs.google.com/document/d/1JldVu3T0OCSddWIqL6BVfrD0_HR8hjzS7W8WB7Ukx7E/edit?tab=t.chdst7j0fwjs#heading=h.32t2w6jzxg1e';
-  var rubricUrl = DEFAULT_RUBRIC_URL;
+  var RUBRIC_URL = 'https://docs.google.com/document/d/1JldVu3T0OCSddWIqL6BVfrD0_HR8hjzS7W8WB7Ukx7E/edit?tab=t.chdst7j0fwjs#heading=h.32t2w6jzxg1e';
 
   var DIMENSIONS = [
     { key: 'accuracy',    rawKey: 'accuracy_and_relevance',   label: 'Accuracy & Relevance',
@@ -251,6 +272,14 @@
       { n: 1, d: 'Inconsistent terms or formatting appear unprofessional.' }
     ]
   };
+
+  // Design item 9: Material Symbols icon markup. Decorative by default;
+  // the control around it carries the accessible name.
+  function icon(name, cls) {
+    return '<span class="material-symbols-outlined' + (cls ? ' ' + cls : '') + '" aria-hidden="true">' + name + '</span>';
+  }
+  // Appended to links that open a new tab.
+  var EXTERNAL_LINK_ICON = icon('open_in_new', 'icon-ext') + '<span class="sr-only"> (opens in new tab)</span>';
 
   function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function tryParse(s){ if (typeof s!=='string') return s; try { return JSON.parse(s); } catch(e){ return null; } }
@@ -366,24 +395,10 @@
 
   function buildTopHtml() {
     return '<div class="title-row"><h1>Evaluation Results</h1>'
-      +   '<span class="refresh-icon-btn" id="refreshIconBtn" title="Refresh" aria-label="Refresh">&#8635;</span>'
+      +   '<button type="button" class="refresh-icon-btn" id="refreshIconBtn" title="Refresh" aria-label="Refresh">' + icon('refresh') + '</button>'
       + '</div>'
       + '<div class="rubric-row">'
-      +   '<a href="' + esc(rubricUrl) + '" target="_blank" rel="noopener" class="rubric-link" id="rubricLink">View rubric</a>'
-      +   '<div class="manage-wrap">'
-      +     '<button type="button" class="manage-btn" id="manageBtn" aria-label="Manage">&#8942;</button>'
-      +     '<div class="manage-menu' + (manageOpen ? ' open' : '') + '" id="manageMenu">'
-      +       '<div class="manage-item" id="changeRubricItem">Change rubric</div>'
-      +     '</div>'
-      +   '</div>'
-      + '</div>'
-      + '<div class="rubric-edit-panel" id="rubricEditPanel" hidden>'
-      +   '<input type="text" class="rubric-input" id="rubricInput" placeholder="Paste new rubric doc URL" value="' + esc(rubricUrl) + '">'
-      +   '<div class="rubric-edit-actions">'
-      +     '<button type="button" class="rubric-save" id="rubricSaveBtn">Save</button>'
-      +     '<button type="button" class="rubric-cancel" id="rubricCancelBtn">Cancel</button>'
-      +   '</div>'
-      +   '<div class="rubric-warn" id="rubricWarn"></div>'
+      +   '<a href="' + esc(RUBRIC_URL) + '" target="_blank" rel="noopener" class="rubric-link" id="rubricLink">Learn how we score' + EXTERNAL_LINK_ICON + '</a>'
       + '</div>';
   }
 
@@ -391,76 +406,6 @@
     var refreshIconBtn = document.getElementById('refreshIconBtn');
     if (refreshIconBtn) refreshIconBtn.addEventListener('click', function() {
       runEvaluation(EVAL_RERUN_MSG);
-    });
-
-    var manageBtn = document.getElementById('manageBtn');
-    if (manageBtn) manageBtn.addEventListener('click', function(e) {
-      e.stopPropagation();
-      manageOpen = !manageOpen;
-      document.getElementById('manageMenu').classList.toggle('open', manageOpen);
-    });
-    document.addEventListener('click', function() {
-      if (manageOpen) {
-        manageOpen = false;
-        var menu = document.getElementById('manageMenu');
-        if (menu) menu.classList.remove('open');
-      }
-    });
-
-    var panel    = document.getElementById('rubricEditPanel');
-    var input    = document.getElementById('rubricInput');
-    var saveBtn  = document.getElementById('rubricSaveBtn');
-    var cancelBtn = document.getElementById('rubricCancelBtn');
-    var warnEl   = document.getElementById('rubricWarn');
-
-    var changeRubricItem = document.getElementById('changeRubricItem');
-    if (changeRubricItem) changeRubricItem.addEventListener('click', function(e) {
-      e.stopPropagation();
-      manageOpen = false;
-      document.getElementById('manageMenu').classList.remove('open');
-      input.value = rubricUrl;
-      warnEl.textContent = '';
-      panel.hidden = !panel.hidden;
-    });
-
-    if (cancelBtn) cancelBtn.addEventListener('click', function () {
-      panel.hidden = true;
-      warnEl.textContent = '';
-    });
-
-    if (saveBtn) saveBtn.addEventListener('click', function () {
-      var newUrl = (input.value || '').trim();
-      if (!newUrl) {
-        warnEl.textContent = 'Please enter a URL.';
-        return;
-      }
-      if (newUrl === rubricUrl) {
-        panel.hidden = true;
-        return;
-      }
-
-      var confirmed = window.confirm(
-        'Change the rubric link shown in this sidebar?\n\n' +
-        'New link:\n' + newUrl + '\n\n' +
-        'This updates the link for everyone who opens this sidebar. It does not change how evaluations are scored.'
-      );
-      if (!confirmed) return;
-
-      saveBtn.disabled = true;
-      warnEl.textContent = '';
-      google.script.run
-        .withSuccessHandler(function () {
-          rubricUrl = newUrl;
-          saveBtn.disabled = false;
-          panel.hidden = true;
-          var link = document.getElementById('rubricLink');
-          if (link) link.href = rubricUrl;
-        })
-        .withFailureHandler(function (err) {
-          saveBtn.disabled = false;
-          warnEl.textContent = 'Couldn\'t save: ' + (err && err.message ? err.message : err);
-        })
-        .setRubricUrl(newUrl);
     });
   }
 
@@ -506,7 +451,7 @@
       var recs      = extractList_(node, ['recommendations','recommendation','suggestions','fixes']);
       var comment   = rawComment(node);
       var emptyMsg = DATA.detailTrimmed
-        ? 'Detail too large to cache — click &#8635; to re-run and view.'
+        ? 'Detail too large to cache — click <span class="material-symbols-outlined">refresh</span> to re-run and view.'
         : 'No additional detail provided.';
       // Recommendations is the only list rendered today (the strengths/issues
       // toggles are off), so it alone decides whether the container appears —
@@ -546,7 +491,7 @@
       topHtml += '<div class="score-card">';
       if (scores.weightedOverall !== '') {
         topHtml += '<div class="score-wrap' + (multi ? ' has-breakdown" tabindex="0' : '') + '">'
-              +   '<div class="score-big">' + esc(scores.weightedOverall) + '<small>/5</small></div>'
+              +   '<div class="score-big"><span class="sr-only">Overall score: </span>' + esc(scores.weightedOverall) + '<small aria-hidden="true">/5</small><span class="sr-only"> out of 5</span></div>'
               +   (multi ? '<span class="score-hint">avg of ' + models.length + ' models &#9432;</span>' + buildBreakdown(models) : '')
               + '</div>';
       }
@@ -563,11 +508,11 @@
     var html = '';
     if (DATA.stale) {
       html += '<div class="stale-note">This document has changed since it was last evaluated. '
-        + 'Click the &#8635; refresh button above to re-evaluate.</div>';
+        + 'Click the <span class="material-symbols-outlined" aria-hidden="true">refresh</span> refresh button above to re-evaluate.</div>';
     }
     html += '<section>';
     if (fallback) {
-      html += '<div class="empty-sec">The model\'s response for this evaluation couldn\'t be read. Click the &#8635; refresh button above to run it again.</div>';
+      html += '<div class="empty-sec">The model\'s response for this evaluation couldn\'t be read. Click the <span class="material-symbols-outlined" aria-hidden="true">refresh</span> refresh button above to run it again.</div>';
     } else {
       DIMENSIONS.forEach(function(d) {
         var val        = scores[d.key];
@@ -576,12 +521,12 @@
         html += '<details class="dim">'
           + '<summary class="dim-summary">'
           +   '<span class="dim-name">' + esc(d.label) + '</span>'
-          +   (val !== '' && val !== undefined ? '<span class="dim-score-wrap"><span class="score-dot ' + colorClass + '"></span><span class="dim-score">' + esc(val) + '</span></span>' : '')
+          +   (val !== '' && val !== undefined ? '<span class="dim-score-wrap"><span class="score-dot ' + colorClass + '" aria-hidden="true"></span><span class="dim-score">' + esc(val) + '<span class="sr-only"> out of 5</span></span></span>' : '')
           + '</summary>'
           + '<div class="dim-body">'
           +   rubricScaleBlock(d.key, val, colorClass)
           +   buildDimDetail(d, models)
-          +   '<a href="' + esc(d.rubricUrl || rubricUrl) + '" target="_blank" rel="noopener" class="dim-rubric-link">View rubric &#8599;</a>'
+          +   '<a href="' + esc(d.rubricUrl || RUBRIC_URL) + '" target="_blank" rel="noopener" class="dim-rubric-link">Learn how we score' + EXTERNAL_LINK_ICON + '</a>'
           + '</div>'
           + '</details>';
       });
@@ -640,18 +585,6 @@
   function boot() {
     document.getElementById('topBar').innerHTML = buildTopHtml();
     attachTopBarListeners();
-    google.script.run
-      .withSuccessHandler(function (url) {
-        if (url) {
-          rubricUrl = url;
-          var link = document.getElementById('rubricLink');
-          if (link) link.href = rubricUrl;
-          var input = document.getElementById('rubricInput');
-          if (input) input.value = rubricUrl;
-        }
-      })
-      .withFailureHandler(function () { /* keep default rubric link silently */ })
-      .getRubricUrl();
 
     // Show the previous evaluation if one exists; only run automatically the
     // first time (nothing cached). The ↻ button re-runs on demand, and a
