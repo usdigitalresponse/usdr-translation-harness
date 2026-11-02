@@ -593,16 +593,19 @@ describe("watchForNewFiles", () => {
     expect(fetchMock).toHaveBeenCalledTimes(6);
   });
 
-  test("exits gracefully on missing config", () => {
+  test("fails the run, without calling anything, when script properties are missing", () => {
+    var fetchMock = jest.fn();
+    var consoleMock = { error: jest.fn(), log: jest.fn() };
     var ctx = loadOrchestrator({
       PropertiesService: mockScriptProperties({}),
+      UrlFetchApp: { fetch: fetchMock },
+      console: consoleMock,
     });
 
-    expect(() => ctx.watchForNewFiles()).not.toThrow();
-    expect(ctx.Logger.log).toHaveBeenCalledWith(
-      "Configuration error: %s",
-      expect.stringContaining("Missing required script properties")
-    );
+    expect(() => ctx.watchForNewFiles()).toThrow("Missing required script properties");
+    expect(consoleMock.error).toHaveBeenCalledWith(
+      expect.stringContaining("Configuration error: Missing required script properties"));
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

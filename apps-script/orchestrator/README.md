@@ -44,6 +44,10 @@ Set under Project Settings → Script Properties (values come from the repo `.en
 | `EVAL_DRIFT_FUNCTION_URL` | model-change, weekly | Drift eval Cloud Run URL to POST |
 | `LAST_ACTIVE_MODEL_SIGNATURE` | model-change | Managed automatically — the last-seen active-model fingerprint (do not set by hand) |
 
+If `EXTRACT_FUNCTION_URL`, `PLAIN_LANGUAGE_EVAL_FUNCTION_URL` or `PROCESSING_LOG_SHEET_ID`
+is missing, every watcher run throws (Executions shows **Failed**, naming the missing
+properties, and the trigger owner gets Google's failure email) and no files are sent.
+
 ## Setup
 
 Push the code (`clasp push`), then from the Apps Script editor run each setup

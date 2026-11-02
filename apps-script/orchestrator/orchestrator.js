@@ -274,8 +274,11 @@ function watchForNewFiles() {
   try {
     config = getConfig();
   } catch (e) {
-    Logger.log("Configuration error: %s", e.message);
-    return;
+    // Rethrow, like the processing log check below: a missing script property
+    // stops every run, so it must show as Failed in Executions (and email the
+    // trigger owner) rather than look like a quiet, successful poll
+    console.error("Configuration error: " + e.message);
+    throw e;
   }
 
   var processed;
