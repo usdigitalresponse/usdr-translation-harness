@@ -18,7 +18,7 @@ It reads each pipeline service's **live settings** from Cloud Run, so it checks 
 | Drive folders | Any `DRIVE_*_FOLDER_ID` folder can't be opened, is in the trash, or isn't a folder; or the service account can't add files to one the pipeline writes to (`*_INPUT_*` folders only need to be readable) |
 | Statutes | `STATUTES_GCS_BUCKET` / `STATUTES_GCS_PREFIX` can't be listed or has no `.txt`/`.md` files |
 | Extract → Translate hand-off | The `PUBSUB_TOPIC_EXTRACTION_COMPLETE` topic is missing, has no subscription, or a subscription's ack deadline is under 600s |
-| Logged problems | Any `input_problem` entry, or a "Chat webhook" error from a pipeline service, in the last 24 hours |
+| Logged problems | Any `input_problem` entry or "Chat webhook" error from the pipeline's services (not other services in the project) in the last 24 hours |
 
 The expected headers, tabs and roles are copies of the owning services' rules (`rules.js`); `cloud-run/tests/test_health_check_rules.js` fails if a copy drifts. The "what to do" text for each problem is in `runbook.js`.
 

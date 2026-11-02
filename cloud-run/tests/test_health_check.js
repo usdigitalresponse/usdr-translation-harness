@@ -455,7 +455,16 @@ describe("Logged problems check", () => {
     const filters = clients.logging.entries.list.mock.calls.map((c) => c[0].requestBody.filter);
     const since = new Date(NOW - MS_PER_DAY).toISOString();
     for (const f of filters) expect(f).toContain(`timestamp>="${since}"`);
-    expect(filters[1]).toContain('resource.labels.service_name!="health-check"');
+    // Only the pipeline's services: not health-check itself, not other services in the project
+    for (const f of filters) {
+      expect(f).toContain('resource.labels.service_name=("extract" OR "translate" OR "plain-language-eval" OR "eval-quality" OR "capture-feedback")');
+    }
+  });
+
+  test("a Python traceback is shortened to its last line (the exception)", () => {
+    const { messageOf } = require("../health-check/checks/logs");
+    const text = 'Traceback (most recent call last):\n  File "app.py", line 1\n    x()\nRuntimeError: webhook 403\n';
+    expect(messageOf({ textPayload: text })).toBe("RuntimeError: webhook 403");
   });
 });
 
