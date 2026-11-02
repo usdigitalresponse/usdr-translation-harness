@@ -658,7 +658,7 @@ describe("runEval failures before any model runs", () => {
   });
 
   test("Model Config problem: failed row", async () => {
-    loadConfig.mockRejectedValue(new Error("Model Config problem: the Config!A:E range has no data rows"));
+    loadConfig.mockRejectedValue(new Error("Model Config problem: the Config tab has no data rows"));
 
     await runEval("file123", "a.pdf", MIME_PDF);
 

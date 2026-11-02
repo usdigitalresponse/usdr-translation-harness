@@ -7,7 +7,9 @@ const { logInputProblem, INPUT_MODEL_CONFIG } = require("./input-problems");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const FIXTURES_DIR = path.join(__dirname, "fixtures");
-const MODEL_CONFIG_SHEET_RANGE = "Config!A:F";
+// The whole Config tab: columns are matched by header name, so their order
+// (and any added columns, like the optional effort) doesn't matter
+const MODEL_CONFIG_SHEET_RANGE = "Config";
 const ACTIVE_YES = "YES";
 const MIN_SHEET_ROWS = 2;
 const COL_ACTIVE = "active";
@@ -158,7 +160,7 @@ async function loadConfig() {
   );
   if (missingColumns.length) {
     throw configProblem(
-      `the ${MODEL_CONFIG_SHEET_RANGE} range is missing expected columns: ${missingColumns.join(", ")}. ` +
+      `the ${MODEL_CONFIG_SHEET_RANGE} tab is missing expected columns: ${missingColumns.join(", ")}. ` +
         "Row 1 must be the header row, with these exact column names.",
       { missing_columns: missingColumns, found_headers: headers }
     );
@@ -166,7 +168,7 @@ async function loadConfig() {
 
   const parsed = parseSheetRows(rows);
   if (!parsed.length) {
-    throw configProblem(`the ${MODEL_CONFIG_SHEET_RANGE} range has no data rows`);
+    throw configProblem(`the ${MODEL_CONFIG_SHEET_RANGE} tab has no data rows`);
   }
 
   const models = parsed.map((entry) => ({

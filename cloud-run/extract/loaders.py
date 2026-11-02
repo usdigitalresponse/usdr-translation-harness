@@ -12,7 +12,9 @@ from googleapiclient.http import MediaIoBaseUpload
 load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
-MODEL_CONFIG_SHEET_RANGE = "Config!A:E"
+# The whole Config tab: columns are matched by header name, so their order
+# (and any added columns) doesn't matter
+MODEL_CONFIG_SHEET_RANGE = "Config"
 ACTIVE_YES = "YES"
 # Columns every service needs to pick its models; a missing one means no model
 # matches, or a model is called with a blank name or provider
@@ -88,13 +90,13 @@ def _load_config_from_sheet(sheet_id):
     ]
     if missing_columns:
         raise _config_problem(
-            f"the {MODEL_CONFIG_SHEET_RANGE} range is missing expected columns: "
+            f"the {MODEL_CONFIG_SHEET_RANGE} tab is missing expected columns: "
             f"{', '.join(missing_columns)}. Row 1 must be the header row, with these exact column names.",
             missing_columns=missing_columns,
             found_headers=found_headers,
         )
     if len(rows) < 2:
-        raise _config_problem(f"the {MODEL_CONFIG_SHEET_RANGE} range has no data rows")
+        raise _config_problem(f"the {MODEL_CONFIG_SHEET_RANGE} tab has no data rows")
 
     headers = [h.strip().lower() for h in rows[0]]
     models = []
