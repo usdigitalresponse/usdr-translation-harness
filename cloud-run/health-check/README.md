@@ -39,16 +39,14 @@ Runs as the **pipeline service account**, so "the check can read it" means "the 
 | Pub/Sub Viewer (`roles/pubsub.viewer`) | The topic and subscription check |
 | Logs Viewer (`roles/logging.viewer`) | The logged-problems check |
 
-## Run it locally
+## Testing
 
-```sh
-cd cloud-run/health-check
-npm install
-node run-local.js --project=<project-id> --region=<region> --environment=USDR          # prints the message
-node run-local.js --project=<project-id> --region=<region> --environment=USDR --post   # also posts it
-```
+- **Unit tests:** `cd cloud-run && npm test` (mocked Google APIs; `tests/test_health_check.js` and `tests/test_health_check_rules.js`).
+- **Against real resources:** deploy, then trigger a run instead of waiting for the schedule:
+  `gcloud scheduler jobs run health-check-daily --location=<region> --project=<project-id>`.
+  The result posts to the ops space, and the service's logs show one line per check.
 
-Uses Application Default Credentials. To see exactly what the pipeline can see, impersonate its service account: `gcloud auth application-default login --impersonate-service-account=<pipeline SA email>`.
+`run-local.js` can run the checks from a laptop and print the message instead of posting it, but it needs credentials for the pipeline service account. In USDR, `gcloud auth application-default login` is blocked by the Workspace admin, so test by deploying.
 
 ## Deploy
 
