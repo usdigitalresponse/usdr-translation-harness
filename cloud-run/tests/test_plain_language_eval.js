@@ -147,8 +147,8 @@ describe("runEval", () => {
     jest.clearAllMocks();
   });
 
-  test("returns early when no active models in config", async () => {
-    const errorSpy = jest.spyOn(console, "error").mockImplementation();
+  test("records a failed run, without calling anything, when no model is active", async () => {
+    const logSpy = jest.spyOn(console, "log").mockImplementation();
     loadConfig.mockResolvedValue({
       models: [
         {
@@ -164,7 +164,10 @@ describe("runEval", () => {
 
     expect(fetchDocumentContent).not.toHaveBeenCalled();
     expect(callLlm).not.toHaveBeenCalled();
-    errorSpy.mockRestore();
+    expect(logEvalResult).toHaveBeenCalledWith("file123", "test.pdf", expect.objectContaining({
+      status: "pl-eval-failed", error: "No active plain-language-eval models in config", provider: "", model: "",
+    }));
+    logSpy.mockRestore();
   });
 
   test("sends PDF as base64 with prompt only (no document tags)", async () => {
@@ -592,6 +595,87 @@ describe("runEval structured logs", () => {
 
     expect(entries.length).toBeGreaterThan(0);
     expect(entries[0].submittedByEmail).toBe("person@example.gov");
+  });
+});
+
+describe("runEval failures before any model runs", () => {
+  const ACTIVE = { models: [{ role: "plain-language-eval", provider: "google", model: "gemini", active: true }] };
+  let logSpy;
+
+  function logged(predicate) {
+    return logSpy.mock.calls
+      .map((c) => { try { return JSON.parse(c[0]); } catch { return null; } })
+      .filter((e) => e && predicate(e));
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    logSpy = jest.spyOn(console, "log").mockImplementation();
+    loadConfig.mockResolvedValue(ACTIVE);
+    fetchDocumentContent.mockResolvedValue({ text: "Hello", pdfBase64: null });
+    loadDoc.mockResolvedValue("Evaluate.");
+  });
+
+  afterEach(() => logSpy.mockRestore());
+
+  test("prompt doc can't be loaded: input problem, failed row, no model call", async () => {
+    loadDoc.mockRejectedValue(new Error("The caller does not have permission"));
+
+    await runEval("file123", "a.pdf", MIME_PDF, "person@example.gov");
+
+    const [problem] = logged((e) => e.input_problem);
+    expect(problem).toMatchObject({ severity: "ERROR", input_problem: "prompt_doc", env_var: "PLAIN_LANGUAGE_EVAL_PROMPT_DOC_ID" });
+    expect(problem.message).toContain("The caller does not have permission");
+    expect(callLlm).not.toHaveBeenCalled();
+    expect(logEvalResult).toHaveBeenCalledWith("file123", "a.pdf", expect.objectContaining({
+      status: "pl-eval-failed", error: "The caller does not have permission", submittedByEmail: "person@example.gov",
+    }));
+    const [stage] = logged((e) => e.pipeline_stage === "plain-language-eval");
+    expect(stage).toMatchObject({ status: "pl-eval-failed", message: "plain-language-eval pl-eval-failed before any model ran" });
+  });
+
+  test("empty prompt doc: input problem and failed row", async () => {
+    loadDoc.mockResolvedValue("  \n ");
+
+    await runEval("file123", "a.pdf", MIME_PDF);
+
+    expect(logged((e) => e.input_problem === "prompt_doc")).toHaveLength(1);
+    expect(callLlm).not.toHaveBeenCalled();
+    expect(logEvalResult).toHaveBeenCalledWith("file123", "a.pdf", expect.objectContaining({
+      status: "pl-eval-failed", error: expect.stringContaining("has no text"),
+    }));
+  });
+
+  test("source file can't be read: failed row, but not an input problem", async () => {
+    fetchDocumentContent.mockRejectedValue(new Error("File not found: file123"));
+
+    await runEval("file123", "a.pdf", MIME_PDF);
+
+    expect(logged((e) => e.input_problem)).toHaveLength(0);
+    expect(logEvalResult).toHaveBeenCalledWith("file123", "a.pdf", expect.objectContaining({
+      status: "pl-eval-failed", error: "File not found: file123",
+    }));
+  });
+
+  test("Model Config problem: failed row", async () => {
+    loadConfig.mockRejectedValue(new Error("Model Config problem: the Config!A:E range has no data rows"));
+
+    await runEval("file123", "a.pdf", MIME_PDF);
+
+    expect(fetchDocumentContent).not.toHaveBeenCalled();
+    expect(logEvalResult).toHaveBeenCalledWith("file123", "a.pdf", expect.objectContaining({
+      status: "pl-eval-failed", error: expect.stringContaining("Model Config problem"),
+    }));
+  });
+
+  test("a failure writing the failed row doesn't throw", async () => {
+    const errSpy = jest.spyOn(console, "error").mockImplementation();
+    loadDoc.mockRejectedValue(new Error("nope"));
+    logEvalResult.mockRejectedValueOnce(new Error("sheet down"));
+
+    await expect(runEval("file123", "a.pdf", MIME_PDF)).resolves.toBeUndefined();
+    expect(errSpy).toHaveBeenCalledWith("Failed to log eval failure:", "sheet down");
+    errSpy.mockRestore();
   });
 });
 

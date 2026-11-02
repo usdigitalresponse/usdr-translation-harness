@@ -21,6 +21,10 @@ POST { fileId, fileName, mimeType? }
 
 Fire-and-forget: returns immediately and runs the evaluation on a background thread.
 
+Each active model writes a `pl-eval-complete` or `pl-eval-failed` row to the Processing Log. If the run fails **before any model is called** (no active model, the source file can't be read, a Model Config problem, or the prompt doc can't be loaded or is empty), it writes one `pl-eval-failed` row with blank provider/model and the error in `errorDetails`. The 202 has already gone back to the Orchestrator by then, so this row is the only record of the failure in the sheet.
+
+A prompt doc that can't be loaded or has no text also logs a structured **ERROR** with `input_problem: "prompt_doc"` (message starting `Plain language eval input problem (prompt_doc):`, with `env_var`), which the daily health check reports.
+
 ## Files
 
 | File | Purpose |
