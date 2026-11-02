@@ -22,7 +22,9 @@ from googleapiclient.http import MediaIoBaseUpload
 load_dotenv(Path(__file__).resolve().parent.parent.parent.parent / ".env")
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
-MODEL_CONFIG_SHEET_RANGE = "Config!A:E"
+# The whole Config tab: columns are matched by header name, so their order
+# (and any added columns) doesn't matter
+MODEL_CONFIG_SHEET_RANGE = "Config"
 ACTIVE_YES = "YES"
 
 # The golden set lives on the first sheet of GOLDEN_SET_SHEET_ID. Leaving the

@@ -66,7 +66,7 @@ const GLOSSARY_REQUIRED_COLUMNS = [
 
 // Model Config (source: translate/loaders.js)
 const MODEL_CONFIG_SHEET_ENV = "MODEL_CONFIG_SHEET_ID";
-const MODEL_CONFIG_SHEET_RANGE = "Config!A:F";
+const MODEL_CONFIG_SHEET_RANGE = "Config";
 const MODEL_CONFIG_REQUIRED_COLUMNS = ["role", "provider", "model", "active"];
 const MODEL_CONFIG_ACTIVE_YES = "YES";
 // The Model Config role each service picks its models by

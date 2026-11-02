@@ -80,7 +80,7 @@ function baseSheets() {
     "Definition/Context", "Example English", "Example Spanish", "Notes", "Status"];
   return {
     [`${IDS.glossary}|'FAMLI Spanish Glossary'!A:I`]: [glossaryHeader, ["leave", "", "licencia", "permiso"]],
-    [`${IDS.modelConfig}|Config!A:F`]: [
+    [`${IDS.modelConfig}|Config`]: [
       ["role", "provider", "model", "active"],
       ["extract", "anthropic", "claude-x", "YES"],
       ["translate", "anthropic", "claude-x", "yes"],
@@ -233,7 +233,7 @@ describe("Services check", () => {
   test("services pointing at different Model Config sheets", async () => {
     const env = baseEnv();
     env.extract.MODEL_CONFIG_SHEET_ID = "sheet-other";
-    const sheets = { ...baseSheets(), "sheet-other|Config!A:F": baseSheets()[`${IDS.modelConfig}|Config!A:F`] };
+    const sheets = { ...baseSheets(), "sheet-other|Config": baseSheets()[`${IDS.modelConfig}|Config`] };
     const outcome = await run({ env, sheets });
     expect(codes(outcome)).toEqual(["setting_mismatch"]);
   });
@@ -295,7 +295,7 @@ describe("Glossary check", () => {
 describe("Model Config check", () => {
   test("a role with no active model", async () => {
     const sheets = baseSheets();
-    sheets[`${IDS.modelConfig}|Config!A:F`][4][3] = "NO";
+    sheets[`${IDS.modelConfig}|Config`][4][3] = "NO";
     const outcome = await run({ sheets });
     expect(codes(outcome)).toEqual(["model_config_no_active_model"]);
     expect(outcome.problems[0].resource).toBe("role 'eval'");
@@ -303,13 +303,13 @@ describe("Model Config check", () => {
 
   test("role matched exactly, as the services do", async () => {
     const sheets = baseSheets();
-    sheets[`${IDS.modelConfig}|Config!A:F`][2][0] = "Translate";
+    sheets[`${IDS.modelConfig}|Config`][2][0] = "Translate";
     expect(codes(await run({ sheets }))).toEqual(["model_config_no_active_model"]);
   });
 
   test("missing columns", async () => {
     const sheets = baseSheets();
-    sheets[`${IDS.modelConfig}|Config!A:F`][0] = ["role", "provider", "model"];
+    sheets[`${IDS.modelConfig}|Config`][0] = ["role", "provider", "model"];
     expect(codes(await run({ sheets }))).toEqual(["model_config_missing_columns"]);
   });
 });
