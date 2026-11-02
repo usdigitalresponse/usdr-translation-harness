@@ -60,6 +60,7 @@ Update these docs when an interface changes:
 - `cloud-run/capture-feedback/` — Cloud Run function: reviewer feedback capture
 - `cloud-run/eval/quality/` — Eval function: LLM-as-judge scoring (Python)
 - `cloud-run/eval/drift/` — Eval function: BLEU/ROUGE + LLM-as-judge (Python)
+- `cloud-run/health-check/` — Daily check of pipeline resources (settings, prompt docs, sheets); posts to an ops Chat space. Not part of the pipeline
 - `cloud-run/tests/` — Unit tests for Cloud Run functions
 - `apps-script/tests/` — Unit tests for Apps Script projects
 
