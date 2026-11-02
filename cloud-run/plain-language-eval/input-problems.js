@@ -5,9 +5,11 @@
 const INPUT_PROBLEM_PREFIX = "Plain language eval input problem";
 
 const INPUT_MODEL_CONFIG = "model_config";
+const INPUT_PROMPT_DOC = "prompt_doc";
 
 /**
- * Log a problem with an input the pipeline depends on (Model Config sheet)
+ * Log a problem with an input the pipeline depends on (Model Config sheet,
+ * prompt doc)
  * as a structured ERROR, with the input_problem field used for alerting.
  *
  * @param {string} input - Which input (one of the INPUT_* constants)
@@ -27,4 +29,5 @@ module.exports = {
   logInputProblem,
   INPUT_PROBLEM_PREFIX,
   INPUT_MODEL_CONFIG,
+  INPUT_PROMPT_DOC,
 };
