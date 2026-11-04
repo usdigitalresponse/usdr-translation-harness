@@ -33,3 +33,7 @@ drafts/
 
 playground-scripts/
 
+
+# Translation skills: real material links and build output stay local
+skills/materials.local.json
+skills/dist/
