@@ -1,0 +1,9 @@
+{
+  "MATERIALS_SET_NAME": "Example state (program, content type)",
+  "PLAIN_LANGUAGE_RUBRIC_URL": "https://docs.google.com/document/d/<doc id>/edit",
+  "TRANSLATION_PROMPT_URL": "https://docs.google.com/document/d/<doc id>/edit",
+  "EXTRACTION_PROMPT_URL": "https://docs.google.com/document/d/<doc id>/edit",
+  "GLOSSARY_SHEET_URL": "https://docs.google.com/spreadsheets/d/<sheet id>/edit",
+  "GLOSSARY_TAB": "<glossary tab name>",
+  "EVALUATION_RUBRIC_URL": "https://docs.google.com/document/d/<doc id>/edit"
+}

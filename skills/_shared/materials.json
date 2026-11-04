@@ -1,0 +1,32 @@
+{
+  "plain_language_rubric": {
+    "name": "Plain-language rubric",
+    "what": "Rubric for scoring English content for plain language (criteria, weights, scoring descriptions, priority levels)",
+    "link": "{{PLAIN_LANGUAGE_RUBRIC_URL}}",
+    "local_file": "plain-language-rubric.md"
+  },
+  "translation_prompt": {
+    "name": "Translation prompt",
+    "what": "The instructions the pipeline gives the AI translator: criteria and their priorities, style rules, sample (\"golden\") translations",
+    "link": "{{TRANSLATION_PROMPT_URL}}",
+    "local_file": "translation-prompt.md"
+  },
+  "extraction_prompt": {
+    "name": "Extraction prompt",
+    "what": "How the pipeline reads a flyer or PDF before translating: reading order, text roles, what not to translate, space constraints",
+    "link": "{{EXTRACTION_PROMPT_URL}}",
+    "local_file": "extraction-prompt.md"
+  },
+  "glossary": {
+    "name": "Glossary",
+    "what": "Approved Spanish terms, forbidden terms, definitions and notes. A Google Sheet: use the **{{GLOSSARY_TAB}}** tab, and load it as described in `glossary-access.md`",
+    "link": "{{GLOSSARY_SHEET_URL}}",
+    "local_file": "glossary.xlsx (or a CSV export of that tab)"
+  },
+  "evaluation_rubric": {
+    "name": "Translation evaluation rubric",
+    "what": "Rubric for scoring an English → Spanish translation (criteria, weights, scoring descriptions, priority levels)",
+    "link": "{{EVALUATION_RUBRIC_URL}}",
+    "local_file": "evaluation-rubric.md"
+  }
+}
