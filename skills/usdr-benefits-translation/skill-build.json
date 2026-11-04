@@ -1,1 +1,1 @@
-{ "materials": ["translation_prompt", "extraction_prompt", "glossary"] }
+{ "materials": ["translation_prompt", "extraction_prompt", "glossary"], "shared": ["elements"] }

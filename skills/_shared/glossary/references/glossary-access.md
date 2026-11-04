@@ -28,7 +28,7 @@ So download the whole sheet as Excel and read the right tab with the helper scri
 
 If a step fails (no Drive access, the file moved, the tab was renamed, openpyxl missing), **tell the user which step failed**. Don't translate from memory or from an older copy without saying so.
 
-If the user has an `.xlsx` export instead (or attaches one), pass that file to step 3 directly.
+If the user has an `.xlsx` export, or a `.csv` export of just the glossary tab, pass that file to step 3 directly.
 
 ## Without code execution
 

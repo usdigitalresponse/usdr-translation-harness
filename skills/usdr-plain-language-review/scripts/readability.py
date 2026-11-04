@@ -66,13 +66,14 @@ def analyze(text):
         "longest_sentences": [
             {"words": n, "text": s} for n, s in long_ones[:MAX_LONG_SENTENCES_SHOWN]
         ],
-        "note": "Approximate. Line breaks count as sentence ends, so headings and bullets are separate items.",
+        "note": ("Approximate. Line breaks count as sentence ends, so headings and bullets are separate items; "
+                 "abbreviations like 'e.g.' or 'U.S.' may split a sentence in two."),
     }
 
 
 def main():
     if len(sys.argv) > 1:
-        with open(sys.argv[1], encoding="utf-8") as f:
+        with open(sys.argv[1], encoding="utf-8", errors="replace") as f:
             text = f.read()
     else:
         text = sys.stdin.read()

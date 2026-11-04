@@ -65,7 +65,7 @@ Also:
 ## 6. Check your work
 
 - Run `scripts/check_forbidden.py` on the Spanish (see `references/glossary-access.md`). Review each hit in context and fix real violations.
-- Confirm every number, date, dollar amount, URL, email, phone number and form number matches the source.
+- Run `python scripts/compare_elements.py source.txt translation.txt` (the English and Spanish saved as text) to confirm URLs, emails, phone numbers, dollar amounts, percentages and other numbers match. Some differences are expected (small numbers spelled out, dates written in words); check each one. Also check dates and form numbers by reading.
 - Confirm nothing was dropped or added: compare block by block.
 - Confirm "usted" throughout, and consistent terms (the term list).
 

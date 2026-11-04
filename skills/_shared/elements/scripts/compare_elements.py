@@ -25,15 +25,22 @@ PATTERNS = {
     "dollar_amounts": re.compile(r"\$\s?\d[\d,]*(?:\.\d+)?"),
     "percentages": re.compile(r"\b\d+(?:[.,]\d+)?\s?%"),
 }
+# scheme (optional), host, rest of the URL
+URL_PARTS = re.compile(r"^((?:https?://)?)([^/]*)(.*)$", re.I)
 # Any other number, once the elements above are removed
 NUMBER = re.compile(r"\b\d[\d,]*(?:\.\d+)?\b")
-TRAILING_PUNCTUATION = ".,;:)"
+# Stripped from both ends of a match (sentence punctuation, quotes, «»)
+EDGE_PUNCTUATION = ".,;:()\"'“”‘’«»"
 
 
 def normalize(kind, value):
-    value = value.rstrip(TRAILING_PUNCTUATION)
-    if kind in ("urls", "emails"):
+    value = value.strip(EDGE_PUNCTUATION)
+    if kind == "emails":
         return value.lower()
+    if kind == "urls":
+        # Hosts aren't case-sensitive; paths can be, so keep the path's case
+        m = URL_PARTS.match(value)
+        return m.group(1).lower() + m.group(2).lower() + m.group(3)
     if kind == "phone_numbers":
         return re.sub(r"\D", "", value)[-10:]
     return re.sub(r"\s", "", value)
@@ -46,15 +53,15 @@ def extract(text):
         values = [normalize(kind, m) for m in pattern.findall(remaining)]
         found[kind] = Counter(values)
         remaining = pattern.sub(" ", remaining)
-    found["other_numbers"] = Counter(n.rstrip(TRAILING_PUNCTUATION) for n in NUMBER.findall(remaining))
+    found["other_numbers"] = Counter(n.strip(EDGE_PUNCTUATION) for n in NUMBER.findall(remaining))
     return found
 
 
 def main():
     if len(sys.argv) != 3:
         sys.exit(__doc__)
-    source = extract(Path(sys.argv[1]).read_text(encoding="utf-8"))
-    translation = extract(Path(sys.argv[2]).read_text(encoding="utf-8"))
+    source = extract(Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace"))
+    translation = extract(Path(sys.argv[2]).read_text(encoding="utf-8", errors="replace"))
     report = {}
     for kind in source:
         missing = source[kind] - translation[kind]
