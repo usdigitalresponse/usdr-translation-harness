@@ -5,7 +5,7 @@ Claude skills that bring the translation pipeline's materials (plain-language ru
 | Skill | Status | What it does |
 |---|---|---|
 | `usdr-plain-language-review` | Ready | Reviews English content against the plain-language rubric, with scores and prioritized fixes |
-| `usdr-benefits-translation` | In testing | Translates English → Spanish with the live prompt and glossary, a fit check, translator notes and a human-review list |
+| `usdr-benefits-translation` | Ready | Translates English → Spanish with the live prompt and glossary, a fit check, translator notes and a human-review list |
 | `usdr-translation-quality-review` | Planned | Scores a translation against the evaluation rubric |
 | `usdr-web-strings-translation` | Planned | Translates web UI strings (Django `.po` first), for Claude Code |
 
