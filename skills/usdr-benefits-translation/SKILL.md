@@ -79,5 +79,5 @@ Follow `references/output-format.md`:
 5. **Needs human review**: a prioritized list of what a qualified Spanish reviewer should check, with the most important first (meaning, legal terms, amounts, dates and deadlines, flagged terms, space-constrained text).
 
 End with a plain reminder that this is an AI-assisted draft that needs review by a qualified Spanish reviewer before it's published. Offer next steps:
-- check it with **usdr-translation-quality-review** (best in a new conversation, so the review is independent of the translation);
+- check it with **usdr-translation-quality-review**, best in a new conversation so the review is independent of the translation. Tell the user to copy the translation table (and the translator notes, if they like) into the new conversation and ask for a quality review;
 - if the English itself was hard to follow, review it with **usdr-plain-language-review** first and retranslate.

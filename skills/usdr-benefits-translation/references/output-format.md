@@ -10,7 +10,7 @@ The fit report (see `fit-check.md`), plus one line on what was loaded:
 
 ## 2. Translation
 
-**Documents (flyers, PDFs, web pages):** a table in reading order, one row per block.
+**Documents (flyers, PDFs, web pages):** a table in reading order, one row per block. Keep the column headers exactly `# | English | Spanish | Note`: the **usdr-translation-quality-review** skill reads this table directly.
 
 | # | English | Spanish | Note |
 |---|---|---|---|
