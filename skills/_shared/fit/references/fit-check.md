@@ -5,14 +5,14 @@ The team's materials were written for particular content (for example, one progr
 ## 1. Describe the content
 
 - **Type:** flyer, web page, web/app UI text, letter or notice, form, FAQ, email, social post, legal or policy text…
-- **Program and topic:** which program or service (e.g. paid family leave, SNAP, child care licensing), or general.
+- **Program and topic:** which program or service (e.g. paid family leave, food assistance, energy bill help), or general.
 - **Audience and register:** the public, applicants, providers, employers, staff; how formal; reading level.
 - **Stakes:** does it affect rights, eligibility, money, or deadlines?
 
 ## 2. Describe what the materials cover
 
 - **Translation prompt:** the content type it says it's for, the programs and audience it names, its sections (criteria, examples, legal reference material).
-- **Glossary:** the program(s) its terms come from (look at the entries and their Definition/Context, not just the sheet name); how many entries are relevant to this content.
+- **Glossary (or glossaries):** the program(s) each one's terms come from. `materials.md` gives each glossary a **scope**; also look at the entries and their Definition/Context, not just the name. Note how many entries are relevant to this content. If there are several glossaries, decide which one fits each term (step 3) and say so.
 - **Extraction prompt** (flyers/PDFs only): it's about reading layout, so it fits any visual document.
 
 ## 3. Sort the guidance
@@ -35,12 +35,16 @@ The team's materials were written for particular content (for example, one progr
 Put this before the translation, in 5–10 lines:
 
 > **How the team's materials fit this content**
-> - **Content:** web page for child care providers about licensing renewals (public-facing, moderate stakes).
+> - **Content:** web page about an energy bill assistance program, for residents applying online (public-facing, moderate stakes).
 > - **Materials:** the prompt is written for paid family leave flyers for workers; the glossary (108 terms, updated 2026-06-24) covers paid family leave.
 > - **Applies fully:** formal "usted", plain language, punctuation, dates and numbers, acronyms.
 > - **Adjusting:** flyer tone → web page (headings and links kept as they are; no space limits).
 > - **Doesn't apply:** paid leave terms and statute references; none appear in this text.
-> - **Gaps:** "licensing specialist", "provisional license", "EXCELS rating" have no glossary entry; I've translated them carefully and flagged them for review.
+> - **Gaps:** "utility shutoff notice", "crisis grant", "household size" have no glossary entry; I've translated them carefully and flagged them for review.
+
+## Glossary terms used in a different sense
+
+A glossary entry can match the English word but not the meaning. For example, a paid-leave glossary's approved Spanish for "leave" is "licencia", but in "upload a copy of your driver's license" the word is a different thing (licencia de conducir). Check each match's Definition/Context and the glossary's scope. If the sense differs, don't apply the entry: translate for the meaning in front of you, and list it as a term for the content team to confirm.
 
 ## Conflicts between materials
 
