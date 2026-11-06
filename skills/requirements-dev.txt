@@ -1,0 +1,4 @@
+# Dev/test dependencies for the skills toolkit (python -m pip install -r skills/requirements-dev.txt)
+polib>=1.2
+openpyxl>=3.1
+pytest>=8

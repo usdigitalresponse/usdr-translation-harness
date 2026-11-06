@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block content %}
+<h1>{% trans "Renew your benefits" %}</h1>
+<p>{% blocktrans with date=deadline %}You must renew by <strong>{{ date }}</strong> or your benefits will stop.{% endblocktrans %}</p>
+<p>{% blocktrans %}If anything changed in your household, tell us before you renew.{% endblocktrans %}</p>
+
+<a class="button" href="/changes/">{% trans "Report a change" context "verb" %}</a>
+<button type="submit">{% trans "Renew" %}</button>
+<a href="/apply/">{% trans "Apply for benefits" %}</a>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block content %}
+<h1>{% blocktrans with first_name=user.first_name %}Welcome, {{ first_name }}{% endblocktrans %}</h1>
+<p>{{ summary }}</p>
+<p>{% blocktrans count counter=unread %}You have {{ counter }} new message.{% plural %}You have {{ counter }} new messages.{% endblocktrans %}</p>
+<section>
+  <h2>{% trans "Report" context "noun" %}</h2>
+  <p>{% trans "Your yearly benefits report is ready." %}</p>
+</section>
+<a class="button" href="/apply/">{% trans "Next" %}</a>
+{% endblock %}
