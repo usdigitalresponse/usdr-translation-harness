@@ -122,6 +122,11 @@ const STATUTE_FILE_EXTENSIONS = [".txt", ".md"];
 // deadline makes Pub/Sub redeliver, translating the same file twice)
 const PUBSUB_TOPIC_ENV = "PUBSUB_TOPIC_EXTRACTION_COMPLETE";
 const MIN_ACK_DEADLINE_SECONDS = 600;
+// Dead-letter safeguards (setup guide 5, added 2026-11-11): without a policy, a
+// message Translate can't finish is redelivered until it expires, each time a
+// full, billed model call. Dead-lettered messages are kept on a subscription of
+// the dead-letter topic; the check looks at up to this many to name the files.
+const DEAD_LETTER_PEEK_MAX = 10;
 
 module.exports = {
   SERVICES,
@@ -155,4 +160,5 @@ module.exports = {
   STATUTE_FILE_EXTENSIONS,
   PUBSUB_TOPIC_ENV,
   MIN_ACK_DEADLINE_SECONDS,
+  DEAD_LETTER_PEEK_MAX,
 };

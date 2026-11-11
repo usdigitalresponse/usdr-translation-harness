@@ -17,7 +17,7 @@ It reads each pipeline service's **live settings** from Cloud Run, so it checks 
 | Eval results | The `EvalQuality` header row differs from Eval Quality's (a missing tab or empty row is fine: the service creates them) |
 | Drive folders | Any `DRIVE_*_FOLDER_ID` folder can't be opened, is in the trash, or isn't a folder; or the service account can't add files to one the pipeline writes to (`*_INPUT_*` folders only need to be readable) |
 | Statutes | `STATUTES_GCS_BUCKET` / `STATUTES_GCS_PREFIX` can't be listed or has no `.txt`/`.md` files |
-| Extract → Translate hand-off | The `PUBSUB_TOPIC_EXTRACTION_COMPLETE` topic is missing, has no subscription, or a subscription's ack deadline is under 600s |
+| Extract → Translate hand-off | The `PUBSUB_TOPIC_EXTRACTION_COMPLETE` topic is missing, has no subscription, or a subscription's ack deadline is under 600s. A subscription has no retry policy or no dead-letter policy, nothing subscribes to its dead-letter topic, or **messages are waiting there** (translations that failed every attempt; the message names up to 10 files). It peeks without removing them, so they're reported every day until someone clears them |
 | Logged problems | Any `input_problem` entry or "Chat webhook" error from the pipeline's services (not other services in the project) in the last 24 hours |
 
 The expected headers, tabs and roles are copies of the owning services' rules (`rules.js`); `cloud-run/tests/test_health_check_rules.js` fails if a copy drifts. The "what to do" text for each problem is in `runbook.js`.
@@ -31,13 +31,14 @@ The expected headers, tabs and roles are copies of the owning services' rules (`
 | `HEALTH_CHECK_ENVIRONMENT` | Name shown in the message, e.g. `USDR` or `Maryland` |
 | `GOOGLE_CLOUD_PROJECT` | Optional; defaults to the project it runs in |
 
-Runs as the **pipeline service account**, so "the check can read it" means "the pipeline can read it". Besides the Drive/Sheets/Docs sharing and statutes bucket access it already has, that account needs three read-only project roles:
+Runs as the **pipeline service account**, so "the check can read it" means "the pipeline can read it". Besides the Drive/Sheets/Docs sharing and statutes bucket access it already has, that account needs three read-only project roles, plus one subscription role:
 
 | Role | For |
 |---|---|
 | Cloud Run Viewer (`roles/run.viewer`) | Reading the services' settings and traffic |
 | Pub/Sub Viewer (`roles/pubsub.viewer`) | The topic and subscription check |
 | Logs Viewer (`roles/logging.viewer`) | The logged-problems check |
+| Pub/Sub Subscriber (`roles/pubsub.subscriber`) on the **dead-letter subscription only** (e.g. `translate-deadletter-hold`) | Seeing which translations were dead-lettered. Reading a message requires pulling it; the check hands each one straight back, so nothing is removed |
 
 ## Testing
 

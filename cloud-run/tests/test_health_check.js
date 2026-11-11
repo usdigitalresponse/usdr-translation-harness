@@ -105,8 +105,28 @@ function baseFolders() {
 
 const TOPIC = "projects/proj/topics/extraction-complete";
 const SUBSCRIPTION = "projects/proj/subscriptions/eventarc-us-central1-extraction-to-translate-sub-123";
+const DEAD_LETTER_TOPIC = "projects/proj/topics/translate-deadletter";
+const HOLD_SUBSCRIPTION = "projects/proj/subscriptions/translate-deadletter-hold";
 function basePubSub() {
-  return { topics: { [TOPIC]: [SUBSCRIPTION] }, subscriptions: { [SUBSCRIPTION]: { ackDeadlineSeconds: 600 } } };
+  return {
+    topics: { [TOPIC]: [SUBSCRIPTION], [DEAD_LETTER_TOPIC]: [HOLD_SUBSCRIPTION] },
+    subscriptions: {
+      [SUBSCRIPTION]: {
+        ackDeadlineSeconds: 600,
+        retryPolicy: { minimumBackoff: "10s", maximumBackoff: "600s" },
+        deadLetterPolicy: { deadLetterTopic: DEAD_LETTER_TOPIC, maxDeliveryAttempts: 5 },
+      },
+      [HOLD_SUBSCRIPTION]: { ackDeadlineSeconds: 10 },
+    },
+    // Messages waiting on each subscription (pulled by the dead-letter check)
+    messages: { [HOLD_SUBSCRIPTION]: [] },
+    pullErrors: {},
+  };
+}
+
+/** A dead-lettered Extract message for this file, as Pub/Sub returns it from pull. */
+function deadLettered(fileName, i = 0) {
+  return { ackId: `ack-${i}`, message: { data: Buffer.from(JSON.stringify({ sourceFileName: fileName })).toString("base64") } };
 }
 
 const badRange = (range) => Object.assign(new Error(`Unable to parse range: ${range}`), { code: 400 });
@@ -155,7 +175,14 @@ function fakeClients({
         }),
         subscriptions: { list: jest.fn(async ({ topic }) => ({ data: { subscriptions: pubsub.topics[topic] } })) },
       },
-      subscriptions: { get: jest.fn(async ({ subscription }) => ({ data: pubsub.subscriptions[subscription] })) },
+      subscriptions: {
+        get: jest.fn(async ({ subscription }) => ({ data: pubsub.subscriptions[subscription] })),
+        pull: jest.fn(async ({ subscription, requestBody }) => {
+          if ((pubsub.pullErrors || {})[subscription]) throw pubsub.pullErrors[subscription];
+          return { data: { receivedMessages: ((pubsub.messages || {})[subscription] || []).slice(0, requestBody.maxMessages) } };
+        }),
+        modifyAckDeadline: jest.fn(async () => ({ data: {} })),
+      },
     } },
     logging: { entries: { list: jest.fn(async ({ requestBody }) => ({
       data: { entries: logEntries.filter((e) => e.matches(requestBody.filter)) },
@@ -414,6 +441,53 @@ describe("Extract → Translate hand-off check", () => {
 
   test("no subscription", async () => {
     expect(codes(await run({ pubsub: { topics: { [TOPIC]: [] }, subscriptions: {} } }))).toEqual(["pubsub_no_subscription"]);
+  });
+
+  test("no dead-letter policy", async () => {
+    const pubsub = basePubSub();
+    delete pubsub.subscriptions[SUBSCRIPTION].deadLetterPolicy;
+    expect(codes(await run({ pubsub }))).toEqual(["pubsub_no_dead_letter"]);
+  });
+
+  test("no retry backoff", async () => {
+    const pubsub = basePubSub();
+    delete pubsub.subscriptions[SUBSCRIPTION].retryPolicy;
+    expect(codes(await run({ pubsub }))).toEqual(["pubsub_no_retry_backoff"]);
+  });
+
+  test("nothing subscribes to the dead-letter topic", async () => {
+    const pubsub = basePubSub();
+    pubsub.topics[DEAD_LETTER_TOPIC] = [];
+    expect(codes(await run({ pubsub }))).toEqual(["pubsub_dead_letter_unwatched"]);
+  });
+
+  test("can't read the dead-letter subscription", async () => {
+    const pubsub = basePubSub();
+    pubsub.pullErrors[HOLD_SUBSCRIPTION] = new Error("User not authorized to perform this action.");
+    const outcome = await run({ pubsub });
+    expect(codes(outcome)).toEqual(["pubsub_dead_letter_unreadable"]);
+    expect(outcome.problems[0].detail).toContain("not authorized");
+  });
+
+  test("names the dead-lettered files and hands the messages back", async () => {
+    const pubsub = basePubSub();
+    pubsub.messages[HOLD_SUBSCRIPTION] = [deadLettered("big.docx", 0), deadLettered("big.docx", 1), deadLettered("flyer.pdf", 2)];
+    const clients = fakeClients({ pubsub });
+    const outcome = await runChecks({ project: PROJECT, region: REGION, clients, log: quiet });
+    expect(codes(outcome)).toEqual(["pubsub_dead_lettered"]);
+    expect(outcome.problems[0].detail).toBe("3 translation request(s) failed every attempt and were set aside: big.docx, flyer.pdf");
+    // Peek only: the messages go straight back on the subscription
+    expect(clients.pubsub.projects.subscriptions.modifyAckDeadline).toHaveBeenCalledWith({
+      subscription: HOLD_SUBSCRIPTION,
+      requestBody: { ackIds: ["ack-0", "ack-1", "ack-2"], ackDeadlineSeconds: 0 },
+    });
+  });
+
+  test("shows 10+ when the dead-letter subscription has more than it looks at", async () => {
+    const pubsub = basePubSub();
+    pubsub.messages[HOLD_SUBSCRIPTION] = Array.from({ length: 12 }, (_, i) => deadLettered(`f${i}.pdf`, i));
+    const outcome = await run({ pubsub });
+    expect(outcome.problems[0].detail).toMatch(/^10\+ translation request/);
   });
 
   test("ack deadline too short", async () => {
