@@ -20,6 +20,16 @@ Translates extracted content using an LLM and creates output Google Docs with a 
 8. Writes the full translation JSON to Drive
 9. Posts a "translation ready" (or doc-creation failure) message to a Google Chat space via an incoming webhook (`GOOGLE_CHAT_WEBHOOK_URL`); skipped if unset. The "translation ready" message starts with a `User: Name (email)` line for the submitter (whichever part is known; omitted if neither)
 
+## Pub/Sub retries
+
+Translate is triggered by a Pub/Sub push subscription on `extraction-complete`. Any non-2xx response (including Cloud Run's own 504 when a request hits the 600 s limit) makes Pub/Sub redeliver the message, and each delivery is a full, billed model call. So the subscription needs:
+
+- **Ack deadline 600 s** (Pub/Sub's maximum), so a translation still in progress isn't redelivered
+- **Dead-letter policy:** after 5 delivery attempts the message moves to the `translate-deadletter` topic (kept for a week by the `translate-deadletter-hold` subscription) instead of retrying until it expires
+- **Retry backoff:** 10 s to 600 s between attempts, instead of immediate redelivery
+
+The Claude SDK's own retries are off (`CLAUDE_MAX_RETRIES = 0` in `llm.js`): a timed-out call has already been billed, and Pub/Sub's capped redelivery is the only retry. Setup commands: the Translate setup guide ("Add a dead-letter policy and retry backoff").
+
 ## HTTP interface
 
 Accepts either a Pub/Sub push envelope or a direct POST:
@@ -38,6 +48,7 @@ Synchronous — the function returns after the output doc is created.
 | `index.js` | HTTP entrypoint, orchestration |
 | `prompt-assembly.js` | Builds the full prompt: system prompt + glossary + statutes + extraction context |
 | `llm.js` | LLM provider calls (Claude, Gemini) via Vertex AI or the direct APIs |
+| `chunking.js` | Splits large documents into parallel model calls (`CHUNK_SIZE` translatable blocks each, at most `MAX_PARALLEL_CHUNKS`) and merges the results |
 | `doc-writer.js` | Creates the output Google Doc with the two-column translation table |
 | `loaders.js` | Google Drive and config I/O, output writing |
 | `notifier.js` | Google Chat notifications via an incoming webhook |
@@ -64,6 +75,16 @@ Statute files are read from `STATUTES_GCS_BUCKET` under `STATUTES_GCS_PREFIX` (d
 ## Model Config sheet
 
 Models come from the `Config` tab of the Model Config sheet (all columns, matched by header name) (`MODEL_CONFIG_SHEET_ID`). **Row 1 must be the header row** and include `Role`, `Provider`, `Model`, and `Active` (case-insensitive). Without `MODEL_CONFIG_SHEET_ID`, the service uses `fixtures/config.json` for local development, but **on Cloud Run a missing `MODEL_CONFIG_SHEET_ID` is an error** so a deploy that loses its env vars can't run on test models.
+
+Optional column per model row:
+
+| Column | Meaning |
+|---|---|
+| `Effort` | Claude: `output_config.effort` (`low`…`max`). Gemini: thinking level, `low`, `medium` or `high` (other values fail that model's run). Blank = model default. `gemini-4-carbon` needs `low`: with its default thinking it often returns only the first few blocks. |
+
+Documents with more than 110 translatable blocks (`CHUNK_SIZE` in `chunking.js`) are translated in parallel calls of about 110 blocks each, for every model. At most 4 chunks run, all at once, because the 600 s request limit covers the whole run; larger documents get bigger chunks. Chunks are contiguous slices of the extraction (context blocks included) and are merged before the block check. On a 438-block document Claude Opus 5.5 took 179 s as 4 chunks vs 437 s in one call (about 60% more tokens, since each chunk repeats the glossary and statutes). Smaller documents are one call.
+
+Every translation is checked for completeness: if any translatable block is missing from the model's JSON, that model's run is marked `failed` ("Incomplete translation: N of M blocks returned …") and no doc is created.
 
 Config problems (missing env var on Cloud Run, missing columns, no data rows) stop the run and log a structured **ERROR** with `input_problem: "model_config"` and a message starting `Translation input problem (model_config):`. Missing columns are listed in `missing_columns`, with the headers found in `found_headers`.
 

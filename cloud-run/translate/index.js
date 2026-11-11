@@ -6,6 +6,7 @@ const { callLlm } = require("./llm");
 const { loadConfig, loadStatuteUrls, writeOutput, logTranslationResult, stripExtension } = require("./loaders");
 const { createTranslationDoc } = require("./doc-writer");
 const { withRetry } = require("./retry");
+const { CHUNK_SIZE, planChunks, mergeChunkTranslations } = require("./chunking");
 const { notifyDocCreated, notifyDocFailed, DOC_BASE_URL } = require("./notifier");
 
 const REQUIRED_FIELDS = ["extractionFileId", "sourceFileName"];
@@ -94,6 +95,71 @@ function parseInput(body) {
 }
 
 /**
+ * Translate the document with one model: a single call, or (for documents
+ * with more than chunkSize translatable blocks) parallel calls over contiguous
+ * block ranges, merged into one translation.
+ *
+ * @returns {Promise<{text: string|Object, usage: Object, stop_reason: string}>}
+ *   text is the raw model output (single call) or the merged object (chunked)
+ */
+async function translateDocument({ provider, model, effort, chunkSize, prompt, extractionBlocks, promptForBlocks, saveRawChunk }) {
+  const chunks = planChunks(extractionBlocks, chunkSize);
+  if (chunks.length === 1) {
+    return callLlm(provider, model, prompt, { effort });
+  }
+
+  console.log(`Translating in ${chunks.length} chunks (${chunks.map((c) => c.expectedBlockIds.length).join("/")} blocks) with ${provider} (${model})`);
+  const start = Date.now();
+  const results = await Promise.all(chunks.map(async (chunk, i) => {
+    const label = `chunk ${i + 1}/${chunks.length}`;
+    const result = await callLlm(provider, model, promptForBlocks(chunk.blocks), { effort });
+    console.log(`${provider} (${model}) ${label} complete (%d in / %d out tokens, stop_reason=%s)`,
+      result.usage.input_tokens, result.usage.output_tokens, result.stop_reason);
+    try {
+      return { ...result, parsed: typeof result.text === "string" ? JSON.parse(result.text) : result.text };
+    } catch {
+      await saveRawChunk(i + 1, result.text);
+      throw new Error(`LLM returned invalid JSON (${label}, stop_reason=${result.stop_reason})`);
+    }
+  }));
+
+  const stopReasons = [...new Set(results.map((r) => r.stop_reason))];
+  return {
+    text: mergeChunkTranslations(results.map((r) => r.parsed)),
+    stop_reason: stopReasons.join(","),
+    usage: {
+      input_tokens: results.reduce((n, r) => n + (r.usage.input_tokens || 0), 0),
+      output_tokens: results.reduce((n, r) => n + (r.usage.output_tokens || 0), 0),
+      thinking_tokens: results.reduce((n, r) => n + (r.usage.thinking_tokens || 0), 0),
+      duration_ms: Date.now() - start,
+      llm_backend: results[0].usage.llm_backend,
+      chunks: chunks.length,
+    },
+  };
+}
+
+const MISSING_IDS_SHOWN = 5;
+
+/**
+ * IDs of the blocks the model was asked to translate but didn't return.
+ *
+ * @param {{blocks?: Array<{id: string}>}} parsed - The model's translation JSON
+ * @param {string[]} expectedBlockIds - IDs of the extraction's translatable blocks
+ * @returns {string[]}
+ */
+function findMissingBlockIds(parsed, expectedBlockIds = []) {
+  const returned = new Set((Array.isArray(parsed?.blocks) ? parsed.blocks : []).map((b) => b?.id));
+  return expectedBlockIds.filter((id) => !returned.has(id));
+}
+
+function incompleteTranslationMessage(missingBlockIds, expectedCount, stopReason) {
+  const shown = missingBlockIds.slice(0, MISSING_IDS_SHOWN).join(", ");
+  const more = missingBlockIds.length > MISSING_IDS_SHOWN ? `, +${missingBlockIds.length - MISSING_IDS_SHOWN} more` : "";
+  return `Incomplete translation: ${expectedCount - missingBlockIds.length} of ${expectedCount} blocks returned ` +
+    `(missing ${shown}${more}; stop_reason=${stopReason})`;
+}
+
+/**
  * Translate function entry point.
  *
  * Accepts the extraction-complete payload published by the Extract function,
@@ -128,9 +194,10 @@ async function translate(req, res) {
     contentType = "public_flyer", includeStatutes = true,
     submittedByEmail = "", submittedByName = "" } = input;
 
-  let prompt, promptMetrics;
+  let prompt, promptMetrics, expectedBlockIds, extractionBlocks, promptForBlocks;
   try {
-    ({ prompt, promptMetrics } = await buildTranslationPrompt(extractionFileId, contentType, { includeStatutes }));
+    ({ prompt, promptMetrics, expectedBlockIds, extractionBlocks, promptForBlocks } =
+      await buildTranslationPrompt(extractionFileId, contentType, { includeStatutes }));
   } catch (err) {
     res
       .status(StatusCodes.INTERNAL_SERVER_ERROR)
@@ -165,10 +232,14 @@ async function translate(req, res) {
   const results = await Promise.allSettled(
     activeModels.map(async ({ provider, model, effort }) => {
       console.log(`Calling ${provider} (${model})...`);
-      const { text: translationJson, usage, stop_reason } = await callLlm(provider, model, prompt, { effort: effort || undefined });
+      const outputFileName = `${baseName}_${provider}_${model}.json`;
+      const { text: translationJson, usage, stop_reason } = await translateDocument({
+        provider, model, effort: effort || undefined, chunkSize: CHUNK_SIZE,
+        prompt, extractionBlocks, promptForBlocks,
+        saveRawChunk: (n, text) => writeOutput(`${baseName}_${provider}_${model}_chunk${n}.json`, text),
+      });
       console.log(`${provider} (${model}) complete (%d in / %d out tokens, stop_reason=%s), writing output...`,
         usage.input_tokens, usage.output_tokens, stop_reason);
-      const outputFileName = `${baseName}_${provider}_${model}.json`;
       let parsed;
       try {
         parsed = typeof translationJson === "string"
@@ -178,6 +249,14 @@ async function translate(req, res) {
         console.error(`Failed to parse JSON from ${provider}/${model}, saving raw output`);
         await writeOutput(outputFileName, translationJson);
         throw new Error("LLM returned invalid JSON");
+      }
+      // Valid JSON can still be a partial translation (gemini-4-carbon has
+      // returned 5 of 438 blocks with a normal stop reason). Don't build a doc from it.
+      const missingBlockIds = findMissingBlockIds(parsed, expectedBlockIds);
+      if (missingBlockIds.length) {
+        console.error(`Incomplete translation from ${provider}/${model} (stop_reason=${stop_reason}), saving raw output`);
+        await writeOutput(outputFileName, parsed);
+        throw new Error(incompleteTranslationMessage(missingBlockIds, expectedBlockIds.length, stop_reason));
       }
       const outputData = {
         ...parsed,
@@ -213,9 +292,11 @@ async function translate(req, res) {
       : {
           driveFileId: t.outputFileId,
           ...(t.usage && { input_tokens: t.usage.input_tokens, output_tokens: t.usage.output_tokens, duration_ms: t.usage.duration_ms }),
+          ...(t.usage?.thinking_tokens && { thinking_tokens: t.usage.thinking_tokens }),
           // Which backend served the call (vertex/direct), and why Vertex was skipped if it fell back
           ...(t.usage?.llm_backend && { llm_backend: t.usage.llm_backend }),
           ...(t.usage?.llm_fallback_reason && { llm_fallback_reason: t.usage.llm_fallback_reason }),
+          ...(t.usage?.chunks && { chunks: t.usage.chunks }),
           ...promptMetrics,
         };
     // Who dropped the file in the input folder (Drive lastModifyingUser, from the Orchestrator)
@@ -286,4 +367,4 @@ async function translate(req, res) {
 }
 
 functions.http("translate", translate);
-module.exports = { translate, parseInput };
+module.exports = { translate, parseInput, translateDocument, findMissingBlockIds, incompleteTranslationMessage };

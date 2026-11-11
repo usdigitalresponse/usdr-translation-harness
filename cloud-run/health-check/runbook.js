@@ -82,6 +82,16 @@ const WHAT_TO_DO = {
     "Recreate the Eventarc trigger from the topic to Translate (setup guide 5). Until then, no file gets translated.",
   pubsub_ack_deadline_short:
     "Set the subscription's ack deadline to 600s: gcloud pubsub subscriptions update <subscription> --ack-deadline=600.",
+  pubsub_no_dead_letter:
+    "Add a dead-letter policy and retry backoff (setup guide 5, 'Add a dead-letter policy'). Until then, a document Translate can't finish is retried, and billed, until the message expires.",
+  pubsub_no_retry_backoff:
+    "Add a retry policy (10s to 600s) to the subscription (setup guide 5, 'Add a dead-letter policy'). Until then, failed translations are retried immediately.",
+  pubsub_dead_letter_unwatched:
+    "Create a subscription on the dead-letter topic (e.g. translate-deadletter-hold, 7-day retention) so failed messages are kept. Until then they're dropped.",
+  pubsub_dead_letter_unreadable:
+    "Give the pipeline service account Pub/Sub Subscriber on the dead-letter subscription, so the health check can see failed translations.",
+  pubsub_dead_lettered:
+    "Translate gave up on these files after every retry. Check translate's logs for each file (timeout, incomplete translation, invalid JSON). After handling them, clear the list: gcloud pubsub subscriptions seek <dead-letter subscription> --time=$(date -u +%FT%TZ).",
 
   // Problems the services logged
   logged_input_problem:

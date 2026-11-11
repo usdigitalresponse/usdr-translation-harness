@@ -27,7 +27,14 @@ function mockVertexModule() {
 function mockGenAIModule() {
   return {
     GoogleGenAI: jest.fn().mockImplementation((opts) => ({
-      models: { generateContent: (req) => mockGemini(opts.vertexai ? "vertex" : "direct", req) },
+      models: {
+        generateContent: (req) => mockGemini(opts.vertexai ? "vertex" : "direct", req),
+        // translate streams Gemini responses: yield the whole mocked response as one chunk
+        generateContentStream: async (req) => {
+          const response = await mockGemini(opts.vertexai ? "vertex" : "direct", req);
+          return (async function* () { yield response; })();
+        },
+      },
     })),
   };
 }
@@ -217,7 +224,7 @@ describe.each(FUNCTIONS)("$name LLM backends", ({ dir, llm: loadLlm, call }) => 
     llm.makeClaudeClient("vertex");
     llm.makeGeminiClient("vertex");
     expect(AnthropicVertex).toHaveBeenLastCalledWith(expect.objectContaining({ projectId: "proj", region: "us" }));
-    expect(GoogleGenAI).toHaveBeenLastCalledWith({ vertexai: true, project: "proj", location: "us" });
+    expect(GoogleGenAI).toHaveBeenLastCalledWith(expect.objectContaining({ vertexai: true, project: "proj", location: "us" }));
   });
 
   test("Vertex location defaults to us", () => {

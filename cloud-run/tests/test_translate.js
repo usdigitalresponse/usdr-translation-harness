@@ -85,6 +85,9 @@ const { callLlm } = require("../translate/llm.js");
 
 // --- parseInput ---
 
+// A model response that translates the single block b01 used by these tests
+const HOLA_TRANSLATION = JSON.stringify({ blocks: [{ id: "b01", translated_text: "Hola" }] });
+
 describe("parseInput", () => {
   test("returns body as-is for direct HTTP call", () => {
     const body = { extractionFileId: "abc", sourceFileName: "test.pdf" };
@@ -211,7 +214,7 @@ describe("translate", () => {
     loadConfig.mockResolvedValue({
       models: [{ role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
     });
-    callLlm.mockResolvedValue({ text: '{"translated_text": "Hola"}', usage: { input_tokens: 100, output_tokens: 50, duration_ms: 1500 } });
+    callLlm.mockResolvedValue({ text: HOLA_TRANSLATION, usage: { input_tokens: 100, output_tokens: 50, duration_ms: 1500 } });
     writeOutput.mockResolvedValue("output-file-id");
 
     const res = mockRes();
@@ -222,7 +225,7 @@ describe("translate", () => {
 
     expect(callLlm).toHaveBeenCalledWith("anthropic", "claude-sonnet-4-6", expect.any(String), { effort: undefined });
     expect(writeOutput).toHaveBeenCalledWith("test_anthropic_claude-sonnet-4-6.json", {
-      translated_text: "Hola",
+      ...JSON.parse(HOLA_TRANSLATION),
       sourceFileId: "src456",
       extractionFileId: "file123",
       contentType: "public_flyer",
@@ -381,7 +384,7 @@ describe("translate structured logs", () => {
     loadConfig.mockResolvedValue({
       models: [{ role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
     });
-    callLlm.mockResolvedValue({ text: '{"translated_text": "Hola"}', usage: { input_tokens: 1, output_tokens: 1, duration_ms: 1 } });
+    callLlm.mockResolvedValue({ text: HOLA_TRANSLATION, usage: { input_tokens: 1, output_tokens: 1, duration_ms: 1 } });
     writeOutput.mockResolvedValue("output-file-id");
   });
 
@@ -1105,7 +1108,7 @@ describe("translate doc step logging", () => {
     loadConfig.mockResolvedValue({
       models: [{ role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
     });
-    callLlm.mockResolvedValue({ text: '{"translated_text": "Hola"}', usage: { input_tokens: 1, output_tokens: 1, duration_ms: 1 } });
+    callLlm.mockResolvedValue({ text: HOLA_TRANSLATION, usage: { input_tokens: 1, output_tokens: 1, duration_ms: 1 } });
     writeOutput.mockResolvedValue("translation-json-id");
     jest.spyOn(console, "log").mockImplementation();
     jest.spyOn(console, "error").mockImplementation();
