@@ -265,17 +265,22 @@ async function buildTranslationPrompt(extractionFileId, contentType, { includeSt
 
   const extractionStr = JSON.stringify(extractionJson, null, 2);
 
-  let prompt = promptBase;
-  prompt += `\n\n<extraction_context>\n${extractionContext}</extraction_context>`;
-  prompt += `\n\n<extraction>\n${extractionStr}\n</extraction>`;
-
-  if (glossaryText) {
-    prompt += `\n\n<glossary>\n${glossaryText}\n</glossary>`;
-  }
-
-  if (statutesText) {
-    prompt += `\n\n<statutes>\n${statutesText}\n</statutes>`;
-  }
+  // Same prompt for any subset of the extraction's blocks (used for chunking):
+  // only the <extraction> section changes.
+  const assemble = (extractionText) => {
+    let text = promptBase;
+    text += `\n\n<extraction_context>\n${extractionContext}</extraction_context>`;
+    text += `\n\n<extraction>\n${extractionText}\n</extraction>`;
+    if (glossaryText) {
+      text += `\n\n<glossary>\n${glossaryText}\n</glossary>`;
+    }
+    if (statutesText) {
+      text += `\n\n<statutes>\n${statutesText}\n</statutes>`;
+    }
+    return text;
+  };
+  const prompt = assemble(extractionStr);
+  const promptForBlocks = (blocks) => assemble(JSON.stringify({ ...extractionJson, blocks }, null, 2));
 
   const promptTokenEstimate = Math.ceil(promptBase.length / CHARS_PER_TOKEN_ESTIMATE);
   const extractionTokenEstimate = Math.ceil(extractionStr.length / CHARS_PER_TOKEN_ESTIMATE);
@@ -286,7 +291,13 @@ async function buildTranslationPrompt(extractionFileId, contentType, { includeSt
     ? Math.ceil(statutesText.length / CHARS_PER_TOKEN_ESTIMATE)
     : 0;
 
+  // Blocks the model must return; used to reject partial translations
+  const expectedBlockIds = (extractionJson.blocks || [])
+    .filter((b) => b.translate !== false)
+    .map((b) => b.id);
+
   const promptMetrics = {
+    translatable_blocks: expectedBlockIds.length,
     prompt_template_tokens: promptTokenEstimate,
     extraction_tokens: extractionTokenEstimate,
     glossary_tokens: glossaryTokenEstimate,
@@ -297,7 +308,13 @@ async function buildTranslationPrompt(extractionFileId, contentType, { includeSt
   };
 
   console.log(`Prompt assembled (${prompt.length} chars)`);
-  return { prompt, promptMetrics };
+  return {
+    prompt,
+    promptMetrics,
+    expectedBlockIds,
+    extractionBlocks: extractionJson.blocks || [],
+    promptForBlocks,
+  };
 }
 
 module.exports = {

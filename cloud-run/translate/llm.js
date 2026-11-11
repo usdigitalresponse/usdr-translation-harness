@@ -5,6 +5,7 @@ const Anthropic = require("@anthropic-ai/sdk");
 const { AnthropicVertex } = require("@anthropic-ai/vertex-sdk");
 const { GoogleGenAI } = require("@google/genai");
 const { StatusCodes } = require("http-status-codes");
+const { Agent, setGlobalDispatcher } = require("undici");
 
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -45,8 +46,19 @@ const SCHEMA_PATHS = {
   [PROVIDER_GOOGLE]: path.join(SCHEMA_DIR, "translation-schema-gemini.json"),
 };
 
-const DEFAULT_MAX_TOKENS = 65536;
+// Large documents (e.g. 438 blocks) need ~64k output tokens on Claude; 65536 truncated them
+const DEFAULT_MAX_TOKENS = 128_000;
 const LLM_TIMEOUT_MS = 600_000;
+
+// Node's fetch aborts a request that sends no response headers within 300 s
+// (UND_ERR_HEADERS_TIMEOUT, surfaced as "fetch failed"). Vertex sends headers
+// only when the model starts its answer, and gemini-4-carbon can think for
+// longer than that. Let the SDK timeouts above be the only limit.
+setGlobalDispatcher(new Agent({ headersTimeout: LLM_TIMEOUT_MS, bodyTimeout: LLM_TIMEOUT_MS }));
+// No SDK retries for Claude: a timed-out call has already been billed for the
+// tokens it generated, and each retry repeats the full cost. Pub/Sub redelivery
+// (capped by the dead-letter policy) is the only retry.
+const CLAUDE_MAX_RETRIES = 0;
 
 function loadTranslationSchema(provider) {
   const schemaPath = SCHEMA_PATHS[provider];
@@ -67,17 +79,32 @@ function vertexSettings() {
 function makeClaudeClient(backend) {
   if (backend === BACKEND_VERTEX) {
     const { project, location } = vertexSettings();
-    return new AnthropicVertex({ projectId: project, region: location, timeout: LLM_TIMEOUT_MS });
+    return new AnthropicVertex({ projectId: project, region: location, timeout: LLM_TIMEOUT_MS, maxRetries: CLAUDE_MAX_RETRIES });
   }
-  return new Anthropic({ timeout: LLM_TIMEOUT_MS });
+  return new Anthropic({ timeout: LLM_TIMEOUT_MS, maxRetries: CLAUDE_MAX_RETRIES });
 }
 
 function makeGeminiClient(backend) {
+  // Same limit as Claude so a stuck call fails before Cloud Run kills the request
+  const httpOptions = { timeout: LLM_TIMEOUT_MS };
   if (backend === BACKEND_VERTEX) {
     const { project, location } = vertexSettings();
-    return new GoogleGenAI({ vertexai: true, project, location });
+    return new GoogleGenAI({ vertexai: true, project, location, httpOptions });
   }
-  return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, httpOptions });
+}
+
+// Model Config "Effort" column -> Gemini thinking level. Gemini 3.8 Flash and
+// gemini-4-carbon accept LOW/MEDIUM/HIGH (not MINIMAL). Long default thinking
+// made gemini-4-carbon return 5 of 438 blocks; LOW returned all of them.
+const GEMINI_THINKING_LEVELS = new Set(["LOW", "MEDIUM", "HIGH"]);
+
+function geminiThinkingLevel(effort) {
+  const level = String(effort).trim().toUpperCase();
+  if (!GEMINI_THINKING_LEVELS.has(level)) {
+    throw new Error(`Unsupported Gemini effort "${effort}" in Model Config (use low, medium or high)`);
+  }
+  return level;
 }
 
 /**
@@ -134,27 +161,39 @@ async function callClaude(client, prompt, { model, maxTokens = DEFAULT_MAX_TOKEN
   return { text: textBlock.text, usage, stop_reason: response.stop_reason };
 }
 
-async function callGemini(client, prompt, { model, outputSchema } = {}) {
+async function callGemini(client, prompt, { model, outputSchema, effort } = {}) {
   const kwargs = {
     model,
     contents: [{ role: "user", parts: [{ text: prompt }] }],
+    config: {},
   };
 
   if (outputSchema) {
-    kwargs.config = {
-      responseMimeType: "application/json",
-      responseSchema: outputSchema,
-    };
+    kwargs.config.responseMimeType = "application/json";
+    kwargs.config.responseSchema = outputSchema;
+  }
+  if (effort) {
+    kwargs.config.thinkingConfig = { thinkingLevel: geminiThinkingLevel(effort) };
   }
 
-  const response = await client.models.generateContent(kwargs);
-  const meta = response.usageMetadata;
+  // Stream: a non-streaming call sends no headers until generation finishes,
+  // and Node's fetch aborts after 300 s without headers ("fetch failed").
+  // gemini-4-carbon needs ~550 s for a 438-block document.
+  const stream = await client.models.generateContentStream(kwargs);
+  let text = "";
+  let meta, finishReason;
+  for await (const chunk of stream) {
+    text += chunk.text ?? "";
+    meta = chunk.usageMetadata ?? meta;
+    finishReason = chunk.candidates?.[0]?.finishReason ?? finishReason;
+  }
   const usage = {
-    input_tokens: meta.promptTokenCount,
-    output_tokens: meta.candidatesTokenCount,
+    input_tokens: meta?.promptTokenCount,
+    output_tokens: meta?.candidatesTokenCount,
+    // Billed as output on top of output_tokens (unlike Claude, whose output_tokens include thinking)
+    thinking_tokens: meta?.thoughtsTokenCount || 0,
   };
-  const finishReason = response.candidates?.[0]?.finishReason;
-  return { text: response.text, usage, stop_reason: finishReason };
+  return { text, usage, stop_reason: finishReason };
 }
 
 async function callLlm(provider, model, prompt, { effort } = {}) {
@@ -163,7 +202,7 @@ async function callLlm(provider, model, prompt, { effort } = {}) {
 
   const providerCalls = {
     [PROVIDER_ANTHROPIC]: [makeClaudeClient, (client) => callClaude(client, prompt, { model, outputSchema, effort })],
-    [PROVIDER_GOOGLE]: [makeGeminiClient, (client) => callGemini(client, prompt, { model, outputSchema })],
+    [PROVIDER_GOOGLE]: [makeGeminiClient, (client) => callGemini(client, prompt, { model, outputSchema, effort })],
   };
   if (!providerCalls[provider]) {
     throw new Error(`Unknown provider: ${provider}`);
@@ -199,6 +238,7 @@ async function callLlm(provider, model, prompt, { effort } = {}) {
 module.exports = {
   callClaude,
   callGemini,
+  geminiThinkingLevel,
   callLlm,
   fallbackReason,
   makeClaudeClient,
