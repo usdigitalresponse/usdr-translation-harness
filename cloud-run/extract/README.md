@@ -55,6 +55,16 @@ With `vertex-first`, a Vertex failure falls back to direct **only** for errors r
 
 Model IDs in the Model Config sheet are the same for both backends.
 
+## Model call retries
+
+The SDKs' own retries are off (Claude's default is 2 retries, including on timeouts, and each retry of a timed-out call is billed). Instead, every model call goes through `call_with_model_retry` in `llm.py`:
+
+- **Retried** (up to 2 times, waiting 5 s then 15 s): rate limit (429), overloaded (529), 502 / 503, and network errors, **only if the attempt failed within 30 s**. A slower failure may have happened mid-generation, which is already billed.
+- **Not retried:** timeouts, other HTTP errors (400, 500…), and bad output.
+- When a call needed retries, its log entry includes `model_retries`. `duration_ms` covers the whole call: fallback, retries and the waits between them.
+
+The same rule is in each model-calling service's `llm` module.
+
 ## Dependencies
 
 - **pdfplumber** — PDF text pre-extraction

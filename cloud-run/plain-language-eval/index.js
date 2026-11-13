@@ -195,6 +195,7 @@ async function runEval(fileId, fileName, mimeType, submittedByEmail = "") {
         // Which backend served the call (vertex/direct), and why Vertex was skipped if it fell back
         ...(usage.llm_backend && { llm_backend: usage.llm_backend }),
         ...(usage.llm_fallback_reason && { llm_fallback_reason: usage.llm_fallback_reason }),
+        ...(usage.model_retries && { model_retries: usage.model_retries }),
       });
       try {
         await logEvalResult(fileId, fileName, {

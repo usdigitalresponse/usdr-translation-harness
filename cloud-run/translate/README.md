@@ -28,7 +28,17 @@ Translate is triggered by a Pub/Sub push subscription on `extraction-complete`. 
 - **Dead-letter policy:** after 5 delivery attempts the message moves to the `translate-deadletter` topic (kept for a week by the `translate-deadletter-hold` subscription) instead of retrying until it expires
 - **Retry backoff:** 10 s to 600 s between attempts, instead of immediate redelivery
 
-The Claude SDK's own retries are off (`CLAUDE_MAX_RETRIES = 0` in `llm.js`): a timed-out call has already been billed, and Pub/Sub's capped redelivery is the only retry. Setup commands: the Translate setup guide ("Add a dead-letter policy and retry backoff").
+Inside a request, only fast, temporary model errors are retried (see "Model call retries" below); otherwise Pub/Sub's capped redelivery is the only retry. Setup commands: the Translate setup guide ("Add a dead-letter policy and retry backoff").
+
+## Model call retries
+
+The SDKs' own retries are off (Claude's default is 2 retries, including on timeouts, and each retry of a timed-out call is billed). Instead, every model call goes through `withModelRetry` in `llm.js`:
+
+- **Retried** (up to 2 times, waiting 5 s then 15 s): rate limit (429), overloaded (529), 502 / 503, and network errors, **only if the attempt failed within 30 s**. A slower failure may have happened mid-generation, which is already billed.
+- **Not retried:** timeouts, other HTTP errors (400, 500…), and bad output.
+- When a call needed retries, its log entry includes `model_retries`. `duration_ms` covers the whole call: fallback, retries and the waits between them.
+
+The same rule is in each model-calling service's `llm` module.
 
 ## HTTP interface
 

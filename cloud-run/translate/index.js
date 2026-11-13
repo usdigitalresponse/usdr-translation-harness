@@ -131,6 +131,7 @@ async function translateDocument({ provider, model, effort, chunkSize, prompt, e
       input_tokens: results.reduce((n, r) => n + (r.usage.input_tokens || 0), 0),
       output_tokens: results.reduce((n, r) => n + (r.usage.output_tokens || 0), 0),
       thinking_tokens: results.reduce((n, r) => n + (r.usage.thinking_tokens || 0), 0),
+      model_retries: results.reduce((n, r) => n + (r.usage.model_retries || 0), 0),
       duration_ms: Date.now() - start,
       llm_backend: results[0].usage.llm_backend,
       chunks: chunks.length,
@@ -296,6 +297,7 @@ async function translate(req, res) {
           // Which backend served the call (vertex/direct), and why Vertex was skipped if it fell back
           ...(t.usage?.llm_backend && { llm_backend: t.usage.llm_backend }),
           ...(t.usage?.llm_fallback_reason && { llm_fallback_reason: t.usage.llm_fallback_reason }),
+          ...(t.usage?.model_retries && { model_retries: t.usage.model_retries }),
           ...(t.usage?.chunks && { chunks: t.usage.chunks }),
           ...promptMetrics,
         };

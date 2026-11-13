@@ -40,6 +40,103 @@ const MISSING_CREDENTIALS_PATTERN = /default credentials/i;
 
 class VertexNotConfiguredError extends Error {}
 
+// ── Retrying model calls ──────────────────────────────────────────────────
+// The SDKs' own retries are off (Claude's default is 2, including timeouts;
+// Gemini's JS SDK doesn't retry unless configured). Instead, one rule for every
+// model call: retry only temporary errors that fail fast (rate limit, overload,
+// connection refused), when the model hasn't generated anything yet. Never retry
+// a timeout or anything slow: that call has already been billed and would just
+// run out of time again.
+const MODEL_RETRIES = 2;
+const MODEL_RETRY_BASE_DELAY_MS = 5_000;   // 5 s, then 15 s
+const MODEL_RETRY_BACKOFF = 3;
+// A failure slower than this may have happened mid-generation (billed), so it isn't retried
+const MODEL_RETRY_FAST_FAILURE_MS = 30_000;
+const MODEL_RETRY_STATUS_CODES = new Set([
+  StatusCodes.TOO_MANY_REQUESTS,       // 429 rate limit
+  StatusCodes.BAD_GATEWAY,             // 502
+  StatusCodes.SERVICE_UNAVAILABLE,     // 503
+  529,                                 // Anthropic: overloaded (no StatusCodes name)
+]);
+// The Claude SDK's errors don't set err.name (it's just "Error"), so they're
+// recognized by class: the timeout class extends the connection class, so
+// timeouts are checked first.
+const CLAUDE_TIMEOUT_CLASS = "APIConnectionTimeoutError";
+const CLAUDE_CONNECTION_CLASS = "APIConnectionError";
+// Timeouts from the Gemini SDK and Node's fetch (an aborted request, before or
+// during the response body)
+const TIMEOUT_ERROR_NAMES = new Set(["AbortError", "TimeoutError"]);
+const TIMEOUT_ERROR_CODES = new Set(["UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT"]);
+// Network failures under Node fetch's "fetch failed" / "terminated" errors
+const CONNECTION_ERROR_CODES = new Set([
+  "ECONNRESET", "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "EPIPE",
+  "UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT",
+]);
+
+/** Constructor names along the error's prototype chain, e.g. APIConnectionTimeoutError, APIConnectionError, … */
+function errorClassNames(err) {
+  const names = new Set();
+  for (let proto = err && Object.getPrototypeOf(err); proto && proto !== Object.prototype; proto = Object.getPrototypeOf(proto)) {
+    if (proto.constructor?.name) names.add(proto.constructor.name);
+  }
+  return names;
+}
+
+function errorCode(err) {
+  return err?.code ?? err?.cause?.code;
+}
+
+function isModelTimeout(err) {
+  return errorClassNames(err).has(CLAUDE_TIMEOUT_CLASS) || TIMEOUT_ERROR_NAMES.has(err?.name)
+    || TIMEOUT_ERROR_CODES.has(errorCode(err));
+}
+
+/**
+ * Why a failed model call is worth retrying, or null if it isn't.
+ * Timeouts are checked first: the Claude SDK's timeout error is a subclass of
+ * its connection error.
+ *
+ * @param {Error} err - The error from the model call
+ * @returns {string|null}
+ */
+function modelRetryReason(err) {
+  if (isModelTimeout(err)) return null;
+  const status = err?.status;
+  if (MODEL_RETRY_STATUS_CODES.has(status)) return `HTTP ${status}`;
+  if (status === undefined) {
+    const code = errorCode(err);
+    if (errorClassNames(err).has(CLAUDE_CONNECTION_CLASS)) return "connection error";
+    if (CONNECTION_ERROR_CODES.has(code)) return `connection error (${code})`;
+  }
+  return null;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Run a model call, retrying (up to MODEL_RETRIES times, with backoff) only
+ * when it fails fast with a temporary error. Anything else is thrown as is.
+ *
+ * @param {() => Promise<*>} fn - One attempt at the model call
+ * @param {{retries?: number, baseDelayMs?: number, wait?: Function, now?: Function}} [options] - for tests
+ */
+async function withModelRetry(fn, { retries = MODEL_RETRIES, baseDelayMs = MODEL_RETRY_BASE_DELAY_MS,
+  wait = sleep, now = Date.now } = {}) {
+  for (let attempt = 0; ; attempt++) {
+    const started = now();
+    try {
+      return await fn();
+    } catch (err) {
+      const reason = modelRetryReason(err);
+      const fast = now() - started < MODEL_RETRY_FAST_FAILURE_MS;
+      if (!reason || !fast || attempt >= retries) throw err;
+      const delayMs = baseDelayMs * MODEL_RETRY_BACKOFF ** attempt;
+      console.warn(`Model call failed (${reason}); retry ${attempt + 1} of ${retries} in ${delayMs / 1000}s`);
+      await wait(delayMs);
+    }
+  }
+}
+
 const SCHEMA_DIR = __dirname;
 const SCHEMA_PATHS = {
   [PROVIDER_ANTHROPIC]: path.join(SCHEMA_DIR, "translation-schema-claude.json"),
@@ -56,8 +153,9 @@ const LLM_TIMEOUT_MS = 600_000;
 // longer than that. Let the SDK timeouts above be the only limit.
 setGlobalDispatcher(new Agent({ headersTimeout: LLM_TIMEOUT_MS, bodyTimeout: LLM_TIMEOUT_MS }));
 // No SDK retries for Claude: a timed-out call has already been billed for the
-// tokens it generated, and each retry repeats the full cost. Pub/Sub redelivery
-// (capped by the dead-letter policy) is the only retry.
+// tokens it generated, and each retry repeats the full cost. withModelRetry
+// (below) retries only fast, temporary errors; Pub/Sub redelivery (capped by
+// the dead-letter policy) covers the rest.
 const CLAUDE_MAX_RETRIES = 0;
 
 function loadTranslationSchema(provider) {
@@ -196,9 +294,8 @@ async function callGemini(client, prompt, { model, outputSchema, effort } = {}) 
   return { text, usage, stop_reason: finishReason };
 }
 
-async function callLlm(provider, model, prompt, { effort } = {}) {
+async function callLlmOnce(provider, model, prompt, { effort } = {}) {
   const outputSchema = loadTranslationSchema(provider);
-  const start = Date.now();
 
   const providerCalls = {
     [PROVIDER_ANTHROPIC]: [makeClaudeClient, (client) => callClaude(client, prompt, { model, outputSchema, effort })],
@@ -225,7 +322,6 @@ async function callLlm(provider, model, prompt, { effort } = {}) {
       console.warn(`${provider} via ${backend} failed (${reason}); falling back to ${backends[i + 1]}`);
       continue;
     }
-    result.usage.duration_ms = Date.now() - start;
     result.usage.llm_backend = backend;
     if (reason) {
       result.usage.llm_fallback_reason = reason;
@@ -235,7 +331,29 @@ async function callLlm(provider, model, prompt, { effort } = {}) {
 }
 
 
+/**
+ * Call the model (Vertex first, falling back to the direct API per
+ * LLM_BACKEND), retrying fast, temporary failures (see withModelRetry).
+ */
+async function callLlm(provider, model, prompt, { effort } = {}) {
+  const start = Date.now();
+  let attempts = 0;
+  const result = await withModelRetry(() => {
+    attempts += 1;
+    return callLlmOnce(provider, model, prompt, { effort });
+  });
+  // Whole call, as before retries were ours: fallback, retries and the waits between them
+  result.usage.duration_ms = Date.now() - start;
+  if (attempts > 1) {
+    result.usage.model_retries = attempts - 1;
+  }
+  return result;
+}
+
 module.exports = {
+  withModelRetry,
+  modelRetryReason,
+  MODEL_RETRIES,
   callClaude,
   callGemini,
   geminiThinkingLevel,
