@@ -39,6 +39,85 @@ const MISSING_CREDENTIALS_PATTERN = /default credentials/i;
 
 class VertexNotConfiguredError extends Error {}
 
+// ── Retrying model calls ──────────────────────────────────────────────────
+// The SDKs' own retries are off (Claude's default is 2, including timeouts;
+// Gemini's JS SDK doesn't retry unless configured). Instead, one rule for every
+// model call: retry only temporary errors that fail fast (rate limit, overload,
+// connection refused), when the model hasn't generated anything yet. Never retry
+// a timeout or anything slow: that call has already been billed and would just
+// run out of time again.
+const MODEL_RETRIES = 2;
+const MODEL_RETRY_BASE_DELAY_MS = 5_000;   // 5 s, then 15 s
+const MODEL_RETRY_BACKOFF = 3;
+// A failure slower than this may have happened mid-generation (billed), so it isn't retried
+const MODEL_RETRY_FAST_FAILURE_MS = 30_000;
+const MODEL_RETRY_STATUS_CODES = new Set([
+  StatusCodes.TOO_MANY_REQUESTS,       // 429 rate limit
+  StatusCodes.BAD_GATEWAY,             // 502
+  StatusCodes.SERVICE_UNAVAILABLE,     // 503
+  529,                                 // Anthropic: overloaded (no StatusCodes name)
+]);
+// Timeouts from the Claude SDK, the Gemini SDK (an aborted fetch) and Node's fetch
+const TIMEOUT_ERROR_NAMES = new Set(["APIConnectionTimeoutError", "AbortError", "TimeoutError"]);
+const TIMEOUT_ERROR_CODES = new Set(["UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT"]);
+// Network failures (Claude SDK's connection error; Node fetch's "fetch failed" causes)
+const CONNECTION_ERROR_NAMES = new Set(["APIConnectionError"]);
+const CONNECTION_ERROR_CODES = new Set([
+  "ECONNRESET", "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "EPIPE",
+  "UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT",
+]);
+
+function isModelTimeout(err) {
+  return TIMEOUT_ERROR_NAMES.has(err?.name) || TIMEOUT_ERROR_CODES.has(err?.cause?.code)
+    || TIMEOUT_ERROR_CODES.has(err?.code);
+}
+
+/**
+ * Why a failed model call is worth retrying, or null if it isn't.
+ * Timeouts are checked first: the Claude SDK's timeout error is a subclass of
+ * its connection error.
+ *
+ * @param {Error} err - The error from the model call
+ * @returns {string|null}
+ */
+function modelRetryReason(err) {
+  if (isModelTimeout(err)) return null;
+  const status = err?.status;
+  if (MODEL_RETRY_STATUS_CODES.has(status)) return `HTTP ${status}`;
+  if (status === undefined) {
+    const code = err?.cause?.code || err?.code;
+    if (CONNECTION_ERROR_NAMES.has(err?.name)) return "connection error";
+    if (CONNECTION_ERROR_CODES.has(code)) return `connection error (${code})`;
+  }
+  return null;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Run a model call, retrying (up to MODEL_RETRIES times, with backoff) only
+ * when it fails fast with a temporary error. Anything else is thrown as is.
+ *
+ * @param {() => Promise<*>} fn - One attempt at the model call
+ * @param {{retries?: number, baseDelayMs?: number, wait?: Function, now?: Function}} [options] - for tests
+ */
+async function withModelRetry(fn, { retries = MODEL_RETRIES, baseDelayMs = MODEL_RETRY_BASE_DELAY_MS,
+  wait = sleep, now = Date.now } = {}) {
+  for (let attempt = 0; ; attempt++) {
+    const started = now();
+    try {
+      return await fn();
+    } catch (err) {
+      const reason = modelRetryReason(err);
+      const fast = now() - started < MODEL_RETRY_FAST_FAILURE_MS;
+      if (!reason || !fast || attempt >= retries) throw err;
+      const delayMs = baseDelayMs * MODEL_RETRY_BACKOFF ** attempt;
+      console.warn(`Model call failed (${reason}); retry ${attempt + 1} of ${retries} in ${delayMs / 1000}s`);
+      await wait(delayMs);
+    }
+  }
+}
+
 const SCHEMA_DIR = __dirname;
 const SCHEMA_PATHS = {
   [PROVIDER_ANTHROPIC]: path.join(SCHEMA_DIR, "plain-language-schema-claude.json"),
@@ -47,6 +126,8 @@ const SCHEMA_PATHS = {
 
 const DEFAULT_MAX_TOKENS = 65536;
 const LLM_TIMEOUT_MS = 240_000;
+// No Claude SDK retries: withModelRetry (below) decides what's worth retrying
+const CLAUDE_MAX_RETRIES = 0;
 
 function loadEvalSchema(provider) {
   const schemaPath = SCHEMA_PATHS[provider];
@@ -67,9 +148,9 @@ function vertexSettings() {
 function makeClaudeClient(backend) {
   if (backend === BACKEND_VERTEX) {
     const { project, location } = vertexSettings();
-    return new AnthropicVertex({ projectId: project, region: location, timeout: LLM_TIMEOUT_MS });
+    return new AnthropicVertex({ projectId: project, region: location, timeout: LLM_TIMEOUT_MS, maxRetries: CLAUDE_MAX_RETRIES });
   }
-  return new Anthropic({ timeout: LLM_TIMEOUT_MS });
+  return new Anthropic({ timeout: LLM_TIMEOUT_MS, maxRetries: CLAUDE_MAX_RETRIES });
 }
 
 function makeGeminiClient(backend) {
@@ -175,7 +256,7 @@ async function callGemini(client, prompt, { model, outputSchema, pdfBase64 } = {
   return { text: response.text, usage, stop_reason: finishReason };
 }
 
-async function callLlm(provider, model, prompt, pdfBase64 = null) {
+async function callLlmOnce(provider, model, prompt, pdfBase64 = null) {
   const outputSchema = loadEvalSchema(provider);
   const start = Date.now();
 
@@ -213,7 +294,18 @@ async function callLlm(provider, model, prompt, pdfBase64 = null) {
   }
 }
 
+/**
+ * Call the model (Vertex first, falling back to the direct API per
+ * LLM_BACKEND), retrying fast, temporary failures (see withModelRetry).
+ */
+async function callLlm(provider, model, prompt, pdfBase64 = null) {
+  return withModelRetry(() => callLlmOnce(provider, model, prompt, pdfBase64));
+}
+
 module.exports = {
+  withModelRetry,
+  modelRetryReason,
+  MODEL_RETRIES,
   callClaude,
   callGemini,
   callLlm,
