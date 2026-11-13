@@ -145,7 +145,12 @@ const SCHEMA_PATHS = {
 
 // Large documents (e.g. 438 blocks) need ~64k output tokens on Claude; 65536 truncated them
 const DEFAULT_MAX_TOKENS = 128_000;
-const LLM_TIMEOUT_MS = 600_000;
+// Under Cloud Run's 600 s request limit, so a slow call fails inside Translate
+// (recorded, not retried) instead of the request being cut off (and Pub/Sub
+// redelivering it). The ~60 s left is for saving the JSON, building the doc and
+// logging. Retries and the Vertex → direct fallback each get the full timeout,
+// so a rare request can still run over; the dead-letter policy caps those.
+const LLM_TIMEOUT_MS = 540_000;
 
 // Node's fetch aborts a request that sends no response headers within 300 s
 // (UND_ERR_HEADERS_TIMEOUT, surfaced as "fetch failed"). Vertex sends headers
@@ -352,6 +357,8 @@ async function callLlm(provider, model, prompt, { effort } = {}) {
 
 module.exports = {
   withModelRetry,
+  LLM_TIMEOUT_MS,
+  isModelTimeout,
   modelRetryReason,
   MODEL_RETRIES,
   callClaude,

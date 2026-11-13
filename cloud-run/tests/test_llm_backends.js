@@ -355,3 +355,22 @@ describe.each(FUNCTIONS)("$name retry rule", ({ dir, llm: loadLlm, call }) => {
     expect(AnthropicVertex).toHaveBeenLastCalledWith(expect.objectContaining({ maxRetries: 0 }));
   });
 });
+
+// ── Translate's timeout: under Cloud Run's 600 s request limit ─────────────
+
+test("translate: model clients time out before Cloud Run's 600 s limit", () => {
+  const llm = require("../translate/llm.js");
+  const { AnthropicVertex } = require("../translate/node_modules/@anthropic-ai/vertex-sdk");
+  const { GoogleGenAI } = require(require.resolve("@google/genai", { paths: [require("path").join(__dirname, "../translate")] }));
+  const saved = { ...process.env };
+  Object.assign(process.env, VERTEX_ENV);
+  try {
+    llm.makeClaudeClient("vertex");
+    llm.makeGeminiClient("vertex");
+  } finally {
+    process.env = saved;
+  }
+  expect(llm.LLM_TIMEOUT_MS).toBe(540_000);
+  expect(AnthropicVertex).toHaveBeenLastCalledWith(expect.objectContaining({ timeout: llm.LLM_TIMEOUT_MS }));
+  expect(GoogleGenAI.mock.calls.at(-1)[0].httpOptions.timeout).toBe(llm.LLM_TIMEOUT_MS);
+});

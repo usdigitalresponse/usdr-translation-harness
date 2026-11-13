@@ -118,4 +118,30 @@ async function postToChat(webhookUrl, text) {
   }
 }
 
-module.exports = { notifyDocCreated, notifyDocFailed, DOC_BASE_URL, LOG_PREFIX };
+/**
+ * Posts a "translation failed" notice for a failure Translate won't retry
+ * (timeouts, incomplete or invalid output, configuration problems). Without
+ * it the only trace is a failed Processing Log row. Shows plain-language
+ * reasons only; the technical error is in the Processing Log.
+ *
+ * No-ops when the webhook is unconfigured. Never throws.
+ *
+ * @param {{sourceFileName: string, reasons: string[], submittedByEmail?: string,
+ *          submittedByName?: string}} params - reasons: one line per distinct failure
+ */
+async function notifyTranslationFailed({ sourceFileName, reasons, submittedByEmail, submittedByName }) {
+  const webhookUrl = getWebhookUrl();
+  if (!webhookUrl) return;
+
+  const reasonText = reasons.length === 1
+    ? `*Reason:* ${reasons[0]}`
+    : `*Reasons:*\n${reasons.map((r) => `• ${r}`).join("\n")}`;
+  const text =
+    formatUserLine(submittedByName, submittedByEmail) +
+    `⚠️ Translation failed for *${sourceFileName}*. It won't be retried automatically.\n` +
+    `${reasonText}\n` +
+    `Contact your workflow owner. Full details are in the Processing Log.`;
+  await postToChat(webhookUrl, text);
+}
+
+module.exports = { notifyDocCreated, notifyDocFailed, notifyTranslationFailed, DOC_BASE_URL, LOG_PREFIX };
