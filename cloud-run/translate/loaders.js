@@ -4,6 +4,7 @@ const path = require("path");
 const { google } = require("googleapis");
 const { Storage } = require("@google-cloud/storage");
 const { logInputProblem, INPUT_MODEL_CONFIG } = require("./input-problems");
+const { ModelConfigError, MissingSettingError } = require("./errors");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const FIXTURES_DIR = path.join(__dirname, "fixtures");
@@ -56,7 +57,7 @@ function parseSheetRows(rows) {
 async function loadDoc(envVar) {
   const docId = process.env[envVar];
   if (!docId) {
-    throw new Error(`${envVar} not set in .env`);
+    throw new MissingSettingError(envVar);
   }
 
   const auth = new google.auth.GoogleAuth({
@@ -89,7 +90,7 @@ async function loadDoc(envVar) {
 async function loadSheetTable(envVar, range) {
   const sheetId = process.env[envVar];
   if (!sheetId) {
-    throw new Error(`${envVar} not set in .env`);
+    throw new MissingSettingError(envVar);
   }
 
   const auth = new google.auth.GoogleAuth({
@@ -115,7 +116,7 @@ async function loadSheetTable(envVar, range) {
  */
 function configProblem(detail, fields = {}) {
   logInputProblem(INPUT_MODEL_CONFIG, detail, fields);
-  return new Error(`Model Config problem: ${detail}`);
+  return new ModelConfigError(`Model Config problem: ${detail}`);
 }
 
 /**

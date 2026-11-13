@@ -16,7 +16,8 @@ jest.mock("../translate/llm.js", () => ({ ...jest.requireActual("../translate/ll
 
 const { callLlm } = require("../translate/llm.js");
 const { writeOutput } = require("../translate/loaders.js");
-const { translateDocument, findMissingBlockIds, incompleteTranslationMessage } = require("../translate/index.js");
+const { translateDocument, findMissingBlockIds, incompleteTranslationMessage,
+  isRetryableModelFailure, AlreadyBilledError } = require("../translate/index.js");
 
 /** n blocks b1..bn; ids listed in `context` are translate:false. */
 function blocks(n, context = []) {
@@ -132,6 +133,43 @@ describe("translateDocument", () => {
       extractionBlocks: blocks(4), promptForBlocks, saveRawChunk }))
       .rejects.toThrow(/invalid JSON \(chunk \d\/2, stop_reason=max_tokens\)/);
     expect(saveRawChunk).toHaveBeenCalled();
+  });
+
+  describe("a failed chunk: retry only if no chunk did any work", () => {
+    const Anthropic = jest.requireActual("../translate/node_modules/@anthropic-ai/sdk");
+    const rateLimited = () => Anthropic.APIError.generate(429, { type: "error", message: "rate limited" }, "rate limited", new Headers());
+    const ok = (prompt) => {
+      const ids = prompt.replace("prompt for ", "").split(",");
+      return { text: JSON.stringify({ blocks: ids.map((id) => ({ id })), metadata: {} }), usage: usage(10), stop_reason: "end_turn" };
+    };
+    const run = () => translateDocument({ provider: "anthropic", model: "m", chunkSize: 2, prompt: "FULL",
+      extractionBlocks: blocks(4), promptForBlocks, saveRawChunk: jest.fn() });
+
+    test("every chunk failed temporarily: the error stays retryable", async () => {
+      const err = rateLimited();
+      callLlm.mockRejectedValue(err);
+      await expect(run()).rejects.toBe(err);
+      expect(isRetryableModelFailure(err)).toBe(true);
+    });
+
+    test("one chunk rate limited after another finished: not retryable (the finished chunk is billed)", async () => {
+      callLlm
+        .mockImplementationOnce(async (_p, _m, prompt) => ok(prompt))
+        .mockRejectedValueOnce(rateLimited());
+      const err = await run().catch((e) => e);
+      expect(err).toBeInstanceOf(AlreadyBilledError);
+      expect(err.message).toMatch(/^429 .*\(1 of 2 chunks failed\)$/);
+      expect(isRetryableModelFailure(err)).toBe(false);
+    });
+
+    test("waits for every chunk before failing (they keep running and billing anyway)", async () => {
+      let finished = false;
+      callLlm
+        .mockRejectedValueOnce(new Error("Request timed out."))
+        .mockImplementationOnce(async (_p, _m, prompt) => { await new Promise((r) => setTimeout(r, 20)); finished = true; return ok(prompt); });
+      await expect(run()).rejects.toThrow("Request timed out. (1 of 2 chunks failed)");
+      expect(finished).toBe(true);
+    });
   });
 });
 

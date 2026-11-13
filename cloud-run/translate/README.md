@@ -30,12 +30,23 @@ Translate is triggered by a Pub/Sub push subscription on `extraction-complete`. 
 
 Inside a request, only fast, temporary model errors are retried (see "Model call retries" below); otherwise Pub/Sub's capped redelivery is the only retry. Setup commands: the Translate setup guide ("Add a dead-letter policy and retry backoff").
 
+### Stop or retry
+
+Translate decides whether a failed request is worth redelivering, so failures that would just fail again aren't re-billed up to 5 times:
+
+- **Retry (500, Pub/Sub redelivers):** temporary problems: a Drive, Docs or Sheets hiccup (429, 5xx, network) while loading the extraction, prompt, glossary or config, or every model failing with a temporary error (rate limit, overload, connection) even after the in-request retries.
+- **Stop (200 with `status: "failed"`, `retry: false`):** everything else, e.g. a timeout, cut-off, incomplete or invalid output, a missing or unshared prompt doc, a config problem, or no active models. If one model fails temporarily and another fails permanently, it also stops, since a redelivery would re-bill the permanent one. Translate appends a `failed` Processing Log row, posts "Translation failed … It won't be retried automatically" to the Chat space, and logs the error with `retryable: false`. The Chat notice gives a plain-language reason (e.g. "The translation model in Model Config wasn't found. Check the model name."), one line per model if they failed differently; the technical error stays in the Processing Log row and logs. Reasons are worked out from the error's class or status in `failure-reasons.js`.
+- **Never retried:** failures after model work was already billed: saving output (translation JSON, raw output, doc) after a model call succeeded ("failed after translating"), or one chunk failing after others finished ("1 of 4 chunks failed"; Translate waits for all chunks first). A chunked run is retryable only if every chunk failed temporarily.
+
+**Time budget:** the model calls must finish within 540 s of the request starting (`MODEL_TIME_BUDGET_MS`), leaving time to save and record a failure before Cloud Run's 600 s limit (which would otherwise end the request with a 504 and nothing recorded). Each attempt's timeout is shortened to the time left; a call or retry isn't started with under 60 s left (`MIN_MODEL_ATTEMPT_MS`), and that counts as a timeout.
+
 ## Model call retries
 
 The SDKs' own retries are off (Claude's default is 2 retries, including on timeouts, and each retry of a timed-out call is billed). Instead, every model call goes through `withModelRetry` in `llm.js`:
 
 - **Retried** (up to 2 times, waiting 5 s then 15 s): rate limit (429), overloaded (529), 502 / 503, and network errors, **only if the attempt failed within 30 s**. A slower failure may have happened mid-generation, which is already billed.
 - **Not retried:** timeouts, other HTTP errors (400, 500…), and bad output.
+- **Deadline (Translate only):** `callLlm` takes an optional `deadline`. Each attempt's timeout is the time left (at most 600 s), and a retry is skipped if it would start with under 60 s left.
 - When a call needed retries, its log entry includes `model_retries`. `duration_ms` covers the whole call: fallback, retries and the waits between them.
 
 The same rule is in each model-calling service's `llm` module.
@@ -47,6 +58,8 @@ Accepts either a Pub/Sub push envelope or a direct POST:
 ```
 POST { extractionFileId, sourceFileName, sourceFileId?, contentType?, submittedByEmail?, submittedByName? }
 → 200 with translation results JSON
+→ 200 { status: "failed", retry: false, error, ... } for a failure that won't be retried (recorded and notified)
+→ 500 { error, retry: true } for a temporary failure (Pub/Sub redelivers)
 ```
 
 Synchronous — the function returns after the output doc is created.
@@ -63,6 +76,8 @@ Synchronous — the function returns after the output doc is created.
 | `loaders.js` | Google Drive and config I/O, output writing |
 | `notifier.js` | Google Chat notifications via an incoming webhook |
 | `retry.js` | Retry wrapper for transient failures |
+| `errors.js` | Error classes for Translate's failure kinds (invalid or incomplete output, Model Config problem, missing setting, already billed) |
+| `failure-reasons.js` | Plain-language failure reasons for the Chat notice |
 | `translation-schema-*.json` | JSON schemas for validating LLM output |
 | `extraction-context.md` | Prompt fragment: instructions for handling extracted text blocks |
 | `prompt-statute-additions.md` | Prompt fragment: statute reference instructions |

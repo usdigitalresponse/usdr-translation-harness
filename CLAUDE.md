@@ -79,6 +79,16 @@ Update these docs when an interface changes:
 - Apps Script JS tests: `cd apps-script && npm test` (Jest)
 - Python tests: `cd cloud-run && python -m pytest` (requires `.venv`)
 
+## Verify assumptions about libraries and platforms
+
+Code that depends on how an external library or platform behaves (error classes, defaults, dependencies) has broken in ways the tests didn't catch. Before relying on such behavior:
+
+- **Check it against the installed code, at the version that deploys**, not memory or docs alone. Python services install the newest versions their `requirements.txt` allows, which can be newer than `.venv`: test Python changes in a fresh venv built from the service's requirements before deploying. (The Anthropic and Google GenAI Python SDKs switched from `httpx` to `httpx2`; an `import httpx` passed locally and crashed Extract on deploy.)
+- **Test with real objects from the library**, not hand-built fakes. The JS Anthropic SDK's errors don't set `err.name`; tests with fake errors that set it hid a bug in error detection.
+- **Check defaults for anything that repeats or costs money:** retries (SDK clients, Pub/Sub), dead-letter and retention, idle expiry, max instances, timeouts. Answer "what stops this repeating, and what does each attempt cost?" (see `scratch/notes/exposure-review.md` for the review that found these).
+- **Cap major versions** of external dependencies so a breaking release can't land silently on deploy.
+- In code review, ask: which library behaviors does this change assume, and where were they verified?
+
 ## Deployment
 
 - Apps Script: `clasp push` from each `apps-script/` subdirectory

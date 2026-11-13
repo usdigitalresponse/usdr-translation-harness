@@ -1,6 +1,7 @@
 const { StatusCodes } = require("../translate/node_modules/http-status-codes");
 
-const { translate, parseInput } = require("../translate/index.js");
+const { translate, parseInput, MODEL_TIME_BUDGET_MS } = require("../translate/index.js");
+const { REASONS } = require("../translate/failure-reasons.js");
 const {
   formatGlossaryEntry,
   formatGlossary,
@@ -56,10 +57,26 @@ jest.mock("../translate/notifier.js", () => ({
   ...jest.requireActual("../translate/notifier.js"),
   notifyDocCreated: jest.fn().mockResolvedValue(),
   notifyDocFailed: jest.fn().mockResolvedValue(),
+  notifyTranslationFailed: jest.fn().mockResolvedValue(),
 }));
 
 const { createTranslationDoc } = require("../translate/doc-writer.js");
-const { notifyDocCreated } = require("../translate/notifier.js");
+const { notifyDocCreated, notifyTranslationFailed } = require("../translate/notifier.js");
+
+// Real error objects from the libraries Translate uses, not hand-built fakes:
+// googleapis (Drive, Docs, Sheets) throws its own gaxios copy's errors, and the
+// Claude SDK's errors don't set err.name.
+const { GaxiosError } = jest.requireActual("../translate/node_modules/googleapis/node_modules/gaxios");
+const Anthropic = jest.requireActual("../translate/node_modules/@anthropic-ai/sdk");
+
+/** A Google API HTTP error, as googleapis throws it. */
+const googleApiError = (status, message = `HTTP ${status}`) =>
+  new GaxiosError(message, {}, { status, statusText: message, headers: {}, data: {}, config: {} });
+/** A Google API network failure (gaxios copies the cause's code). */
+const googleNetworkError = (code) =>
+  new GaxiosError("request failed", {}, undefined, Object.assign(new Error(code), { code }));
+/** A Claude API status error, as the SDK throws it. */
+const claudeStatusError = (status) => Anthropic.APIError.generate(status, { type: "error" }, "error", new Headers());
 
 const {
   loadDoc,
@@ -151,22 +168,46 @@ describe("translate", () => {
     expect(res.status).toHaveBeenCalledWith(StatusCodes.NO_CONTENT);
   });
 
-  test("returns 500 with structured error when prompt assembly fails", async () => {
+  test("prompt assembly failure that won't fix itself: recorded, notified, not retried", async () => {
     loadExtractionJson.mockRejectedValue(new Error("TRANSLATION_PROMPT_DOC_ID not set in .env"));
 
     const res = mockRes();
     await translate(
-      { body: { extractionFileId: "file123", sourceFileName: "test.pdf" } },
+      { body: { extractionFileId: "file123", sourceFileName: "test.pdf", sourceFileId: "src456" } },
       res
     );
 
-    expect(res.status).toHaveBeenCalledWith(StatusCodes.INTERNAL_SERVER_ERROR);
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ error: expect.stringContaining("Prompt assembly failed") })
-    );
+    expect(res.status).toHaveBeenCalledWith(StatusCodes.OK);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      status: "failed", retry: false, error: expect.stringContaining("Prompt assembly failed"),
+    }));
+    expect(logTranslationResult).toHaveBeenCalledWith("src456", "test.pdf",
+      expect.objectContaining({ status: "failed", error: expect.stringContaining("Prompt assembly failed") }));
+    expect(notifyTranslationFailed).toHaveBeenCalledWith(expect.objectContaining({ sourceFileName: "test.pdf" }));
   });
 
-  test("returns 500 when config loading fails", async () => {
+  test("temporary Google API failure during prompt assembly: 500 so Pub/Sub retries", async () => {
+    loadExtractionJson.mockRejectedValue(googleApiError(503, "Backend Error"));
+
+    const res = mockRes();
+    await translate({ body: { extractionFileId: "file123", sourceFileName: "test.pdf" } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(StatusCodes.INTERNAL_SERVER_ERROR);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ retry: true }));
+    expect(notifyTranslationFailed).not.toHaveBeenCalled();
+  });
+
+  test("Google API errors that won't fix themselves (not found, no access) aren't retried", async () => {
+    loadExtractionJson.mockRejectedValue(googleApiError(404, "File not found"));
+
+    const res = mockRes();
+    await translate({ body: { extractionFileId: "file123", sourceFileName: "test.pdf" } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(StatusCodes.OK);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ retry: false }));
+  });
+
+  test("config loading failure that won't fix itself: recorded, not retried", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
     loadDoc.mockResolvedValue("Base prompt");
     loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
@@ -178,13 +219,25 @@ describe("translate", () => {
       res
     );
 
-    expect(res.status).toHaveBeenCalledWith(StatusCodes.INTERNAL_SERVER_ERROR);
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ error: expect.stringContaining("Failed to load model config") })
-    );
+    expect(res.status).toHaveBeenCalledWith(StatusCodes.OK);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      retry: false, error: expect.stringContaining("Failed to load model config"),
+    }));
   });
 
-  test("returns 500 when no active translate models in config", async () => {
+  test("temporary failure loading config: 500 so Pub/Sub retries", async () => {
+    loadExtractionJson.mockResolvedValue({ blocks: [] });
+    loadDoc.mockResolvedValue("Base prompt");
+    loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
+    loadConfig.mockRejectedValue(googleNetworkError("ECONNRESET"));
+
+    const res = mockRes();
+    await translate({ body: { extractionFileId: "file123", sourceFileName: "test.pdf" } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(StatusCodes.INTERNAL_SERVER_ERROR);
+  });
+
+  test("no active translate models: recorded, not retried", async () => {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
     loadDoc.mockResolvedValue("Base prompt");
     loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
@@ -198,9 +251,9 @@ describe("translate", () => {
       res
     );
 
-    expect(res.status).toHaveBeenCalledWith(StatusCodes.INTERNAL_SERVER_ERROR);
+    expect(res.status).toHaveBeenCalledWith(StatusCodes.OK);
     expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({ error: expect.stringContaining("No active translate models") })
+      expect.objectContaining({ retry: false, error: expect.stringContaining("No active translate models") })
     );
   });
 
@@ -223,7 +276,8 @@ describe("translate", () => {
       res
     );
 
-    expect(callLlm).toHaveBeenCalledWith("anthropic", "claude-sonnet-4-6", expect.any(String), { effort: undefined });
+    expect(callLlm).toHaveBeenCalledWith("anthropic", "claude-sonnet-4-6", expect.any(String),
+      { effort: undefined, deadline: expect.any(Number) });
     expect(writeOutput).toHaveBeenCalledWith("test_anthropic_claude-sonnet-4-6.json", {
       ...JSON.parse(HOLA_TRANSLATION),
       sourceFileId: "src456",
@@ -274,7 +328,7 @@ describe("translate", () => {
     expect(result.translations).toHaveLength(2);
   });
 
-  test("returns 500 when all translation models fail", async () => {
+  function twoModelSetup() {
     loadExtractionJson.mockResolvedValue({ blocks: [] });
     loadDoc.mockResolvedValue("Base prompt");
     loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
@@ -284,8 +338,12 @@ describe("translate", () => {
         { role: "translate", provider: "google", model: "gemini-3.1-pro-preview", active: true },
       ],
     });
+  }
+
+  test("all models fail in ways that won't fix themselves: recorded per model, notified once, not retried", async () => {
+    twoModelSetup();
     callLlm
-      .mockRejectedValueOnce(new Error("Anthropic rate limit"))
+      .mockRejectedValueOnce(new Error("Request timed out."))
       .mockRejectedValueOnce(new Error("Gemini API key missing"));
 
     const res = mockRes();
@@ -294,18 +352,126 @@ describe("translate", () => {
       res
     );
 
-    expect(res.status).toHaveBeenCalledWith(StatusCodes.INTERNAL_SERVER_ERROR);
+    expect(res.status).toHaveBeenCalledWith(StatusCodes.OK);
     const result = res.json.mock.calls[0][0];
-    expect(result.error).toBe("All translation models failed");
+    expect(result).toEqual(expect.objectContaining({ status: "failed", retry: false }));
     expect(result.translations).toHaveLength(2);
     expect(result.translations[0]).toEqual(expect.objectContaining({
-      status: "failed",
-      error: expect.stringContaining("Anthropic rate limit"),
+      status: "failed", retryable: false, error: expect.stringContaining("Request timed out"),
     }));
-    expect(result.translations[1]).toEqual(expect.objectContaining({
-      status: "failed",
-      error: expect.stringContaining("Gemini API key missing"),
-    }));
+    // One Processing Log row per model, no extra summary row; one Chat notice
+    expect(logTranslationResult).toHaveBeenCalledTimes(2);
+    expect(notifyTranslationFailed).toHaveBeenCalledTimes(1);
+  });
+
+  test("all models fail temporarily (after in-request retries): 500 so Pub/Sub retries", async () => {
+    twoModelSetup();
+    callLlm
+      .mockRejectedValueOnce(claudeStatusError(429))
+      .mockRejectedValueOnce(claudeStatusError(529));
+
+    const res = mockRes();
+    await translate({ body: { extractionFileId: "file123", sourceFileName: "test.pdf" } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(StatusCodes.INTERNAL_SERVER_ERROR);
+    expect(res.json.mock.calls[0][0]).toEqual(expect.objectContaining({ retry: true }));
+    expect(notifyTranslationFailed).not.toHaveBeenCalled();
+  });
+
+  test("one temporary, one permanent failure: not retried (a retry would re-bill the permanent one)", async () => {
+    twoModelSetup();
+    callLlm
+      .mockRejectedValueOnce(claudeStatusError(429))
+      .mockRejectedValueOnce(new Error("LLM returned invalid JSON"));
+
+    const res = mockRes();
+    await translate({ body: { extractionFileId: "file123", sourceFileName: "test.pdf" } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(StatusCodes.OK);
+    expect(res.json.mock.calls[0][0].retry).toBe(false);
+  });
+
+  test("saving fails after a successful translation: not retried, even if Drive's error looks temporary", async () => {
+    loadExtractionJson.mockResolvedValue({ blocks: [{ id: "b01", text: "Hello", translate: true }] });
+    loadDoc.mockResolvedValue("Base prompt");
+    loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
+    loadConfig.mockResolvedValue({
+      models: [{ role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
+    });
+    callLlm.mockResolvedValue({ text: HOLA_TRANSLATION, usage: { input_tokens: 1, output_tokens: 1, duration_ms: 1 } });
+    writeOutput.mockRejectedValue(googleApiError(503, "Backend Error"));
+
+    const res = mockRes();
+    await translate({ body: { extractionFileId: "file123", sourceFileName: "test.pdf" } }, res);
+
+    expect(res.status).toHaveBeenCalledWith(StatusCodes.OK);
+    const result = res.json.mock.calls[0][0];
+    expect(result.retry).toBe(false);
+    expect(result.translations[0].error).toContain("failed after translating");
+  });
+
+  test("Chat notice shows plain-language reasons, not the technical error", async () => {
+    const { notifyTranslationFailed: realNotify } = jest.requireActual("../translate/notifier.js");
+    const fetchSpy = jest.spyOn(global, "fetch").mockResolvedValue({ ok: true });
+    const saved = process.env.GOOGLE_CHAT_WEBHOOK_URL;
+    process.env.GOOGLE_CHAT_WEBHOOK_URL = "https://chat.example/webhook";
+    const textFor = async (reasons) => {
+      fetchSpy.mockClear();
+      await realNotify({ sourceFileName: "f.pdf", reasons, submittedByEmail: "a@b.org" });
+      return JSON.parse(fetchSpy.mock.calls[0][1].body).text;
+    };
+    try {
+      expect(await textFor(["The model skipped part of the document."])).toBe(
+        "User: a@b.org\n" +
+        "⚠️ Translation failed for *f.pdf*. It won't be retried automatically.\n" +
+        "*Reason:* The model skipped part of the document.\n" +
+        "Contact your workflow owner. Full details are in the Processing Log.");
+      expect(await textFor(["a/x: one.", "g/y: two."])).toContain("*Reasons:*\n• a/x: one.\n• g/y: two.\n");
+    } finally {
+      if (saved === undefined) delete process.env.GOOGLE_CHAT_WEBHOOK_URL;
+      else process.env.GOOGLE_CHAT_WEBHOOK_URL = saved;
+      fetchSpy.mockRestore();
+    }
+  });
+
+  test("all models fail: Chat gets one reason per model when they differ, one line when they match", async () => {
+    twoModelSetup();
+    callLlm
+      .mockRejectedValueOnce(claudeStatusError(404))
+      .mockRejectedValueOnce(new Anthropic.APIConnectionTimeoutError());
+    await translate({ body: { extractionFileId: "file123", sourceFileName: "test.pdf" } }, mockRes());
+    expect(notifyTranslationFailed).toHaveBeenLastCalledWith(expect.objectContaining({ reasons: [
+      `anthropic/claude-sonnet-4-6: ${REASONS.modelNotFound}`,
+      `google/gemini-3.1-pro-preview: ${REASONS.timeout}`,
+    ] }));
+
+    twoModelSetup();
+    callLlm.mockRejectedValue(claudeStatusError(404));
+    await translate({ body: { extractionFileId: "file123", sourceFileName: "test.pdf" } }, mockRes());
+    expect(notifyTranslationFailed).toHaveBeenLastCalledWith(expect.objectContaining({ reasons: [REASONS.modelNotFound] }));
+  });
+
+  test("an unshared input file: Chat says so in plain language", async () => {
+    loadExtractionJson.mockRejectedValue(googleApiError(404, "File not found"));
+    await translate({ body: { extractionFileId: "file123", sourceFileName: "test.pdf" } }, mockRes());
+    expect(notifyTranslationFailed).toHaveBeenCalledWith(expect.objectContaining({ reasons: [REASONS.inputNotFound] }));
+  });
+
+  test("model calls get a deadline ~540 s from the start of the request", async () => {
+    loadExtractionJson.mockResolvedValue({ blocks: [{ id: "b01", text: "Hello", translate: true }] });
+    loadDoc.mockResolvedValue("Base prompt");
+    loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
+    loadConfig.mockResolvedValue({
+      models: [{ role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
+    });
+    callLlm.mockResolvedValue({ text: HOLA_TRANSLATION, usage: { input_tokens: 1, output_tokens: 1, duration_ms: 1 } });
+    writeOutput.mockResolvedValue("output-file-id");
+
+    const before = Date.now();
+    await translate({ body: { extractionFileId: "file123", sourceFileName: "test.pdf" } }, mockRes());
+    const { deadline } = callLlm.mock.calls[0][3];
+    expect(deadline).toBeGreaterThanOrEqual(before + MODEL_TIME_BUDGET_MS);
+    expect(deadline).toBeLessThanOrEqual(Date.now() + MODEL_TIME_BUDGET_MS);
   });
 
   test("reports per-model errors without failing the whole request", async () => {
