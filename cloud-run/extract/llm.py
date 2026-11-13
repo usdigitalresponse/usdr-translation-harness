@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 
 import anthropic
-import httpx  # used by both model SDKs (a dependency of each)
 import google.auth.exceptions
 from google import genai
 from google.genai import errors as genai_errors
@@ -46,20 +45,32 @@ MODEL_RETRY_STATUS_CODES = {
 }
 
 
+# The SDKs' HTTP libraries raise these. Matched by class name (anywhere in
+# the error's class hierarchy) so the rule works whichever HTTP package the SDK
+# version uses: httpx in older SDKs, httpx2 in anthropic 2.x / google-genai 3.x.
+TIMEOUT_ERROR_CLASSES = {"APITimeoutError", "TimeoutException", "TimeoutError"}
+CONNECTION_ERROR_CLASSES = {"APIConnectionError", "NetworkError", "RemoteProtocolError"}
+
+
+def _error_classes(err):
+    return {cls.__name__ for cls in type(err).__mro__}
+
+
 def model_retry_reason(err):
     """Why a failed model call is worth retrying, or None if it isn't.
 
     Timeouts are checked first: anthropic.APITimeoutError is a subclass of
-    APIConnectionError, and httpx's connect timeout is a TimeoutException.
+    APIConnectionError, and a connect timeout is a TimeoutException.
     """
-    if isinstance(err, (anthropic.APITimeoutError, httpx.TimeoutException)):
+    classes = _error_classes(err)
+    if classes & TIMEOUT_ERROR_CLASSES:
         return None
     status = getattr(err, "status_code", None) if isinstance(err, anthropic.APIStatusError) else None
     if isinstance(err, genai_errors.APIError):
         status = err.code
     if status in MODEL_RETRY_STATUS_CODES:
         return f"HTTP {status}"
-    if isinstance(err, (anthropic.APIConnectionError, httpx.NetworkError, httpx.RemoteProtocolError)):
+    if classes & CONNECTION_ERROR_CLASSES:
         return f"connection error ({type(err).__name__})"
     return None
 

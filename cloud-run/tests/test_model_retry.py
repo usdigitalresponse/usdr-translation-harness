@@ -5,8 +5,12 @@ from http import HTTPStatus
 from unittest.mock import MagicMock, patch
 
 import anthropic
-import httpx
 import pytest
+
+try:
+    import httpx2 as httpx  # anthropic 2.x / google-genai 3.x
+except ImportError:
+    import httpx  # older SDK versions
 from google.genai import errors as genai_errors
 
 import drift_llm
