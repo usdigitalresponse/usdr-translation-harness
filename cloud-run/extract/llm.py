@@ -245,8 +245,7 @@ def load_extraction_schema(provider):
 def _call_llm_once(provider, model, prompt, pdf_base64):
     """Call the provider, trying backends in LLM_BACKEND order.
 
-    Returns (text, usage). usage includes duration_ms (total, across any
-    fallback), llm_backend ("vertex" or "direct"), and llm_fallback_reason
+    Returns (text, usage). usage includes llm_backend ("vertex" or "direct"), and llm_fallback_reason
     when Vertex failed and the direct API answered.
     """
     output_schema = load_extraction_schema(provider)
@@ -259,7 +258,6 @@ def _call_llm_once(provider, model, prompt, pdf_base64):
         raise ValueError(f"Unknown provider: {provider}")
     make_client, call = provider_calls[provider]
 
-    start = time.monotonic()
     backends = backend_order()
     reason = None
     for i, backend in enumerate(backends):
@@ -273,7 +271,6 @@ def _call_llm_once(provider, model, prompt, pdf_base64):
             logger.warning("%s via %s failed (%s); falling back to %s",
                            provider, backend, reason, backends[i + 1])
             continue
-        usage["duration_ms"] = round((time.monotonic() - start) * 1000)
         usage["llm_backend"] = backend
         if reason:
             usage["llm_fallback_reason"] = reason
@@ -283,4 +280,17 @@ def _call_llm_once(provider, model, prompt, pdf_base64):
 def call_llm(provider, model, prompt, pdf_base64):
     """Call the model (Vertex first, falling back to the direct API per
     LLM_BACKEND), retrying fast, temporary failures. Returns (text, usage)."""
-    return call_with_model_retry(lambda: _call_llm_once(provider, model, prompt, pdf_base64))
+    attempts = 0
+
+    def attempt():
+        nonlocal attempts
+        attempts += 1
+        return _call_llm_once(provider, model, prompt, pdf_base64)
+
+    start = time.monotonic()
+    text, usage = call_with_model_retry(attempt)
+    # Whole call, as before retries were ours: fallback, retries and the waits between them
+    usage["duration_ms"] = round((time.monotonic() - start) * 1000)
+    if attempts > 1:
+        usage["model_retries"] = attempts - 1
+    return text, usage

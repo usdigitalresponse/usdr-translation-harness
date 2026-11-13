@@ -203,4 +203,14 @@ def _call_llm_once(provider, model, prompt, output_schema=None):
 def call_llm(provider, model, prompt, output_schema=None):
     """Dispatch to the provider client, retrying fast, temporary failures.
     Returns (text, usage); see _call_llm_once."""
-    return call_with_model_retry(lambda: _call_llm_once(provider, model, prompt, output_schema))
+    attempts = 0
+
+    def attempt():
+        nonlocal attempts
+        attempts += 1
+        return _call_llm_once(provider, model, prompt, output_schema)
+
+    text, usage = call_with_model_retry(attempt)
+    if attempts > 1:
+        usage["model_retries"] = attempts - 1
+    return text, usage

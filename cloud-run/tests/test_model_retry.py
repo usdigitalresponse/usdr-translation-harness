@@ -85,13 +85,35 @@ class TestModelRetry:
             module.call_with_model_retry(fn, sleep=lambda _s: None, clock=lambda: next(ticks))
         assert fn.call_count == 1
 
-    def test_call_llm_uses_the_rule(self, module):
+    @staticmethod
+    def _args(module):
+        return ("anthropic", "model", "prompt") + ((None,) if module is extract_llm else ())
+
+    def test_call_llm_uses_the_rule_and_counts_retries(self, module):
         with patch.object(module, "_call_llm_once", side_effect=[anthropic_status(529), ("text", {})]) as once, \
                 patch.object(module.time, "sleep") as sleep:
-            args = ("anthropic", "model", "prompt") + ((None,) if module is extract_llm else ())
-            assert module.call_llm(*args) == ("text", {})
+            text, usage = module.call_llm(*self._args(module))
+        assert text == "text"
+        assert usage["model_retries"] == 1
         assert once.call_count == 2
         sleep.assert_called_once_with(5)
+
+    def test_call_llm_without_retries_has_no_retry_count(self, module):
+        with patch.object(module, "_call_llm_once", return_value=("text", {})):
+            _, usage = module.call_llm(*self._args(module))
+        assert "model_retries" not in usage
+
+
+def test_extract_duration_covers_the_whole_call():
+    """duration_ms spans fallback, retries and the waits between them (as it
+    did when the SDK's own retries were inside the call)."""
+    # call start, attempt 1 start / failure, attempt 2 start / success, call end
+    ticks = iter([0.0, 0.0, 1.0, 1.0, 2.5, 2.5])
+    with patch.object(extract_llm, "_call_llm_once", side_effect=[anthropic_status(529), ("text", {})]), \
+            patch.object(extract_llm.time, "sleep"), \
+            patch.object(extract_llm.time, "monotonic", side_effect=lambda: next(ticks)):
+        _, usage = extract_llm.call_llm("anthropic", "model", "prompt", None)
+    assert usage["duration_ms"] == 2500
 
 
 @pytest.mark.parametrize("module", [extract_llm, quality_llm], ids=lambda m: m.__name__)

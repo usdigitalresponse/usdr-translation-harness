@@ -237,15 +237,6 @@ describe.each(FUNCTIONS)("$name LLM backends", ({ dir, llm: loadLlm, call }) => 
 
 // ── Retry rule (withModelRetry): retry fast, temporary errors only ─────────
 
-/** An error shaped like the SDKs': a name, and an HTTP status or a network cause. */
-function sdkError(name, { status, causeCode } = {}) {
-  const err = new Error(name);
-  err.name = name;
-  if (status !== undefined) err.status = status;
-  if (causeCode) err.cause = { code: causeCode };
-  return err;
-}
-
 describe.each(FUNCTIONS)("$name retry rule", ({ dir, llm: loadLlm, call }) => {
   let llm;
   let savedEnv;
@@ -271,33 +262,41 @@ describe.each(FUNCTIONS)("$name retry rule", ({ dir, llm: loadLlm, call }) => {
     console.warn.mockRestore();
   });
 
+  // Real error objects from the SDKs and Node's fetch (the Claude SDK's errors
+  // don't set err.name, so fake errors with a name would hide that).
+  const claudeTimeout = () => new Anthropic.APIConnectionTimeoutError();
+  const claudeConnection = () => new Anthropic.APIConnectionError({ message: "Connection error." });
+  const fetchFailed = (code, message = "fetch failed") =>
+    Object.assign(new TypeError(message), { cause: Object.assign(new Error(code), { code }) });
+
   test.each([
-    ["rate limit", sdkError("RateLimitError", { status: 429 }), "HTTP 429"],
-    ["overloaded", sdkError("InternalServerError", { status: 529 }), "HTTP 529"],
-    ["unavailable", sdkError("ApiError", { status: 503 }), "HTTP 503"],
-    ["Claude connection error", sdkError("APIConnectionError"), "connection error"],
-    ["fetch failed: reset", sdkError("TypeError", { causeCode: "ECONNRESET" }), "connection error (ECONNRESET)"],
-  ])("retries: %s", (_label, err, reason) => {
-    expect(llm.modelRetryReason(err)).toBe(reason);
+    ["Claude rate limit", () => anthropicStatusError(429), "HTTP 429"],
+    ["Claude overloaded", () => anthropicStatusError(529), "HTTP 529"],
+    ["Gemini unavailable", () => geminiStatusError(503), "HTTP 503"],
+    ["Claude connection error", claudeConnection, "connection error"],
+    ["fetch: connection refused", () => fetchFailed("ECONNREFUSED"), "connection error (ECONNREFUSED)"],
+    ["fetch: socket closed mid-response", () => fetchFailed("UND_ERR_SOCKET", "terminated"), "connection error (UND_ERR_SOCKET)"],
+  ])("retries: %s", (_label, makeErr, reason) => {
+    expect(llm.modelRetryReason(makeErr())).toBe(reason);
   });
 
   test.each([
-    ["Claude timeout (a connection error subclass)", sdkError("APIConnectionTimeoutError")],
-    ["Gemini timeout (aborted fetch)", sdkError("AbortError")],
-    ["fetch headers timeout", sdkError("TypeError", { causeCode: "UND_ERR_HEADERS_TIMEOUT" })],
-    ["bad request", sdkError("BadRequestError", { status: 400 })],
-    ["internal error", sdkError("InternalServerError", { status: 500 })],
-    ["not found", sdkError("NotFoundError", { status: 404 })],
-    ["invalid output", new Error("LLM returned invalid JSON")],
-  ])("doesn't retry: %s", (_label, err) => {
-    expect(llm.modelRetryReason(err)).toBeNull();
+    ["Claude timeout (a connection error subclass)", claudeTimeout],
+    ["Gemini timeout (aborted fetch)", () => new DOMException("This operation was aborted", "AbortError")],
+    ["fetch headers timeout", () => fetchFailed("UND_ERR_HEADERS_TIMEOUT")],
+    ["Claude bad request", () => anthropicStatusError(400)],
+    ["Claude internal error", () => anthropicStatusError(500)],
+    ["Gemini not found", () => geminiStatusError(404)],
+    ["invalid output", () => new Error("LLM returned invalid JSON")],
+  ])("doesn't retry: %s", (_label, makeErr) => {
+    expect(llm.modelRetryReason(makeErr())).toBeNull();
   });
 
   test("retries a fast temporary failure with backoff, then succeeds", async () => {
     const waits = [];
     const fn = jest.fn()
-      .mockRejectedValueOnce(sdkError("RateLimitError", { status: 429 }))
-      .mockRejectedValueOnce(sdkError("InternalServerError", { status: 529 }))
+      .mockRejectedValueOnce(anthropicStatusError(429))
+      .mockRejectedValueOnce(anthropicStatusError(529))
       .mockResolvedValueOnce("ok");
     await expect(llm.withModelRetry(fn, { wait: async (ms) => waits.push(ms) })).resolves.toBe("ok");
     expect(fn).toHaveBeenCalledTimes(3);
@@ -305,7 +304,7 @@ describe.each(FUNCTIONS)("$name retry rule", ({ dir, llm: loadLlm, call }) => {
   });
 
   test("gives up after the retries", async () => {
-    const err = sdkError("RateLimitError", { status: 429 });
+    const err = anthropicStatusError(429);
     const fn = jest.fn().mockRejectedValue(err);
     await expect(llm.withModelRetry(fn, { wait: async () => {} })).rejects.toBe(err);
     expect(fn).toHaveBeenCalledTimes(1 + llm.MODEL_RETRIES);
@@ -313,28 +312,41 @@ describe.each(FUNCTIONS)("$name retry rule", ({ dir, llm: loadLlm, call }) => {
 
   test("never retries a slow failure, even a retryable one (it may have been billed)", async () => {
     let clock = 0;
-    const err = sdkError("APIConnectionError");
+    const err = new Anthropic.APIConnectionError({ message: "Connection error." });
     const fn = jest.fn(async () => { clock += 45_000; throw err; });
     await expect(llm.withModelRetry(fn, { wait: async () => {}, now: () => clock })).rejects.toBe(err);
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
   test("callLlm: a timeout is tried once", async () => {
-    const err = sdkError("APIConnectionTimeoutError");
+    const err = new Anthropic.APIConnectionTimeoutError();
     mockClaudeVertex.mockRejectedValue(err);
     await expect(call(llm, "anthropic", "claude-sonnet-4-6")).rejects.toBe(err);
     expect(mockClaudeVertex).toHaveBeenCalledTimes(1);
   });
 
-  test("callLlm: an overloaded model is retried", async () => {
+  test.each([
+    ["an overloaded model", () => anthropicStatusError(529)],
+    ["a connection error", () => new Anthropic.APIConnectionError({ message: "Connection error." })],
+  ])("callLlm: %s is retried; duration covers the whole call and the retry is counted", async (_label, makeErr) => {
     jest.useFakeTimers();
     mockClaudeVertex
-      .mockRejectedValueOnce(sdkError("InternalServerError", { status: 529 }))
+      .mockRejectedValueOnce(makeErr())
       .mockResolvedValueOnce(claudeResponse());
     const pending = call(llm, "anthropic", "claude-sonnet-4-6");
     await jest.advanceTimersByTimeAsync(5000);
-    await expect(pending).resolves.toEqual(expect.objectContaining({ stop_reason: "end_turn" }));
+    const result = await pending;
+    expect(result.stop_reason).toBe("end_turn");
     expect(mockClaudeVertex).toHaveBeenCalledTimes(2);
+    expect(result.usage.model_retries).toBe(1);
+    expect(result.usage.duration_ms).toBeGreaterThanOrEqual(5000);  // includes the 5 s wait
+  });
+
+  test("callLlm: no retry, no model_retries field", async () => {
+    mockClaudeVertex.mockResolvedValue(claudeResponse());
+    const { usage } = await call(llm, "anthropic", "claude-sonnet-4-6");
+    expect(usage.model_retries).toBeUndefined();
+    expect(typeof usage.duration_ms).toBe("number");
   });
 
   test("Claude clients have the SDK's own retries off", () => {

@@ -57,19 +57,37 @@ const MODEL_RETRY_STATUS_CODES = new Set([
   StatusCodes.SERVICE_UNAVAILABLE,     // 503
   529,                                 // Anthropic: overloaded (no StatusCodes name)
 ]);
-// Timeouts from the Claude SDK, the Gemini SDK (an aborted fetch) and Node's fetch
-const TIMEOUT_ERROR_NAMES = new Set(["APIConnectionTimeoutError", "AbortError", "TimeoutError"]);
+// The Claude SDK's errors don't set err.name (it's just "Error"), so they're
+// recognized by class: the timeout class extends the connection class, so
+// timeouts are checked first.
+const CLAUDE_TIMEOUT_CLASS = "APIConnectionTimeoutError";
+const CLAUDE_CONNECTION_CLASS = "APIConnectionError";
+// Timeouts from the Gemini SDK and Node's fetch (an aborted request, before or
+// during the response body)
+const TIMEOUT_ERROR_NAMES = new Set(["AbortError", "TimeoutError"]);
 const TIMEOUT_ERROR_CODES = new Set(["UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT"]);
-// Network failures (Claude SDK's connection error; Node fetch's "fetch failed" causes)
-const CONNECTION_ERROR_NAMES = new Set(["APIConnectionError"]);
+// Network failures under Node fetch's "fetch failed" / "terminated" errors
 const CONNECTION_ERROR_CODES = new Set([
   "ECONNRESET", "ECONNREFUSED", "ENOTFOUND", "EAI_AGAIN", "EPIPE",
   "UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT",
 ]);
 
+/** Constructor names along the error's prototype chain, e.g. APIConnectionTimeoutError, APIConnectionError, … */
+function errorClassNames(err) {
+  const names = new Set();
+  for (let proto = err && Object.getPrototypeOf(err); proto && proto !== Object.prototype; proto = Object.getPrototypeOf(proto)) {
+    if (proto.constructor?.name) names.add(proto.constructor.name);
+  }
+  return names;
+}
+
+function errorCode(err) {
+  return err?.code ?? err?.cause?.code;
+}
+
 function isModelTimeout(err) {
-  return TIMEOUT_ERROR_NAMES.has(err?.name) || TIMEOUT_ERROR_CODES.has(err?.cause?.code)
-    || TIMEOUT_ERROR_CODES.has(err?.code);
+  return errorClassNames(err).has(CLAUDE_TIMEOUT_CLASS) || TIMEOUT_ERROR_NAMES.has(err?.name)
+    || TIMEOUT_ERROR_CODES.has(errorCode(err));
 }
 
 /**
@@ -85,8 +103,8 @@ function modelRetryReason(err) {
   const status = err?.status;
   if (MODEL_RETRY_STATUS_CODES.has(status)) return `HTTP ${status}`;
   if (status === undefined) {
-    const code = err?.cause?.code || err?.code;
-    if (CONNECTION_ERROR_NAMES.has(err?.name)) return "connection error";
+    const code = errorCode(err);
+    if (errorClassNames(err).has(CLAUDE_CONNECTION_CLASS)) return "connection error";
     if (CONNECTION_ERROR_CODES.has(code)) return `connection error (${code})`;
   }
   return null;
@@ -258,7 +276,6 @@ async function callGemini(client, prompt, { model, outputSchema, pdfBase64 } = {
 
 async function callLlmOnce(provider, model, prompt, pdfBase64 = null) {
   const outputSchema = loadEvalSchema(provider);
-  const start = Date.now();
 
   const providerCalls = {
     [PROVIDER_ANTHROPIC]: [makeClaudeClient, (client) => callClaude(client, prompt, { model, outputSchema, pdfBase64 })],
@@ -285,7 +302,6 @@ async function callLlmOnce(provider, model, prompt, pdfBase64 = null) {
       console.warn(`${provider} via ${backend} failed (${reason}); falling back to ${backends[i + 1]}`);
       continue;
     }
-    result.usage.duration_ms = Date.now() - start;
     result.usage.llm_backend = backend;
     if (reason) {
       result.usage.llm_fallback_reason = reason;
@@ -299,7 +315,18 @@ async function callLlmOnce(provider, model, prompt, pdfBase64 = null) {
  * LLM_BACKEND), retrying fast, temporary failures (see withModelRetry).
  */
 async function callLlm(provider, model, prompt, pdfBase64 = null) {
-  return withModelRetry(() => callLlmOnce(provider, model, prompt, pdfBase64));
+  const start = Date.now();
+  let attempts = 0;
+  const result = await withModelRetry(() => {
+    attempts += 1;
+    return callLlmOnce(provider, model, prompt, pdfBase64);
+  });
+  // Whole call, as before retries were ours: fallback, retries and the waits between them
+  result.usage.duration_ms = Date.now() - start;
+  if (attempts > 1) {
+    result.usage.model_retries = attempts - 1;
+  }
+  return result;
 }
 
 module.exports = {

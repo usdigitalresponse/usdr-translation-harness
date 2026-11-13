@@ -288,4 +288,14 @@ def _call_llm_once(provider, model, prompt):
 def call_llm(provider, model, prompt):
     """Call the model (Vertex first, falling back to the direct API per
     LLM_BACKEND), retrying fast, temporary failures. Returns (text, usage)."""
-    return call_with_model_retry(lambda: _call_llm_once(provider, model, prompt))
+    attempts = 0
+
+    def attempt():
+        nonlocal attempts
+        attempts += 1
+        return _call_llm_once(provider, model, prompt)
+
+    text, usage = call_with_model_retry(attempt)
+    if attempts > 1:
+        usage["model_retries"] = attempts - 1
+    return text, usage
