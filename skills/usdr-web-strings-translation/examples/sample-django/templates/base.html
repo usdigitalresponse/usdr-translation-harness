@@ -1,0 +1,27 @@
+{% load i18n %}
+<!DOCTYPE html>
+<html lang="{{ LANGUAGE_CODE }}">
+<head>
+  <title>{% block title %}{% trans "Example State Family Services" %}{% endblock %}</title>
+</head>
+<body>
+  <header>
+    <a class="logo" href="/">{% trans "Example State Family Services" %}</a>
+    <nav aria-label="{% trans "Main menu" %}">
+      <a href="/">{% trans "Home" %}</a>
+      <a href="/apply/">{% trans "Apply for benefits" %}</a>
+      <a href="/applications/">{% trans "My applications" %}</a>
+      <a href="/help/">{% trans "Help" %}</a>
+      <a href="/logout/">{% trans "Sign out" %}</a>
+    </nav>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <footer>
+    <a href="/contact/">{% trans "Contact us" %}</a>
+    <a href="/privacy/">{% trans "Privacy" %}</a>
+    <p>{% blocktrans %}Questions? Call 1-800-555-0100, Monday to Friday, 8 a.m. to 5 p.m.{% endblocktrans %}</p>
+  </footer>
+</body>
+</html>

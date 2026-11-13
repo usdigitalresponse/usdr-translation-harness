@@ -1,0 +1,569 @@
+[
+  {
+    "id": "django:ff58effed8",
+    "msgstr": "Servicios para Familias del Estado de Ejemplo",
+    "page": "Every page (header and footer)",
+    "place_on_page": "Browser tab title and logo",
+    "role": "page title",
+    "priority": "Medium",
+    "flags": [
+      "Agency name: use the agency's official Spanish name if it has one"
+    ],
+    "reasoning": "Translated descriptively; an agency's own Spanish name, if it exists, wins.",
+    "ledger_terms": [
+      "Example State Family Services"
+    ]
+  },
+  {
+    "id": "django:6dc03d8d0f",
+    "msgstr": "Menú principal",
+    "page": "Every page (header and footer)",
+    "place_on_page": "Screen-reader label for the top menu",
+    "role": "accessibility label",
+    "priority": "Low",
+    "flags": [],
+    "reasoning": "Read aloud by screen readers; not visible."
+  },
+  {
+    "id": "django:d61e6b1045",
+    "msgstr": "Solicitar beneficios",
+    "page": "Every page (header and footer)",
+    "place_on_page": "Top menu link, page heading, and links on several pages",
+    "role": "navigation",
+    "priority": "Medium",
+    "flags": [
+      "Menu item: infinitive per settings",
+      "Term: benefits = beneficios"
+    ],
+    "reasoning": "Menu items use the infinitive (settings). 'Beneficios' per the term ledger; 'prestaciones' is common in Spain, less so in the US.",
+    "ledger_terms": [
+      "benefits",
+      "apply"
+    ]
+  },
+  {
+    "id": "django:e92fc66233",
+    "msgstr": "Mis solicitudes",
+    "page": "Every page (header and footer)",
+    "place_on_page": "Top menu link",
+    "role": "navigation",
+    "priority": "Low",
+    "flags": [],
+    "ledger_terms": [
+      "application"
+    ]
+  },
+  {
+    "id": "django:58ff69ea39",
+    "msgstr": "Ayuda",
+    "page": "Every page (header and footer)",
+    "place_on_page": "Top menu link",
+    "role": "navigation",
+    "priority": "Low",
+    "flags": [
+      "Was already a draft before this run"
+    ],
+    "reasoning": "Kept the earlier draft; it's the standard word."
+  },
+  {
+    "id": "django:ab33969c97",
+    "msgstr": "Contáctenos",
+    "page": "Every page (header and footer)",
+    "place_on_page": "Footer link",
+    "role": "link",
+    "priority": "Low",
+    "flags": []
+  },
+  {
+    "id": "django:5e7b7e3612",
+    "msgstr": "Privacidad",
+    "page": "Every page (header and footer)",
+    "place_on_page": "Footer link",
+    "role": "link",
+    "priority": "Low",
+    "flags": []
+  },
+  {
+    "id": "django:81911fa3ed",
+    "msgstr": "¿Tiene preguntas? Llame al 1-800-555-0100, de lunes a viernes, de 8 a.m. a 5 p.m.",
+    "page": "Every page (header and footer)",
+    "place_on_page": "Footer text",
+    "role": "body text",
+    "priority": "Medium",
+    "flags": [
+      "Phone number and hours: check they match the Spanish line, if there is one"
+    ],
+    "reasoning": "Many agencies have a separate Spanish phone line; the English number is kept."
+  },
+  {
+    "id": "django:417bb37023",
+    "msgstr": "Esta solicitud toma unos 20 minutos. Puede guardarla y volver más tarde.",
+    "page": "Apply for benefits (form)",
+    "place_on_page": "Intro under the heading",
+    "role": "body text",
+    "priority": "Low",
+    "flags": [],
+    "ledger_terms": [
+      "application"
+    ]
+  },
+  {
+    "id": "django:67f1ef8b38",
+    "msgstr": "Sobre su hogar",
+    "page": "Apply for benefits (form)",
+    "place_on_page": "Section heading",
+    "role": "heading",
+    "priority": "Low",
+    "flags": [],
+    "ledger_terms": [
+      "household"
+    ]
+  },
+  {
+    "id": "django:2303b56a70",
+    "msgstr": "Comprobante de identidad",
+    "page": "Apply for benefits (form)",
+    "place_on_page": "Section heading",
+    "role": "heading",
+    "priority": "Medium",
+    "flags": [],
+    "ledger_terms": [
+      "proof of identity"
+    ]
+  },
+  {
+    "id": "django:4c8c5fe6be",
+    "msgstr": "Volver",
+    "page": "Apply for benefits (form)",
+    "place_on_page": "Button at the bottom, left",
+    "role": "link button",
+    "priority": "Low",
+    "flags": []
+  },
+  {
+    "id": "django:2739d74444",
+    "msgstr": "Guardar",
+    "page": "Apply for benefits (form)",
+    "place_on_page": "Button at the bottom, middle (saves without submitting)",
+    "role": "button",
+    "priority": "Low",
+    "flags": []
+  },
+  {
+    "id": "django:feb192bc71",
+    "msgstr": "Enviar solicitud",
+    "page": "Apply for benefits (form)",
+    "place_on_page": "Main button at the bottom (submits the application)",
+    "role": "button",
+    "priority": "Medium",
+    "flags": [
+      "Button is about 3x the English length: check it fits",
+      "Different from 'Apply' on the office filter"
+    ],
+    "reasoning": "The developer comment says it submits the application; 'Solicitar' alone is ambiguous. 'Enviar' is a shorter option.",
+    "ledger_terms": [
+      "apply"
+    ]
+  },
+  {
+    "id": "django:17ebc9f49c",
+    "msgstr": "Número de personas en su hogar",
+    "page": "Apply for benefits (form)",
+    "place_on_page": "Label above the first form field",
+    "role": "form label",
+    "priority": "Medium",
+    "flags": [
+      "Longer than the English (form label, not a button, so it fits)"
+    ],
+    "reasoning": "'Tamaño del hogar' is a literal translation few people say; this is clearer.",
+    "ledger_terms": [
+      "household"
+    ]
+  },
+  {
+    "id": "django:b342e503e0",
+    "msgstr": "Ingresos mensuales antes de impuestos",
+    "page": "Apply for benefits (form)",
+    "place_on_page": "Label for the income field",
+    "role": "form label",
+    "priority": "Medium",
+    "flags": [],
+    "ledger_terms": [
+      "income"
+    ]
+  },
+  {
+    "id": "django:27558b5604",
+    "msgstr": "Incluya salarios, manutención de menores y Seguro Social. Si sus ingresos son de más de $4,000 al mes, es posible que no reúna los requisitos.",
+    "page": "Apply for benefits (form)",
+    "place_on_page": "Help text under the income field",
+    "role": "help text",
+    "priority": "Critical",
+    "flags": [
+      "Eligibility and money: always reviewed"
+    ],
+    "high_stakes": true,
+    "reasoning": "Eligibility wording; kept the dollar amount exactly.",
+    "ledger_terms": [
+      "income",
+      "child support",
+      "qualify"
+    ]
+  },
+  {
+    "id": "django:0361cb7796",
+    "msgstr": "Suba una copia de su licencia de conducir o identificación estatal",
+    "page": "Apply for benefits (form)",
+    "place_on_page": "Label for the ID upload",
+    "role": "form label",
+    "priority": "Medium",
+    "flags": [
+      "Term: 'licencia' here means a driver's license, not leave from work"
+    ],
+    "reasoning": "The glossary uses 'licencia' for leave in another program; here it's the ID document, so it's correct in this sense.",
+    "ledger_terms": [
+      "driver's license"
+    ]
+  },
+  {
+    "id": "django:a73f6b353d",
+    "msgstr": "Escriba un número entre 1 y 20.",
+    "page": "Apply for benefits (form)",
+    "place_on_page": "Error under the household size field",
+    "role": "error message",
+    "priority": "Low",
+    "flags": []
+  },
+  {
+    "id": "django:2b9455be0d",
+    "msgstr": "Su solicitud se guardó. ",
+    "page": "Messages after saving or submitting",
+    "place_on_page": "Message after Save (keeps a trailing space)",
+    "role": "status message",
+    "priority": "Low",
+    "flags": [],
+    "reasoning": "Trailing space kept.",
+    "ledger_terms": [
+      "application"
+    ]
+  },
+  {
+    "id": "django:cb3715958f",
+    "msgstr": "Recibimos su solicitud.",
+    "page": "Messages after saving or submitting",
+    "place_on_page": "Message after submitting",
+    "role": "status message",
+    "priority": "Low",
+    "flags": [],
+    "ledger_terms": [
+      "application"
+    ]
+  },
+  {
+    "id": "django:f87eb89bf5",
+    "msgstr_plural": [
+      "Tiene %(count)s solicitud en curso.",
+      "Tiene %(count)s solicitudes en curso."
+    ],
+    "page": "Account home",
+    "place_on_page": "Summary on the account home",
+    "role": "body text",
+    "priority": "Low",
+    "flags": [],
+    "reasoning": "Both plural forms filled.",
+    "ledger_terms": [
+      "application"
+    ]
+  },
+  {
+    "id": "django:13349dfe97",
+    "msgstr": "Total: ",
+    "page": "Apply for benefits (form)",
+    "place_on_page": "Label before an amount (keeps a trailing space)",
+    "role": "form label",
+    "priority": "Low",
+    "flags": [],
+    "reasoning": "Same word in Spanish; trailing space kept."
+  },
+  {
+    "id": "django:fa6280d60a",
+    "msgstr": "Hola:\n\nRecibimos su solicitud. Nos comunicaremos con usted dentro de 10 días hábiles.\n",
+    "page": "Confirmation email",
+    "place_on_page": "Email body",
+    "role": "email text",
+    "priority": "Critical",
+    "flags": [
+      "Deadline: always reviewed"
+    ],
+    "high_stakes": true,
+    "reasoning": "Spanish letters open with a colon after the greeting. Line breaks kept.",
+    "ledger_terms": [
+      "business days"
+    ]
+  },
+  {
+    "id": "django:9d6a0c802f",
+    "msgstr": "Renueve sus beneficios",
+    "page": "Renew your benefits",
+    "place_on_page": "Page heading",
+    "role": "heading",
+    "priority": "Low",
+    "flags": [],
+    "ledger_terms": [
+      "benefits",
+      "renew"
+    ]
+  },
+  {
+    "id": "django:693bbdabae",
+    "msgstr": "Debe renovar a más tardar el <strong>%(date)s</strong> o sus beneficios se suspenderán.",
+    "page": "Renew your benefits",
+    "place_on_page": "Deadline under the heading",
+    "role": "body text",
+    "priority": "Critical",
+    "flags": [
+      "Deadline: always reviewed",
+      "'by' a date = 'a más tardar el' (on or before), not 'antes del' (before)"
+    ],
+    "high_stakes": true,
+    "reasoning": "'Antes del' would tell people the deadline is a day earlier than it is.",
+    "ledger_terms": [
+      "renew",
+      "benefits"
+    ]
+  },
+  {
+    "id": "django:ec06f065fb",
+    "msgstr": "Si hubo algún cambio en su hogar, infórmenos antes de renovar.",
+    "page": "Renew your benefits",
+    "place_on_page": "Text above the buttons",
+    "role": "body text",
+    "priority": "Medium",
+    "flags": [],
+    "ledger_terms": [
+      "household",
+      "report a change"
+    ]
+  },
+  {
+    "id": "django:e9373a4864",
+    "msgstr": "Informar un cambio",
+    "page": "Renew your benefits",
+    "place_on_page": "Button-style link",
+    "role": "link button",
+    "priority": "Medium",
+    "flags": [
+      "'Report' the verb; ledger term 'report a change'"
+    ],
+    "reasoning": "msgctxt is 'verb'. 'Reportar' is common in US Spanish; 'informar' is the ledger's choice.",
+    "ledger_terms": [
+      "report a change"
+    ]
+  },
+  {
+    "id": "django:4114817305",
+    "msgstr": "Renovar",
+    "page": "Renew your benefits",
+    "place_on_page": "Main button",
+    "role": "button",
+    "priority": "Low",
+    "flags": [],
+    "ledger_terms": [
+      "renew"
+    ]
+  },
+  {
+    "id": "django:bae43cb022",
+    "msgstr": "Busque una oficina cerca de usted",
+    "page": "Find an office",
+    "place_on_page": "Page heading",
+    "role": "heading",
+    "priority": "Low",
+    "flags": []
+  },
+  {
+    "id": "django:c229844333",
+    "msgstr": "Distancia",
+    "page": "Find an office",
+    "place_on_page": "Filter label",
+    "role": "form label",
+    "priority": "Low",
+    "flags": []
+  },
+  {
+    "id": "django:6b0a3d39a8",
+    "msgstr": "A menos de %(miles)s millas",
+    "page": "Find an office",
+    "place_on_page": "Distance dropdown choice",
+    "role": "dropdown option",
+    "priority": "Low",
+    "flags": []
+  },
+  {
+    "id": "django:b40665a6b7",
+    "msgstr": "Abierto ahora",
+    "page": "Find an office",
+    "place_on_page": "Filter checkbox",
+    "role": "form label",
+    "priority": "Low",
+    "flags": []
+  },
+  {
+    "id": "django:27aa5174d5",
+    "msgstr": "Aplicar",
+    "page": "Find an office",
+    "place_on_page": "Button that applies the filters",
+    "role": "button",
+    "priority": "Medium",
+    "flags": [
+      "Same English as the submit button, different meaning"
+    ],
+    "reasoning": "msgctxt is 'filter': applying filters, not applying for benefits.",
+    "ledger_terms": [
+      "apply"
+    ]
+  },
+  {
+    "id": "django:95ae28482e",
+    "msgstr": "Borrar",
+    "page": "Find an office",
+    "place_on_page": "Link that clears the filters",
+    "role": "link",
+    "priority": "Low",
+    "flags": []
+  },
+  {
+    "id": "django:8e5ba1b1f0",
+    "msgstr": "Estado de la solicitud",
+    "page": "Application status",
+    "place_on_page": "Page heading",
+    "role": "heading",
+    "priority": "Low",
+    "flags": [],
+    "ledger_terms": [
+      "application"
+    ]
+  },
+  {
+    "id": "django:9ce3e9d9a8",
+    "msgstr": "Su solicitud fue denegada.",
+    "page": "Application status",
+    "place_on_page": "Denial notice",
+    "role": "body text",
+    "priority": "Critical",
+    "flags": [
+      "Decision about benefits: always reviewed"
+    ],
+    "high_stakes": true,
+    "ledger_terms": [
+      "deny"
+    ]
+  },
+  {
+    "id": "django:e113ca8f80",
+    "msgstr": "Los ingresos de su hogar superan el límite de este programa.",
+    "page": "Application status",
+    "place_on_page": "Reason for denial",
+    "role": "body text",
+    "priority": "Critical",
+    "flags": [
+      "Eligibility: always reviewed"
+    ],
+    "high_stakes": true,
+    "ledger_terms": [
+      "household",
+      "income"
+    ]
+  },
+  {
+    "id": "django:caa1b93310",
+    "msgstr": "Puede apelar esta decisión en un plazo de 30 días. <a href=\"%(url)s\">Cómo apelar</a>.",
+    "page": "Application status",
+    "place_on_page": "Appeal rights, with a link",
+    "role": "body text",
+    "priority": "Critical",
+    "flags": [
+      "Legal rights and a deadline: always reviewed"
+    ],
+    "high_stakes": true,
+    "reasoning": "Link and its address kept.",
+    "ledger_terms": [
+      "appeal"
+    ]
+  },
+  {
+    "id": "django:b4c7b2d466",
+    "msgstr": "Descargar su informe",
+    "page": "Application status",
+    "place_on_page": "Link under the notice",
+    "role": "link",
+    "priority": "Low",
+    "flags": [],
+    "reasoning": "Standalone link: infinitive.",
+    "ledger_terms": [
+      "report (noun)"
+    ]
+  },
+  {
+    "id": "django:517d037c58",
+    "msgstr": "Le damos la bienvenida, %(first_name)s",
+    "page": "Account home",
+    "place_on_page": "Greeting at the top",
+    "role": "heading",
+    "priority": "Medium",
+    "flags": [
+      "Gender-neutral greeting chosen over 'Bienvenido/a'"
+    ],
+    "reasoning": "'Bienvenido' assumes a man; 'Le damos la bienvenida' works for anyone."
+  },
+  {
+    "id": "django:f219b79833",
+    "msgstr_plural": [
+      "Tiene %(counter)s mensaje nuevo.",
+      "Tiene %(counter)s mensajes nuevos."
+    ],
+    "page": "Account home",
+    "place_on_page": "Message count under the greeting",
+    "role": "body text",
+    "priority": "Low",
+    "flags": [],
+    "reasoning": "Both plural forms filled."
+  },
+  {
+    "id": "django:58b7558555",
+    "msgstr": "Informe",
+    "page": "Account home",
+    "place_on_page": "Card title for the yearly report",
+    "role": "heading",
+    "priority": "Medium",
+    "flags": [
+      "'Report' the noun (a document), not 'report a change'"
+    ],
+    "reasoning": "msgctxt is 'noun'.",
+    "ledger_terms": [
+      "report (noun)"
+    ]
+  },
+  {
+    "id": "django:468fb7aa78",
+    "msgstr": "Su informe anual de beneficios está listo.",
+    "page": "Account home",
+    "place_on_page": "Card text",
+    "role": "body text",
+    "priority": "Low",
+    "flags": [],
+    "ledger_terms": [
+      "report (noun)",
+      "benefits"
+    ]
+  },
+  {
+    "id": "django:344b2dae8f",
+    "msgstr": "Siguiente",
+    "page": "Account home",
+    "place_on_page": "Button to go to the next item",
+    "role": "link button",
+    "priority": "Low",
+    "flags": []
+  }
+]
