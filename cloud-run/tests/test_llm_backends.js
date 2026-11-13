@@ -356,84 +356,21 @@ describe.each(FUNCTIONS)("$name retry rule", ({ dir, llm: loadLlm, call }) => {
   });
 });
 
-// ── Translate's time budget: per-attempt timeouts and retries fit the deadline ──
+// ── Translate's timeout: under Cloud Run's 600 s request limit ─────────────
 
-describe("translate deadline", () => {
+test("translate: model clients time out before Cloud Run's 600 s limit", () => {
   const llm = require("../translate/llm.js");
-  const NOW = 1_000_000;
   const { AnthropicVertex } = require("../translate/node_modules/@anthropic-ai/vertex-sdk");
   const { GoogleGenAI } = require(require.resolve("@google/genai", { paths: [require("path").join(__dirname, "../translate")] }));
-  let savedEnv;
-
-  beforeEach(() => {
-    savedEnv = Object.fromEntries(BACKEND_ENV_KEYS.map((k) => [k, process.env[k]]));
-    BACKEND_ENV_KEYS.forEach((k) => delete process.env[k]);
-    Object.assign(process.env, VERTEX_ENV, { LLM_BACKEND: "vertex-only" });
-    mockClaudeVertex.mockReset();
-    mockGemini.mockReset();
-    jest.spyOn(console, "warn").mockImplementation();
-  });
-
-  afterEach(() => {
-    BACKEND_ENV_KEYS.forEach((k) => {
-      if (savedEnv[k] === undefined) delete process.env[k];
-      else process.env[k] = savedEnv[k];
-    });
-    console.warn.mockRestore();
-  });
-
-  test("attemptTimeoutMs: full timeout with no deadline or plenty of time", () => {
-    expect(llm.attemptTimeoutMs(undefined, NOW)).toBe(llm.LLM_TIMEOUT_MS);
-    expect(llm.attemptTimeoutMs(NOW + 10 * llm.LLM_TIMEOUT_MS, NOW)).toBe(llm.LLM_TIMEOUT_MS);
-  });
-
-  test("attemptTimeoutMs: shortened to the time left", () => {
-    expect(llm.attemptTimeoutMs(NOW + 120_000, NOW)).toBe(120_000);
-  });
-
-  test("attemptTimeoutMs: refuses to start a call with too little time left", () => {
-    expect(() => llm.attemptTimeoutMs(NOW + llm.MIN_MODEL_ATTEMPT_MS - 1, NOW)).toThrow(llm.ModelDeadlineError);
-  });
-
-  test("an out-of-time error counts as a timeout: never retried", () => {
-    expect(llm.isModelTimeout(new llm.ModelDeadlineError(1000))).toBe(true);
-    expect(llm.modelRetryReason(new llm.ModelDeadlineError(1000))).toBeNull();
-  });
-
-  test("withModelRetry: skips a retry that wouldn't leave time for a real attempt", async () => {
-    const err = anthropicStatusError(429);
-    const fn = jest.fn().mockRejectedValue(err);
-    const deadline = NOW + llm.MIN_MODEL_ATTEMPT_MS + 1000;  // 5 s wait would cut into the minimum
-    await expect(llm.withModelRetry(fn, { wait: async () => {}, now: () => NOW, deadline })).rejects.toBe(err);
-    expect(fn).toHaveBeenCalledTimes(1);
-  });
-
-  test("withModelRetry: retries when there's time", async () => {
-    const fn = jest.fn().mockRejectedValueOnce(anthropicStatusError(429)).mockResolvedValueOnce("ok");
-    const deadline = NOW + 10 * llm.MIN_MODEL_ATTEMPT_MS;
-    await expect(llm.withModelRetry(fn, { wait: async () => {}, now: () => NOW, deadline })).resolves.toBe("ok");
-    expect(fn).toHaveBeenCalledTimes(2);
-  });
-
-  test("callLlm: the client's timeout is the time left before the deadline", async () => {
-    mockClaudeVertex.mockResolvedValue(claudeResponse());
-    await llm.callLlm("anthropic", "claude-sonnet-4-6", "prompt", { deadline: Date.now() + 200_000 });
-    const { timeout } = AnthropicVertex.mock.calls.at(-1)[0];
-    expect(timeout).toBeLessThanOrEqual(200_000);
-    expect(timeout).toBeGreaterThan(190_000);
-  });
-
-  test("callLlm: Gemini's timeout is the time left too", async () => {
-    mockGemini.mockResolvedValue(geminiResponse());
-    await llm.callLlm("google", "gemini-3.1-pro-preview", "prompt", { deadline: Date.now() + 200_000 });
-    const { timeout } = GoogleGenAI.mock.calls.at(-1)[0].httpOptions;
-    expect(timeout).toBeLessThanOrEqual(200_000);
-    expect(timeout).toBeGreaterThan(190_000);
-  });
-
-  test("callLlm: past the deadline, no model call is made", async () => {
-    await expect(llm.callLlm("anthropic", "claude-sonnet-4-6", "prompt", { deadline: Date.now() + 1000 }))
-      .rejects.toThrow(llm.ModelDeadlineError);
-    expect(mockClaudeVertex).not.toHaveBeenCalled();
-  });
+  const saved = { ...process.env };
+  Object.assign(process.env, VERTEX_ENV);
+  try {
+    llm.makeClaudeClient("vertex");
+    llm.makeGeminiClient("vertex");
+  } finally {
+    process.env = saved;
+  }
+  expect(llm.LLM_TIMEOUT_MS).toBe(540_000);
+  expect(AnthropicVertex).toHaveBeenLastCalledWith(expect.objectContaining({ timeout: llm.LLM_TIMEOUT_MS }));
+  expect(GoogleGenAI.mock.calls.at(-1)[0].httpOptions.timeout).toBe(llm.LLM_TIMEOUT_MS);
 });

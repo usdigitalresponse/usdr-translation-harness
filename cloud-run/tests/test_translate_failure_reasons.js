@@ -8,7 +8,6 @@ const { REASONS, inputFailureReason, modelFailureReason } = require("../translat
 const {
   ModelConfigError, MissingSettingError, InvalidOutputError, IncompleteTranslationError, AlreadyBilledError,
 } = require("../translate/errors.js");
-const { ModelDeadlineError } = require("../translate/llm.js");
 
 const googleApiError = (status) =>
   new GaxiosError(`HTTP ${status}`, {}, { status, statusText: "", headers: {}, data: {}, config: {} });
@@ -21,7 +20,6 @@ describe("modelFailureReason", () => {
     ["Claude no permission (403)", () => claudeStatusError(403), REASONS.modelAccess],
     ["Claude timeout", () => new Anthropic.APIConnectionTimeoutError(), REASONS.timeout],
     ["Gemini timeout (aborted fetch)", () => new DOMException("This operation was aborted", "AbortError"), REASONS.timeout],
-    ["out of time before the deadline", () => new ModelDeadlineError(1000), REASONS.timeout],
     ["Claude rate limit", () => claudeStatusError(429), REASONS.providerBusy],
     ["Claude connection error", () => new Anthropic.APIConnectionError({ message: "Connection error." }), REASONS.providerBusy],
     ["incomplete translation", () => new IncompleteTranslationError("missing b3"), REASONS.incomplete],

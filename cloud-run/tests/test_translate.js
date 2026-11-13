@@ -1,6 +1,6 @@
 const { StatusCodes } = require("../translate/node_modules/http-status-codes");
 
-const { translate, parseInput, MODEL_TIME_BUDGET_MS } = require("../translate/index.js");
+const { translate, parseInput } = require("../translate/index.js");
 const { REASONS } = require("../translate/failure-reasons.js");
 const {
   formatGlossaryEntry,
@@ -277,7 +277,7 @@ describe("translate", () => {
     );
 
     expect(callLlm).toHaveBeenCalledWith("anthropic", "claude-sonnet-4-6", expect.any(String),
-      { effort: undefined, deadline: expect.any(Number) });
+      { effort: undefined });
     expect(writeOutput).toHaveBeenCalledWith("test_anthropic_claude-sonnet-4-6.json", {
       ...JSON.parse(HOLA_TRANSLATION),
       sourceFileId: "src456",
@@ -455,23 +455,6 @@ describe("translate", () => {
     loadExtractionJson.mockRejectedValue(googleApiError(404, "File not found"));
     await translate({ body: { extractionFileId: "file123", sourceFileName: "test.pdf" } }, mockRes());
     expect(notifyTranslationFailed).toHaveBeenCalledWith(expect.objectContaining({ reasons: [REASONS.inputNotFound] }));
-  });
-
-  test("model calls get a deadline ~540 s from the start of the request", async () => {
-    loadExtractionJson.mockResolvedValue({ blocks: [{ id: "b01", text: "Hello", translate: true }] });
-    loadDoc.mockResolvedValue("Base prompt");
-    loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
-    loadConfig.mockResolvedValue({
-      models: [{ role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
-    });
-    callLlm.mockResolvedValue({ text: HOLA_TRANSLATION, usage: { input_tokens: 1, output_tokens: 1, duration_ms: 1 } });
-    writeOutput.mockResolvedValue("output-file-id");
-
-    const before = Date.now();
-    await translate({ body: { extractionFileId: "file123", sourceFileName: "test.pdf" } }, mockRes());
-    const { deadline } = callLlm.mock.calls[0][3];
-    expect(deadline).toBeGreaterThanOrEqual(before + MODEL_TIME_BUDGET_MS);
-    expect(deadline).toBeLessThanOrEqual(Date.now() + MODEL_TIME_BUDGET_MS);
   });
 
   test("reports per-model errors without failing the whole request", async () => {

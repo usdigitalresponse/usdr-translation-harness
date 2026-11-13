@@ -52,18 +52,6 @@ const MODEL_RETRY_BASE_DELAY_MS = 5_000;   // 5 s, then 15 s
 const MODEL_RETRY_BACKOFF = 3;
 // A failure slower than this may have happened mid-generation (billed), so it isn't retried
 const MODEL_RETRY_FAST_FAILURE_MS = 30_000;
-// Don't start (or retry) a model call with less time than this left before the
-// caller's deadline: a translation needs minutes, so it would only time out.
-const MIN_MODEL_ATTEMPT_MS = 60_000;
-
-/** Raised instead of starting a model call when the caller's deadline is too close. Never retried. */
-class ModelDeadlineError extends Error {
-  constructor(remainingMs) {
-    super(`Out of time: ${Math.max(0, Math.round(remainingMs / 1000))} s left before the deadline; ` +
-      `a model call needs at least ${MIN_MODEL_ATTEMPT_MS / 1000} s`);
-    this.name = "ModelDeadlineError";
-  }
-}
 const MODEL_RETRY_STATUS_CODES = new Set([
   StatusCodes.TOO_MANY_REQUESTS,       // 429 rate limit
   StatusCodes.BAD_GATEWAY,             // 502
@@ -99,23 +87,8 @@ function errorCode(err) {
 }
 
 function isModelTimeout(err) {
-  return err instanceof ModelDeadlineError || errorClassNames(err).has(CLAUDE_TIMEOUT_CLASS)
-    || TIMEOUT_ERROR_NAMES.has(err?.name) || TIMEOUT_ERROR_CODES.has(errorCode(err));
-}
-
-/**
- * Time to give one model attempt: the SDK limit, or less if the caller's
- * deadline is closer. Throws ModelDeadlineError if there isn't enough time left.
- *
- * @param {number|undefined} deadline - Date.now()-style timestamp, or undefined for no deadline
- * @param {number} [now]
- * @returns {number} timeout in ms
- */
-function attemptTimeoutMs(deadline, now = Date.now()) {
-  if (!deadline) return LLM_TIMEOUT_MS;
-  const remaining = deadline - now;
-  if (remaining < MIN_MODEL_ATTEMPT_MS) throw new ModelDeadlineError(remaining);
-  return Math.min(LLM_TIMEOUT_MS, remaining);
+  return errorClassNames(err).has(CLAUDE_TIMEOUT_CLASS) || TIMEOUT_ERROR_NAMES.has(err?.name)
+    || TIMEOUT_ERROR_CODES.has(errorCode(err));
 }
 
 /**
@@ -142,16 +115,13 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Run a model call, retrying (up to MODEL_RETRIES times, with backoff) only
- * when it fails fast with a temporary error, and only if the retry would
- * still start at least MIN_MODEL_ATTEMPT_MS before the deadline. Anything else
- * is thrown as is.
+ * when it fails fast with a temporary error. Anything else is thrown as is.
  *
  * @param {() => Promise<*>} fn - One attempt at the model call
- * @param {{retries?: number, baseDelayMs?: number, wait?: Function, now?: Function, deadline?: number}} [options]
- *   deadline: Date.now()-style timestamp the whole call must finish by; the rest are for tests
+ * @param {{retries?: number, baseDelayMs?: number, wait?: Function, now?: Function}} [options] - for tests
  */
 async function withModelRetry(fn, { retries = MODEL_RETRIES, baseDelayMs = MODEL_RETRY_BASE_DELAY_MS,
-  wait = sleep, now = Date.now, deadline } = {}) {
+  wait = sleep, now = Date.now } = {}) {
   for (let attempt = 0; ; attempt++) {
     const started = now();
     try {
@@ -161,8 +131,6 @@ async function withModelRetry(fn, { retries = MODEL_RETRIES, baseDelayMs = MODEL
       const fast = now() - started < MODEL_RETRY_FAST_FAILURE_MS;
       if (!reason || !fast || attempt >= retries) throw err;
       const delayMs = baseDelayMs * MODEL_RETRY_BACKOFF ** attempt;
-      // No retry that couldn't get a useful amount of time before the deadline
-      if (deadline && deadline - now() - delayMs < MIN_MODEL_ATTEMPT_MS) throw err;
       console.warn(`Model call failed (${reason}); retry ${attempt + 1} of ${retries} in ${delayMs / 1000}s`);
       await wait(delayMs);
     }
@@ -177,7 +145,12 @@ const SCHEMA_PATHS = {
 
 // Large documents (e.g. 438 blocks) need ~64k output tokens on Claude; 65536 truncated them
 const DEFAULT_MAX_TOKENS = 128_000;
-const LLM_TIMEOUT_MS = 600_000;
+// Under Cloud Run's 600 s request limit, so a slow call fails inside Translate
+// (recorded, not retried) instead of the request being cut off (and Pub/Sub
+// redelivering it). The ~60 s left is for saving the JSON, building the doc and
+// logging. Retries and the Vertex → direct fallback each get the full timeout,
+// so a rare request can still run over; the dead-letter policy caps those.
+const LLM_TIMEOUT_MS = 540_000;
 
 // Node's fetch aborts a request that sends no response headers within 300 s
 // (UND_ERR_HEADERS_TIMEOUT, surfaced as "fetch failed"). Vertex sends headers
@@ -206,17 +179,17 @@ function vertexSettings() {
   return { project, location: process.env.VERTEX_LOCATION || DEFAULT_VERTEX_LOCATION };
 }
 
-function makeClaudeClient(backend, timeoutMs = LLM_TIMEOUT_MS) {
+function makeClaudeClient(backend) {
   if (backend === BACKEND_VERTEX) {
     const { project, location } = vertexSettings();
-    return new AnthropicVertex({ projectId: project, region: location, timeout: timeoutMs, maxRetries: CLAUDE_MAX_RETRIES });
+    return new AnthropicVertex({ projectId: project, region: location, timeout: LLM_TIMEOUT_MS, maxRetries: CLAUDE_MAX_RETRIES });
   }
-  return new Anthropic({ timeout: timeoutMs, maxRetries: CLAUDE_MAX_RETRIES });
+  return new Anthropic({ timeout: LLM_TIMEOUT_MS, maxRetries: CLAUDE_MAX_RETRIES });
 }
 
-function makeGeminiClient(backend, timeoutMs = LLM_TIMEOUT_MS) {
+function makeGeminiClient(backend) {
   // Same limit as Claude so a stuck call fails before Cloud Run kills the request
-  const httpOptions = { timeout: timeoutMs };
+  const httpOptions = { timeout: LLM_TIMEOUT_MS };
   if (backend === BACKEND_VERTEX) {
     const { project, location } = vertexSettings();
     return new GoogleGenAI({ vertexai: true, project, location, httpOptions });
@@ -326,7 +299,7 @@ async function callGemini(client, prompt, { model, outputSchema, effort } = {}) 
   return { text, usage, stop_reason: finishReason };
 }
 
-async function callLlmOnce(provider, model, prompt, { effort, deadline } = {}) {
+async function callLlmOnce(provider, model, prompt, { effort } = {}) {
   const outputSchema = loadTranslationSchema(provider);
 
   const providerCalls = {
@@ -344,7 +317,7 @@ async function callLlmOnce(provider, model, prompt, { effort, deadline } = {}) {
     const backend = backends[i];
     let result;
     try {
-      result = await call(makeClient(backend, attemptTimeoutMs(deadline)));
+      result = await call(makeClient(backend));
     } catch (err) {
       reason = fallbackReason(err);
       const isLast = i === backends.length - 1;
@@ -366,18 +339,14 @@ async function callLlmOnce(provider, model, prompt, { effort, deadline } = {}) {
 /**
  * Call the model (Vertex first, falling back to the direct API per
  * LLM_BACKEND), retrying fast, temporary failures (see withModelRetry).
- *
- * @param {{effort?: string, deadline?: number}} [options] - deadline: Date.now()-style
- *   timestamp the call must finish by. Each attempt gets only the time left, and
- *   nothing starts with less than MIN_MODEL_ATTEMPT_MS to go (ModelDeadlineError).
  */
-async function callLlm(provider, model, prompt, { effort, deadline } = {}) {
+async function callLlm(provider, model, prompt, { effort } = {}) {
   const start = Date.now();
   let attempts = 0;
   const result = await withModelRetry(() => {
     attempts += 1;
-    return callLlmOnce(provider, model, prompt, { effort, deadline });
-  }, { deadline });
+    return callLlmOnce(provider, model, prompt, { effort });
+  });
   // Whole call, as before retries were ours: fallback, retries and the waits between them
   result.usage.duration_ms = Date.now() - start;
   if (attempts > 1) {
@@ -388,9 +357,6 @@ async function callLlm(provider, model, prompt, { effort, deadline } = {}) {
 
 module.exports = {
   withModelRetry,
-  attemptTimeoutMs,
-  ModelDeadlineError,
-  MIN_MODEL_ATTEMPT_MS,
   LLM_TIMEOUT_MS,
   isModelTimeout,
   modelRetryReason,

@@ -38,7 +38,7 @@ Translate decides whether a failed request is worth redelivering, so failures th
 - **Stop (200 with `status: "failed"`, `retry: false`):** everything else, e.g. a timeout, cut-off, incomplete or invalid output, a missing or unshared prompt doc, a config problem, or no active models. If one model fails temporarily and another fails permanently, it also stops, since a redelivery would re-bill the permanent one. Translate appends a `failed` Processing Log row, posts "Translation failed … It won't be retried automatically" to the Chat space, and logs the error with `retryable: false`. The Chat notice gives a plain-language reason (e.g. "The translation model in Model Config wasn't found. Check the model name."), one line per model if they failed differently; the technical error stays in the Processing Log row and logs. Reasons are worked out from the error's class or status in `failure-reasons.js`.
 - **Never retried:** failures after model work was already billed: saving output (translation JSON, raw output, doc) after a model call succeeded ("failed after translating"), or one chunk failing after others finished ("1 of 4 chunks failed"; Translate waits for all chunks first). A chunked run is retryable only if every chunk failed temporarily.
 
-**Time budget:** the model calls must finish within 540 s of the request starting (`MODEL_TIME_BUDGET_MS`), leaving time to save and record a failure before Cloud Run's 600 s limit (which would otherwise end the request with a 504 and nothing recorded). Each attempt's timeout is shortened to the time left; a call or retry isn't started with under 60 s left (`MIN_MODEL_ATTEMPT_MS`), and that counts as a timeout.
+**Timeout:** each model call times out at 540 s (`LLM_TIMEOUT_MS`), under Cloud Run's 600 s limit, so a slow call fails inside Translate and is recorded instead of the request being cut off with a 504 (and redelivered). Retries and the Vertex → direct fallback each get the full 540 s, so a rare request can still run past 600 s; the dead-letter policy caps those at 5 attempts.
 
 ## Model call retries
 
@@ -46,7 +46,6 @@ The SDKs' own retries are off (Claude's default is 2 retries, including on timeo
 
 - **Retried** (up to 2 times, waiting 5 s then 15 s): rate limit (429), overloaded (529), 502 / 503, and network errors, **only if the attempt failed within 30 s**. A slower failure may have happened mid-generation, which is already billed.
 - **Not retried:** timeouts, other HTTP errors (400, 500…), and bad output.
-- **Deadline (Translate only):** `callLlm` takes an optional `deadline`. Each attempt's timeout is the time left (at most 600 s), and a retry is skipped if it would start with under 60 s left.
 - When a call needed retries, its log entry includes `model_retries`. `duration_ms` covers the whole call: fallback, retries and the waits between them.
 
 The same rule is in each model-calling service's `llm` module.

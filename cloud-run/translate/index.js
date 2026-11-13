@@ -21,12 +21,6 @@ const STATUS_DOC_FAILED = "doc-failed";
 // pipeline_stage="translate" counts
 const DOC_PIPELINE_STAGE = "translate_doc";
 
-// Model calls must finish (or give up) this long after the request starts.
-// Cloud Run cuts requests off at 600 s, and a cut-off request can't record its
-// failure, so Pub/Sub redelivers it. The ~60 s left is for saving the JSON,
-// building the doc and logging.
-const MODEL_TIME_BUDGET_MS = 540_000;
-
 // Google API errors (Drive, Sheets, Docs) worth a Pub/Sub retry: the service
 // was temporarily unavailable, or the network failed
 const TEMPORARY_GOOGLE_API_STATUSES = new Set([
@@ -141,10 +135,10 @@ function parseInput(body) {
  * @returns {Promise<{text: string|Object, usage: Object, stop_reason: string}>}
  *   text is the raw model output (single call) or the merged object (chunked)
  */
-async function translateDocument({ provider, model, effort, deadline, chunkSize, prompt, extractionBlocks, promptForBlocks, saveRawChunk }) {
+async function translateDocument({ provider, model, effort, chunkSize, prompt, extractionBlocks, promptForBlocks, saveRawChunk }) {
   const chunks = planChunks(extractionBlocks, chunkSize);
   if (chunks.length === 1) {
-    return callLlm(provider, model, prompt, { effort, deadline });
+    return callLlm(provider, model, prompt, { effort });
   }
 
   console.log(`Translating in ${chunks.length} chunks (${chunks.map((c) => c.expectedBlockIds.length).join("/")} blocks) with ${provider} (${model})`);
@@ -153,7 +147,7 @@ async function translateDocument({ provider, model, effort, deadline, chunkSize,
   // so wait for them to tell whether a retry would redo paid work
   const settled = await Promise.allSettled(chunks.map(async (chunk, i) => {
     const label = `chunk ${i + 1}/${chunks.length}`;
-    const result = await callLlm(provider, model, promptForBlocks(chunk.blocks), { effort, deadline });
+    const result = await callLlm(provider, model, promptForBlocks(chunk.blocks), { effort });
     console.log(`${provider} (${model}) ${label} complete (%d in / %d out tokens, stop_reason=%s)`,
       result.usage.input_tokens, result.usage.output_tokens, result.stop_reason);
     try {
@@ -272,9 +266,6 @@ async function translate(req, res) {
   const { extractionFileId, sourceFileId, sourceFileName, model, provider,
     contentType = "public_flyer", includeStatutes = true,
     submittedByEmail = "", submittedByName = "" } = input;
-  // Model calls have to finish by this, so a slow one fails here (and is
-  // recorded) instead of being cut off by Cloud Run (and redelivered)
-  const deadline = Date.now() + MODEL_TIME_BUDGET_MS;
   const source = { sourceFileId, sourceFileName, submittedByEmail, submittedByName };
 
   let prompt, promptMetrics, expectedBlockIds, extractionBlocks, promptForBlocks;
@@ -333,7 +324,7 @@ async function translate(req, res) {
         }
       };
       const { text: translationJson, usage, stop_reason } = await translateDocument({
-        provider, model, effort: effort || undefined, deadline, chunkSize: CHUNK_SIZE,
+        provider, model, effort: effort || undefined, chunkSize: CHUNK_SIZE,
         prompt, extractionBlocks, promptForBlocks,
         saveRawChunk: (n, text) => save(`${baseName}_${provider}_${model}_chunk${n}.json`, text),
       });
@@ -482,5 +473,5 @@ async function translate(req, res) {
 functions.http("translate", translate);
 module.exports = {
   translate, parseInput, translateDocument, findMissingBlockIds, incompleteTranslationMessage,
-  isTemporaryGoogleError, isRetryableModelFailure, AlreadyBilledError, MODEL_TIME_BUDGET_MS,
+  isTemporaryGoogleError, isRetryableModelFailure, AlreadyBilledError,
 };
