@@ -1,10 +1,11 @@
 // Check 11: problems the services logged themselves in the last 24 hours.
 // The services already log every input problem with an input_problem field,
-// and every Chat webhook failure with a "Chat webhook" prefix
-// (translate/notifier.js); this surfaces them daily instead of waiting for
-// someone to search the logs.
+// every Chat webhook failure with a "Chat webhook" prefix (translate/notifier.js,
+// extract/notifier.py), and every Extract / Plain Language Eval failure as a
+// structured entry with pipeline_stage and status "failed"; this surfaces them
+// daily instead of waiting for someone to search the logs.
 
-const { SERVICES } = require("../rules");
+const { SERVICES, FAILURE_LOG_STAGES } = require("../rules");
 const { ok, problem } = require("../results");
 
 const CHECK = "Logged problems";
@@ -14,6 +15,7 @@ const MAX_ENTRIES = 200;
 const MAX_MESSAGE_CHARS = 300;
 const CHAT_WEBHOOK_PREFIX = "Chat webhook";
 const TRACEBACK_START = "Traceback";
+const STATUS_FAILED = "failed";
 
 // Only the pipeline's own services: other services in the project (e.g. a
 // budget-alert relay) aren't ours to report on, and the runbook text assumes
@@ -71,6 +73,13 @@ function group(entries, keyOf) {
 
 const times = (n) => `${n} ${n === 1 ? "time" : "times"} in the last ${HOURS_TO_CHECK} hours`;
 
+/** A failure entry as "file: error", shortened. */
+function failureOf(entry) {
+  const payload = entry.jsonPayload || {};
+  const text = `${payload.sourceFileName || "unknown file"}: ${payload.error || payload.message || ""}`;
+  return text.length > MAX_MESSAGE_CHARS ? `${text.slice(0, MAX_MESSAGE_CHARS)}…` : text;
+}
+
 async function checkLoggedProblems({ clients, project, now = Date.now() }) {
   const results = [];
   const since = sinceFilter(now);
@@ -88,8 +97,24 @@ async function checkLoggedProblems({ clients, project, now = Date.now() }) {
     results.push(problem(CHECK, g.key, "logged_chat_webhook_error", `${times(g.count)}. Latest: ${g.latest}`));
   }
 
+  const stages = FAILURE_LOG_STAGES.map((s) => `"${s}"`).join(" OR ");
+  const failures = await listEntries(clients, project,
+    `${PIPELINE_SERVICES_FILTER} AND jsonPayload.pipeline_stage=(${stages}) AND ` +
+    `jsonPayload.status="${STATUS_FAILED}" AND ${since}`);
+  const failuresByService = new Map();
+  for (const entry of failures) {
+    const service = serviceOf(entry);
+    const g = failuresByService.get(service) || { count: 0, latest: failureOf(entry) };
+    g.count += 1;
+    failuresByService.set(service, g);
+  }
+  for (const [service, g] of failuresByService) {
+    results.push(problem(CHECK, `${service}: failures`, "logged_stage_failures", `${times(g.count)}. Latest: ${g.latest}`));
+  }
+
   if (!results.length) {
-    results.push(ok(CHECK, "service logs", `no input problems or Chat webhook errors in the last ${HOURS_TO_CHECK} hours`));
+    results.push(ok(CHECK, "service logs",
+      `no input problems, Chat webhook errors, or Extract / Plain Language Eval failures in the last ${HOURS_TO_CHECK} hours`));
   }
   return results;
 }

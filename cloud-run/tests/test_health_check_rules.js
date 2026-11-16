@@ -99,4 +99,34 @@ describe("health-check rules match the services", () => {
       }
     }
   });
+
+  test("Orchestrator statuses, input file types and folder settings match the Orchestrator", () => {
+    // orchestrator.js is Apps Script (globals, no exports): run it in a sandbox
+    const vm = require("vm");
+    const sandbox = vm.createContext({
+      MimeType: {
+        PDF: "application/pdf",
+        GOOGLE_DOCS: "application/vnd.google-apps.document",
+        MICROSOFT_WORD: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      },
+    });
+    vm.runInContext(read("apps-script/orchestrator/orchestrator.js"), sandbox);
+    const o = vm.runInContext(
+      "({ EXTRACT_STATUSES, PL_EVAL_STATUSES, SUPPORTED_MIME_TYPES, SERVICES, STATUS, INPUT_FOLDERS })", sandbox);
+
+    expect([...rules.EXTRACT_DONE_STATUSES].sort()).toEqual([...o.EXTRACT_STATUSES].sort());
+    expect([...rules.PL_EVAL_DONE_STATUSES].sort()).toEqual([...o.PL_EVAL_STATUSES].sort());
+    expect([...rules.INPUT_MIME_TYPES].sort()).toEqual([...o.SUPPORTED_MIME_TYPES].sort());
+    expect(rules.INPUT_FOLDER_ENVS).toEqual(o.INPUT_FOLDERS.map((f) => f.propertyKey));
+    const gaveUp = Object.fromEntries(o.SERVICES.map((svc) => [svc.gaveUpStatus, svc.failedStatus]));
+    expect(Object.fromEntries(Object.entries(rules.GAVE_UP_STATUSES).map(([k, v]) => [k, v.failedStatus])))
+      .toEqual(gaveUp);
+    expect(rules.ORCHESTRATOR_STATUSES).toEqual([o.STATUS.TRIGGERED, o.STATUS.PL_EVAL_TRIGGERED]);
+  });
+
+  test("failure-log stages match the services' pipeline_stage values", () => {
+    expect(rules.FAILURE_LOG_STAGES).toEqual(["extract", "plain-language-eval"]);
+    expect(read("cloud-run/extract/main.py")).toContain('"pipeline_stage": "extract"');
+    expect(read("cloud-run/plain-language-eval/index.js")).toContain('pipeline_stage: "plain-language-eval"');
+  });
 });

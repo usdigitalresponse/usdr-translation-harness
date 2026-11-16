@@ -13,12 +13,13 @@ It reads each pipeline service's **live settings** from Cloud Run, so it checks 
 | Glossary | The tab (`GLOSSARY_SHEET_TAB`, default `FAMLI Spanish Glossary`) can't be read, is missing a column Translate uses, or has no entries |
 | Model Config | The `Config` tab can't be read, is missing role/provider/model/active, or a service's role has no row with active = YES |
 | Processing Log | The `ProcessingLog` header row differs from the Orchestrator's, or files submitted in the last 24 hours have a blank Submitted By |
+| Orchestrator queue | A file the Orchestrator gave up on in the last 24 hours (`extract-gave-up` / `pl-eval-gave-up`, with the last error), or a **backlog** in the input folders: more than 30 files not yet sent to Extract or Plain Language Eval, or the oldest waiting over an hour (measured from when it was created in Drive). Also a problem if the input folder settings below are unset or a folder can't be read |
 | Refinement log | Reviewed / ModelFlagged / OtherChanges is missing or its header row differs from Capture Feedback's |
 | Eval results | The `EvalQuality` header row differs from Eval Quality's (a missing tab or empty row is fine: the service creates them) |
 | Drive folders | Any `DRIVE_*_FOLDER_ID` folder can't be opened, is in the trash, or isn't a folder; or the service account can't add files to one the pipeline writes to (`*_INPUT_*` folders only need to be readable) |
 | Statutes | `STATUTES_GCS_BUCKET` / `STATUTES_GCS_PREFIX` can't be listed or has no `.txt`/`.md` files |
 | Extract → Translate hand-off | The `PUBSUB_TOPIC_EXTRACTION_COMPLETE` topic is missing, has no subscription, or a subscription's ack deadline is under 600s. A subscription has no retry policy or no dead-letter policy, nothing subscribes to its dead-letter topic, or **messages are waiting there** (translations that failed every attempt; the message names up to 10 files). It peeks without removing them, so they're reported every day until someone clears them |
-| Logged problems | Any `input_problem` entry or "Chat webhook" error from the pipeline's services (not other services in the project) in the last 24 hours |
+| Logged problems | Any `input_problem` entry, "Chat webhook" error, or Extract / Plain Language Eval failure (structured entries with `status: "failed"`, grouped by service with the latest file and error) from the pipeline's services (not other services in the project) in the last 24 hours |
 
 The expected headers, tabs and roles are copies of the owning services' rules (`rules.js`); `cloud-run/tests/test_health_check_rules.js` fails if a copy drifts. The "what to do" text for each problem is in `runbook.js`.
 
@@ -30,6 +31,8 @@ The expected headers, tabs and roles are copies of the owning services' rules (`
 | `HEALTH_CHECK_REGION` | Region of the pipeline's Cloud Run services |
 | `HEALTH_CHECK_ENVIRONMENT` | Name shown in the message, e.g. `USDR` or `Maryland` |
 | `GOOGLE_CLOUD_PROJECT` | Optional; defaults to the project it runs in |
+| `INPUT_FOLDER_ID` | The Orchestrator's input folder, for the backlog check. A copy of the Orchestrator's Script Property of the same name (the health check can't read Script Properties), so **change both together**. The Orchestrator's `testConfig` (in `test-helpers.js`) prints its values |
+| `INPUT_FOLDER_ID_CONTENT_TYPE_TWO` | Optional second input folder, same as above |
 
 Runs as the **pipeline service account**, so "the check can read it" means "the pipeline can read it". Besides the Drive/Sheets/Docs sharing and statutes bucket access it already has, that account needs three read-only project roles, plus one subscription role:
 
@@ -55,7 +58,7 @@ Runs as the **pipeline service account**, so "the check can read it" means "the 
 cd cloud-run/health-check
 gcloud run deploy health-check --source=. --region=<region> --project=<project-id> \
   --service-account=<pipeline SA email> --no-allow-unauthenticated \
-  --update-env-vars=HEALTH_CHECK_REGION=<region>,HEALTH_CHECK_ENVIRONMENT=<name> \
+  --update-env-vars=HEALTH_CHECK_REGION=<region>,HEALTH_CHECK_ENVIRONMENT=<name>,INPUT_FOLDER_ID=<input folder ID> \
   --update-secrets=HEALTH_CHECK_CHAT_WEBHOOK_URL=<secret name>:latest
 ```
 

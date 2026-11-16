@@ -1,6 +1,6 @@
 const { google } = require("googleapis");
 
-const { SERVICES } = require("./rules");
+const { SERVICES, INPUT_FOLDER_ENVS } = require("./rules");
 const { loadServiceSettings } = require("./settings");
 const { problem, STATUS_PROBLEM } = require("./results");
 const { checkServices } = require("./checks/services");
@@ -10,6 +10,7 @@ const {
 } = require("./checks/sheets");
 const { checkDriveFolders, checkStatutes, checkPubSub } = require("./checks/infrastructure");
 const { checkLoggedProblems } = require("./checks/logs");
+const { checkQueue } = require("./checks/queue");
 
 const AUTH_SCOPES = [
   "https://www.googleapis.com/auth/cloud-platform",
@@ -35,6 +36,7 @@ const CHECKS = [
   { name: "Glossary", run: checkGlossary },
   { name: "Model Config", run: checkModelConfig },
   { name: "Processing Log", run: checkProcessingLog },
+  { name: "Orchestrator queue", run: checkQueue },
   { name: "Refinement log", run: checkRefinementLog },
   { name: "Eval results", run: checkEvalResults },
   { name: "Drive folders", run: checkDriveFolders },
@@ -42,6 +44,16 @@ const CHECKS = [
   { name: "Extract → Translate hand-off", run: checkPubSub },
   { name: "Logged problems", run: checkLoggedProblems },
 ];
+
+/**
+ * The Orchestrator's input folders, from the health-check service's own copies
+ * of its Script Properties (see INPUT_FOLDER_ENVS). Unset ones are skipped.
+ *
+ * @returns {Array<{name: string, id: string}>}
+ */
+function inputFoldersFromEnv(env = process.env) {
+  return INPUT_FOLDER_ENVS.filter((name) => env[name]).map((name) => ({ name, id: env[name] }));
+}
 
 /** googleapis clients the checks use, all authenticated as the service account. */
 function createClients(auth) {
@@ -64,16 +76,18 @@ function createClients(auth) {
  * logs show what ran even when the Chat message says "all clear".
  *
  * @param {{project: string, region: string, clients?: Object, checks?: Object[],
- *   log?: Function}} options
+ *   log?: Function, inputFolders?: Array<{name: string, id: string}>}} options
+ *   inputFolders defaults to inputFoldersFromEnv()
  * @returns {Promise<{results: Object[], problems: Object[], checksRun: number}>}
  */
-async function runChecks({ project, region, clients, checks = CHECKS, log = logStructured }) {
+async function runChecks({ project, region, clients, checks = CHECKS, log = logStructured,
+  inputFolders = inputFoldersFromEnv() }) {
   if (!clients) {
     const auth = new google.auth.GoogleAuth({ scopes: AUTH_SCOPES });
     clients = createClients(auth);
   }
   const settings = await loadServiceSettings(clients.run, project, region, Object.keys(SERVICES));
-  const ctx = { settings, clients, project, region };
+  const ctx = { settings, clients, project, region, inputFolders };
 
   const results = [];
   for (const check of checks) {
@@ -102,4 +116,6 @@ async function runChecks({ project, region, clients, checks = CHECKS, log = logS
   };
 }
 
-module.exports = { runChecks, createClients, logStructured, CHECKS, AUTH_SCOPES, SEVERITY_INFO, SEVERITY_WARNING };
+module.exports = {
+  runChecks, createClients, logStructured, inputFoldersFromEnv, CHECKS, AUTH_SCOPES, SEVERITY_INFO, SEVERITY_WARNING,
+};

@@ -6,6 +6,8 @@
 //   HEALTH_CHECK_ENVIRONMENT       Name shown in the message, e.g. "USDR"
 //   HEALTH_CHECK_REGION            Region the pipeline's Cloud Run services are in
 //   GOOGLE_CLOUD_PROJECT           Optional; defaults to the project it runs in
+//   INPUT_FOLDER_ID                The Orchestrator's input folder(s), for the backlog
+//   INPUT_FOLDER_ID_CONTENT_TYPE_TWO  check: copies of its Script Properties (read in run-checks.js)
 
 const path = require("path");
 

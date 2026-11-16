@@ -135,7 +135,7 @@ const badRange = (range) => Object.assign(new Error(`Unable to parse range: ${ra
 function fakeClients({
   env = baseEnv(), services = {}, docs, sheets = baseSheets(), runError = {},
   folders = baseFolders(), statuteFiles = ["statutes/md-labor-emply-t8.3/8.3-101.txt"],
-  pubsub = basePubSub(), logEntries = [],
+  pubsub = basePubSub(), logEntries = [], inputFiles = { [INPUT_FOLDER]: [] },
 } = {}) {
   const docMap = docs || {
     [IDS.extractPrompt]: textDoc("Extract prompt", "Extract the text."),
@@ -161,10 +161,18 @@ function fakeClients({
       if (!(key in sheets)) throw badRange(range);
       return { data: { values: sheets[key] } };
     }) } } },
-    drive: { files: { get: jest.fn(async ({ fileId }) => {
-      if (!folders[fileId]) throw new Error("File not found");
-      return { data: folders[fileId] };
-    }) } },
+    drive: { files: {
+      get: jest.fn(async ({ fileId }) => {
+        if (!folders[fileId]) throw new Error("File not found");
+        return { data: folders[fileId] };
+      }),
+      // Input-folder listing for the backlog: q is "'<folderId>' in parents and ..."
+      list: jest.fn(async ({ q }) => {
+        const folderId = q.match(/^'([^']+)' in parents/)[1];
+        if (!inputFiles[folderId]) throw new Error("File not found");
+        return { data: { files: inputFiles[folderId] } };
+      }),
+    } },
     storage: { objects: { list: jest.fn(async ({ prefix }) => ({
       data: { items: statuteFiles.filter((n) => n.startsWith(prefix)).map((name) => ({ name })) },
     })) } },
@@ -192,9 +200,11 @@ function fakeClients({
 }
 
 const quiet = () => {};
+const INPUT_FOLDER = "in-folder";
+const INPUT_FOLDERS = [{ name: "INPUT_FOLDER_ID", id: INPUT_FOLDER }];
 
-async function run(opts) {
-  return runChecks({ project: PROJECT, region: REGION, clients: fakeClients(opts), log: quiet });
+async function run({ inputFolders = INPUT_FOLDERS, ...opts } = {}) {
+  return runChecks({ project: PROJECT, region: REGION, clients: fakeClients(opts), log: quiet, inputFolders });
 }
 
 const codes = (outcome) => outcome.problems.map((p) => p.code);
@@ -474,7 +484,7 @@ describe("Extract → Translate hand-off check", () => {
     const pubsub = basePubSub();
     pubsub.messages[HOLD_SUBSCRIPTION] = [deadLettered("big.docx", 0), deadLettered("big.docx", 1), deadLettered("flyer.pdf", 2)];
     const clients = fakeClients({ pubsub });
-    const outcome = await runChecks({ project: PROJECT, region: REGION, clients, log: quiet });
+    const outcome = await runChecks({ project: PROJECT, region: REGION, clients, log: quiet, inputFolders: INPUT_FOLDERS });
     expect(codes(outcome)).toEqual(["pubsub_dead_lettered"]);
     expect(outcome.problems[0].detail).toBe("3 translation request(s) failed every attempt and were set aside: big.docx, flyer.pdf");
     // Peek only: the messages go straight back on the subscription
@@ -500,6 +510,89 @@ describe("Extract → Translate hand-off check", () => {
   });
 });
 
+describe("Orchestrator queue check", () => {
+  const HOUR = 60 * 60 * 1000;
+  const logRow = (fileId, status, ageMs, error = "") =>
+    [fileId, `${fileId}.pdf`, toSerial(NOW - ageMs), status, 100, error, "", "", "", "a@md.gov"];
+  const withLog = (...rows) => {
+    const sheets = baseSheets();
+    sheets[`${IDS.processingLog}|'ProcessingLog'!A:L`] = [rules.PROCESSING_LOG_HEADERS, ...rows];
+    return sheets;
+  };
+  const inputFile = (id, ageMs) => ({ id, name: `${id}.pdf`, createdTime: new Date(NOW - ageMs).toISOString() });
+
+  test("reports a file the Orchestrator gave up on, with the last error", async () => {
+    const outcome = await run({ sheets: withLog(
+      logRow("f1", "failed", 3 * HOUR, "HTTP 503: first"),
+      logRow("f1", "failed", 2 * HOUR, "HTTP 503: last"),
+      logRow("f1", "extract-gave-up", 1 * HOUR, "Gave up after 3 failed attempts"),
+      logRow("f1", "pl-eval-triggered", 3 * HOUR),
+    ) });
+    expect(codes(outcome)).toEqual(["orchestrator_gave_up"]);
+    expect(outcome.problems[0].resource).toBe("f1.pdf (Extract)");
+    expect(outcome.problems[0].detail).toContain("Last error: HTTP 503: last");
+  });
+
+  test("gave-up rows older than 24 hours aren't reported again", async () => {
+    const outcome = await run({ sheets: withLog(logRow("f1", "pl-eval-gave-up", 30 * HOUR)) });
+    expect(codes(outcome)).toEqual([]);
+  });
+
+  test("backlog: more than 30 files waiting", async () => {
+    const files = Array.from({ length: 31 }, (_, i) => inputFile(`w${i}`, 10 * 60 * 1000));
+    const outcome = await run({ inputFiles: { [INPUT_FOLDER]: files } });
+    expect(codes(outcome)).toEqual(["queue_backlog"]);
+    expect(outcome.problems[0].detail).toContain("31 files are waiting");
+  });
+
+  test("backlog: the oldest waiting file is over an hour old", async () => {
+    const outcome = await run({ inputFiles: { [INPUT_FOLDER]: [inputFile("old", 3 * HOUR), inputFile("new", 60 * 1000)] } });
+    expect(codes(outcome)).toEqual(["queue_stuck"]);
+    expect(outcome.problems[0].detail).toContain("the oldest, old.pdf, was added 3 h 0 min ago");
+  });
+
+  test("files done for both services aren't waiting; done for only one still are", async () => {
+    const outcome = await run({
+      sheets: withLog(
+        logRow("done", "triggered", 3 * HOUR), logRow("done", "pl-eval-triggered", 3 * HOUR),
+        logRow("gaveup", "extract-gave-up", 30 * HOUR), logRow("gaveup", "pl-eval-triggered", 30 * HOUR),
+        logRow("half", "extracted", 3 * HOUR),
+      ),
+      inputFiles: { [INPUT_FOLDER]: [inputFile("done", 3 * HOUR), inputFile("gaveup", 3 * HOUR), inputFile("half", 3 * HOUR)] },
+    });
+    expect(codes(outcome)).toEqual(["queue_stuck"]);
+    expect(outcome.problems[0].detail).toMatch(/^1 file\(s\) waiting; the oldest, half\.pdf/);
+  });
+
+  test("checks every configured input folder, and reports one it can't read", async () => {
+    const outcome = await run({
+      inputFolders: [...INPUT_FOLDERS, { name: "INPUT_FOLDER_ID_CONTENT_TYPE_TWO", id: "gone" }],
+    });
+    expect(codes(outcome)).toEqual(["input_folder_unreadable"]);
+    expect(outcome.problems[0].resource).toBe("input folder (INPUT_FOLDER_ID_CONTENT_TYPE_TWO)");
+  });
+
+  test("no input folder set on the health check: says the backlog isn't checked", async () => {
+    const outcome = await run({ inputFolders: [] });
+    expect(codes(outcome)).toEqual(["input_folders_not_set"]);
+  });
+
+  test("lists only the file types the Orchestrator sends, on Shared Drives too", async () => {
+    const clients = fakeClients();
+    await runChecks({ project: PROJECT, region: REGION, clients, log: quiet, inputFolders: INPUT_FOLDERS });
+    const params = clients.drive.files.list.mock.calls[0][0];
+    for (const type of rules.INPUT_MIME_TYPES) expect(params.q).toContain(`mimeType = '${type}'`);
+    expect(params.q).toContain("trashed = false");
+    expect(params).toEqual(expect.objectContaining({ supportsAllDrives: true, includeItemsFromAllDrives: true }));
+  });
+
+  test("input folders come from the health-check service's own settings", () => {
+    const { inputFoldersFromEnv } = require("../health-check/run-checks");
+    expect(inputFoldersFromEnv({ INPUT_FOLDER_ID: "a", INPUT_FOLDER_ID_CONTENT_TYPE_TWO: "" }))
+      .toEqual([{ name: "INPUT_FOLDER_ID", id: "a" }]);
+  });
+});
+
 describe("Logged problems check", () => {
   const inputProblem = (service, input, message) => ({
     matches: (f) => f.includes("input_problem"),
@@ -522,6 +615,29 @@ describe("Logged problems check", () => {
     expect(codes(outcome)).toEqual(["logged_input_problem", "logged_input_problem", "logged_chat_webhook_error"]);
     expect(outcome.problems[0].resource).toBe("translate: glossary");
     expect(outcome.problems[0].detail).toBe("2 times in the last 24 hours. Latest: newest");
+  });
+
+  test("reports Extract and Plain Language Eval failures by service, with the latest file and error", async () => {
+    const failure = (service, file, error) => ({
+      matches: (f) => f.includes("pipeline_stage") && f.includes('status="failed"'),
+      resource: { labels: { service_name: service } },
+      jsonPayload: { pipeline_stage: service, status: "failed", sourceFileName: file, error },
+    });
+    const outcome = await run({ logEntries: [
+      failure("extract", "b.pdf", "LLM call failed: NotFoundError: 404"),
+      failure("extract", "a.pdf", "LLM call failed: APITimeoutError"),
+      failure("plain-language-eval", "c.pdf", "Prompt doc unreadable"),
+    ] });
+    expect(codes(outcome)).toEqual(["logged_stage_failures", "logged_stage_failures"]);
+    expect(outcome.problems[0].resource).toBe("extract: failures");
+    expect(outcome.problems[0].detail).toBe("2 times in the last 24 hours. Latest: b.pdf: LLM call failed: NotFoundError: 404");
+  });
+
+  test("the failures query covers Extract and Plain Language Eval only", async () => {
+    const clients = fakeClients();
+    await runChecks({ project: PROJECT, region: REGION, clients, log: quiet, inputFolders: INPUT_FOLDERS });
+    const filters = clients.logging.entries.list.mock.calls.map((c) => c[0].requestBody.filter);
+    expect(filters).toContainEqual(expect.stringContaining('jsonPayload.pipeline_stage=("extract" OR "plain-language-eval")'));
   });
 
   test("filters to the last 24 hours and skips the health check's own logs", async () => {

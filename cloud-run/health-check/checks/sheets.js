@@ -209,4 +209,5 @@ module.exports = {
   checkRefinementLog,
   glossariesToCheck,
   cellTime,
+  SERIAL_DATES,
 };
