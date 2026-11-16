@@ -18,10 +18,37 @@ var STATUS = {
   PL_EVAL_TRIGGERED: "pl-eval-triggered",
   PL_EVAL_COMPLETE: "pl-eval-complete",
   PL_EVAL_FAILED: "pl-eval-failed",
+  EXTRACT_GAVE_UP: "extract-gave-up",
+  PL_EVAL_GAVE_UP: "pl-eval-gave-up",
 };
 
-var EXTRACT_STATUSES = [STATUS.TRIGGERED, STATUS.COMPLETE, STATUS.EXTRACTED];
-var PL_EVAL_STATUSES = [STATUS.PL_EVAL_TRIGGERED, STATUS.PL_EVAL_COMPLETE];
+// Statuses that mean a file is done for that service (never sent again)
+var EXTRACT_STATUSES = [STATUS.TRIGGERED, STATUS.COMPLETE, STATUS.EXTRACTED, STATUS.EXTRACT_GAVE_UP];
+var PL_EVAL_STATUSES = [STATUS.PL_EVAL_TRIGGERED, STATUS.PL_EVAL_COMPLETE, STATUS.PL_EVAL_GAVE_UP];
+
+// A file whose Extract or Plain Language Eval call keeps failing is given up
+// on after this many failed rows, instead of being re-sent every 5 minutes
+// forever. A non-202 means the service didn't start (no model call), but a
+// call can also start the service and then error in UrlFetch, and that
+// resend is billed.
+var MAX_ATTEMPTS = 3;
+// Files sent per run, across both folders; the rest wait for the next run.
+// Keeps a bulk drop from triggering everything at once and keeps the run well
+// inside Apps Script's 6-minute limit.
+var MAX_FILES_PER_RUN = 10;
+
+// The services the watcher sends each new file to
+var SERVICES = [
+  {
+    label: "Extract", urlConfigKey: "EXTRACT_URL", processedKey: "extract", failuresKey: "extractFailures",
+    successStatus: STATUS.TRIGGERED, failedStatus: STATUS.FAILED, gaveUpStatus: STATUS.EXTRACT_GAVE_UP,
+  },
+  {
+    label: "Plain Language Eval", urlConfigKey: "PLAIN_LANGUAGE_EVAL_URL", processedKey: "plEval",
+    failuresKey: "plEvalFailures",
+    successStatus: STATUS.PL_EVAL_TRIGGERED, failedStatus: STATUS.PL_EVAL_FAILED, gaveUpStatus: STATUS.PL_EVAL_GAVE_UP,
+  },
+];
 
 var COL = {
   FILE_ID: 0,
@@ -109,19 +136,27 @@ function getProcessedFileIds(sheetId) {
   }
 
   var rows = data.slice(HEADER_ROWS);
+  var withStatus = function (statuses) {
+    return rows.filter(function (row) { return statuses.indexOf(row[COL.STATUS]) !== -1; });
+  };
+  var ids = function (statuses) {
+    return new Set(withStatus(statuses).map(function (row) { return row[COL.FILE_ID]; }));
+  };
+  // Failed rows per file (from any writer: a service's own failures count too)
+  var counts = function (status) {
+    var byFile = new Map();
+    withStatus([status]).forEach(function (row) {
+      byFile.set(row[COL.FILE_ID], (byFile.get(row[COL.FILE_ID]) || 0) + 1);
+    });
+    return byFile;
+  };
 
-  var extract = new Set(
-    rows
-      .filter(function (row) { return EXTRACT_STATUSES.indexOf(row[COL.STATUS]) !== -1; })
-      .map(function (row) { return row[COL.FILE_ID]; })
-  );
-  var plEval = new Set(
-    rows
-      .filter(function (row) { return PL_EVAL_STATUSES.indexOf(row[COL.STATUS]) !== -1; })
-      .map(function (row) { return row[COL.FILE_ID]; })
-  );
-
-  return { extract: extract, plEval: plEval };
+  return {
+    extract: ids(EXTRACT_STATUSES),
+    plEval: ids(PL_EVAL_STATUSES),
+    extractFailures: counts(STATUS.FAILED),
+    plEvalFailures: counts(STATUS.PL_EVAL_FAILED),
+  };
 }
 
 function logProcessingResult(sheetId, file, result, successStatus, failedStatus) {
@@ -213,7 +248,17 @@ var INPUT_FOLDERS = [
   { propertyKey: "INPUT_FOLDER_ID_CONTENT_TYPE_TWO", contentType: CONTENT_TYPE_TWO },
 ];
 
-function processFolder(folderConfig, config, processed) {
+/**
+ * Send each new file in one input folder to Extract and Plain Language Eval,
+ * while the run's file budget lasts.
+ *
+ * @param {{propertyKey: string, contentType: string}} folderConfig - One of INPUT_FOLDERS
+ * @param {Object} config - From getConfig
+ * @param {Object} processed - From getProcessedFileIds
+ * @param {{remaining: number, waiting: number}} budget - Files this run may still send
+ *   (shared across folders); files over it are counted in waiting
+ */
+function processFolder(folderConfig, config, processed, budget) {
   var props = PropertiesService.getScriptProperties();
   var folderId = props.getProperty(folderConfig.propertyKey);
   if (!folderId) {
@@ -233,43 +278,85 @@ function processFolder(folderConfig, config, processed) {
 
   for (var i = 0; i < allFiles.length; i++) {
     var file = allFiles[i];
-    var fid = file.getId();
-
-    if (!processed.extract.has(fid)) {
-      var extractStart = Date.now();
-      try {
-        var extractResult = callCloudRunFunction(file, config.EXTRACT_URL, "Extract", folderConfig.contentType);
-        extractResult.durationMs = Date.now() - extractStart;
-        logProcessingResult(config.PROCESSING_LOG_SHEET_ID, file, extractResult, STATUS.TRIGGERED, STATUS.FAILED);
-      } catch (e) {
-        Logger.log("Unexpected error calling Extract for %s: %s", file.getName(), e.message);
-        logProcessingResult(config.PROCESSING_LOG_SHEET_ID, file, {
-          success: false,
-          durationMs: Date.now() - extractStart,
-          error: e.message,
-        }, STATUS.TRIGGERED, STATUS.FAILED);
-      }
+    var pending = SERVICES.filter(function (service) {
+      return !processed[service.processedKey].has(file.getId());
+    });
+    if (!pending.length) continue;
+    if (budget.remaining <= 0) {
+      budget.waiting++;
+      continue;
     }
-
-    if (!processed.plEval.has(fid)) {
-      var evalStart = Date.now();
-      try {
-        var evalResult = callCloudRunFunction(file, config.PLAIN_LANGUAGE_EVAL_URL, "Plain Language Eval", folderConfig.contentType);
-        evalResult.durationMs = Date.now() - evalStart;
-        logProcessingResult(config.PROCESSING_LOG_SHEET_ID, file, evalResult, STATUS.PL_EVAL_TRIGGERED, STATUS.PL_EVAL_FAILED);
-      } catch (e) {
-        Logger.log("Unexpected error calling Plain Language Eval for %s: %s", file.getName(), e.message);
-        logProcessingResult(config.PROCESSING_LOG_SHEET_ID, file, {
-          success: false,
-          durationMs: Date.now() - evalStart,
-          error: e.message,
-        }, STATUS.PL_EVAL_TRIGGERED, STATUS.PL_EVAL_FAILED);
-      }
+    budget.remaining--;
+    for (var j = 0; j < pending.length; j++) {
+      sendToService_(pending[j], file, config, folderConfig.contentType, processed);
     }
   }
 }
 
+/**
+ * Send one file to one service (Extract or Plain Language Eval) and log the
+ * result. After MAX_ATTEMPTS failed rows for that service, appends a gave-up
+ * row instead (which marks the file done for that service).
+ *
+ * @param {Object} service - One of SERVICES
+ * @param {File} file
+ * @param {Object} config - From getConfig
+ * @param {string} contentType
+ * @param {Object} processed - From getProcessedFileIds
+ */
+function sendToService_(service, file, config, contentType, processed) {
+  var attempts = processed[service.failuresKey].get(file.getId()) || 0;
+  if (attempts >= MAX_ATTEMPTS) {
+    var message = "Gave up after " + attempts + " failed attempts to start " + service.label +
+      "; see the earlier failed rows. To retry, upload the file again (a new copy gets a new file ID).";
+    // console.error so it shows as an error in Executions and Cloud Logging
+    console.error(service.label + ": " + message + " (" + file.getName() + ")");
+    logProcessingResult(config.PROCESSING_LOG_SHEET_ID, file,
+      { success: false, durationMs: "", error: message }, service.successStatus, service.gaveUpStatus);
+    return;
+  }
+
+  var start = Date.now();
+  var result;
+  try {
+    result = callCloudRunFunction(file, config[service.urlConfigKey], service.label, contentType);
+  } catch (e) {
+    Logger.log("Unexpected error calling %s for %s: %s", service.label, file.getName(), e.message);
+    result = { success: false, error: e.message };
+  }
+  result.durationMs = Date.now() - start;
+  logProcessingResult(config.PROCESSING_LOG_SHEET_ID, file, result, service.successStatus, service.failedStatus);
+}
+
+// How long a run waits for the previous one to finish before skipping
+var RUN_LOCK_WAIT_MS = 1000;
+
+/**
+ * Time-trigger entry point. Runs are serialized with a script lock: two
+ * overlapping runs would both see a file as new and send it twice (two billed
+ * extractions). A run that can't get the lock skips; the next one picks up.
+ *
+ * The script lock is one lock for the whole project. Only this function should
+ * take it: if another function (archive, drift) did, its long runs would make
+ * the watcher skip.
+ */
 function watchForNewFiles() {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(RUN_LOCK_WAIT_MS)) {
+    // console.error so repeated skips stand out in Executions and Cloud
+    // Logging (the run still shows as Completed). Normal runs take seconds, so
+    // this should be rare; if it keeps happening, runs are overlapping.
+    console.error("Previous watchForNewFiles run still in progress; skipping this one");
+    return;
+  }
+  try {
+    watchForNewFilesLocked_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function watchForNewFilesLocked_() {
   var config;
   try {
     config = getConfig();
@@ -291,8 +378,12 @@ function watchForNewFiles() {
     throw e;
   }
 
+  var budget = { remaining: MAX_FILES_PER_RUN, waiting: 0 };
   for (var i = 0; i < INPUT_FOLDERS.length; i++) {
-    processFolder(INPUT_FOLDERS[i], config, processed);
+    processFolder(INPUT_FOLDERS[i], config, processed, budget);
+  }
+  if (budget.waiting) {
+    Logger.log("%s file(s) waiting for the next run (at most %s per run)", budget.waiting, MAX_FILES_PER_RUN);
   }
 }
 
