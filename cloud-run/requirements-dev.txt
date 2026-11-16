@@ -1,14 +1,16 @@
-# Shared dev dependencies for all Python Cloud Run functions
-functions-framework==3.*
-anthropic>=0.109.0
-google-genai>=2.8.0
-google-api-python-client>=2.160.0
-google-auth>=2.36.0
-sacrebleu>=2.4.0
-rouge-score>=0.1.2
-python-dotenv>=1.0.0
-jsonschema>=4.20.0
+# Dev environment for all Python Cloud Run functions' tests. Pulls in each
+# service's own requirements (the versions Cloud Run installs on deploy), so
+# local tests run against the same libraries as production. Rebuild .venv
+# after a service's requirements change:
+#   python3 -m venv .venv && .venv/bin/python -m pip install -r cloud-run/requirements-dev.txt
+-r extract/requirements.txt
+-r eval/quality/requirements.txt
+-r eval/drift/requirements.txt
+
+# Test-only
+pytest>=8.0.0
+# Older-SDK fallback in tests (newer SDKs use httpx2)
+httpx>=0.27.0
 # Local-dev only: read a golden-set .xlsx export for the drift eval. The
 # deployed drift function reads the golden set from the Google Sheet instead.
 openpyxl>=3.1.0
-pytest>=8.0.0

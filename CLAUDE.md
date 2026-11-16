@@ -77,7 +77,7 @@ Update these docs when an interface changes:
 
 - Cloud Run JS tests: `cd cloud-run && npm test` (Jest)
 - Apps Script JS tests: `cd apps-script && npm test` (Jest)
-- Python tests: `cd cloud-run && python -m pytest` (requires `.venv`)
+- Python tests: `cd cloud-run && python -m pytest` (requires `.venv`, built from `cloud-run/requirements-dev.txt`, which pulls in each Python service's requirements; rebuild it when those change, since deploys install the newest versions they allow)
 
 ## Verify assumptions about libraries and platforms
 
