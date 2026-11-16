@@ -18,8 +18,14 @@ from googleapiclient.http import MediaIoBaseDownload
 import docx
 import pdfplumber
 
+from failure_reasons import (
+    REASON_HANDOFF_FAILED, REASON_INVALID_OUTPUT, REASON_NO_ACTIVE_MODELS, REASON_SAVING_FAILED,
+    REASON_UNSUPPORTED_TYPE,
+    model_failure_reason, input_failure_reason, text_fetch_failure_reason, combine_reasons,
+)
 from llm import call_llm
 from loaders import load_config, load_doc, write_output, DRIVE_API_VERSION, SHEETS_API_VERSION
+from notifier import notify_extraction_failed
 
 EXTRACT_ROLE = "extract"
 PUBSUB_TOPIC_ENV_VAR = "PUBSUB_TOPIC_EXTRACTION_COMPLETE"
@@ -32,6 +38,9 @@ MIME_PDF = "application/pdf"
 MIME_GOOGLE_DOCS = "application/vnd.google-apps.document"
 MIME_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 TEXT_MIME_TYPES = {MIME_GOOGLE_DOCS, MIME_DOCX}
+
+# Processing Log error cells: the error class and message, cut to this length
+MAX_ERROR_DETAIL_CHARS = 500
 
 PASSTHROUGH_PROVIDER = "passthrough"
 PASSTHROUGH_MODEL = "text"
@@ -291,6 +300,12 @@ def log_extraction_failure(file_id, file_name, provider, model, error, usage=Non
         logger.info("Logged extraction failure for %s/%s to processing log", provider, model)
 
 
+def describe_error(err):
+    """The error's class and message for the Processing Log, e.g.
+    "APITimeoutError: Request timed out." (cut to MAX_ERROR_DETAIL_CHARS)."""
+    return f"{type(err).__name__}: {err}"[:MAX_ERROR_DETAIL_CHARS]
+
+
 def record_failure(provider, model, file_id, file_name, error, usage=None, submitted_by_email=""):
     """Log a failure to Cloud Run logs and the processing log sheet. A sheet
     write failure is logged but never raised, so it can't mask the original error."""
@@ -305,12 +320,18 @@ def record_failure(provider, model, file_id, file_name, error, usage=None, submi
 
 def publish_extraction_complete(file_id, file_name, extraction_results, content_type="public_flyer", submitted_by_email="",
                                 submitted_by_name=""):
+    """Publish one extraction-complete message per extraction, for Translate.
+
+    Returns:
+        list of (extraction result, error) for each message that failed to publish
+    """
     topic_name = os.environ.get(PUBSUB_TOPIC_ENV_VAR)
     if not topic_name:
         logger.info("No %s set — skipping Pub/Sub publish", PUBSUB_TOPIC_ENV_VAR)
-        return
+        return []
 
     publisher = pubsub_v1.PublisherClient()
+    failures = []
     for result in extraction_results:
         message = {
             "sourceFileId": file_id,
@@ -332,11 +353,31 @@ def publish_extraction_complete(file_id, file_name, extraction_results, content_
                 "Published extraction-complete for %s/%s (message %s)",
                 result["provider"], result["model"], message_id,
             )
-        except Exception:
+        except Exception as err:
             logger.exception(
                 "Failed to publish extraction-complete for %s/%s",
                 result["provider"], result["model"],
             )
+            failures.append((result, err))
+    return failures
+
+
+def hand_off_to_translate(file_id, file_name, extraction_results, content_type, submitted_by_email,
+                          submitted_by_name):
+    """Publish the extractions for Translate. Only called with at least one
+    successful extraction (if every model failed, run_pdf_extraction has already
+    told the submitter). A failed publish gets a failed row; if every publish
+    failed, the extractions are saved but Translate never hears about them, so
+    the submitter is told."""
+    failures = publish_extraction_complete(file_id, file_name, extraction_results, content_type,
+                                           submitted_by_email, submitted_by_name)
+    for result, err in failures:
+        record_failure(result["provider"], result["model"], file_id, file_name,
+                       f"Hand-off to Translate (Pub/Sub publish) failed: {describe_error(err)}",
+                       submitted_by_email=submitted_by_email)
+    none_published = bool(failures) and len(failures) == len(extraction_results)
+    if none_published:
+        notify_extraction_failed(file_name, [REASON_HANDOFF_FAILED], submitted_by_email, submitted_by_name)
 
 
 def run_text_extraction(file_id, file_name, mime_type, content_type="public_flyer", submitted_by_email="",
@@ -347,10 +388,12 @@ def run_text_extraction(file_id, file_name, mime_type, content_type="public_flye
     try:
         text = fetch_text_from_drive(file_id, mime_type)
         logger.info("Fetched text: %d characters", len(text))
-    except Exception:
+    except Exception as e:
         logger.exception("Failed to fetch text for %s", file_name)
         record_failure(PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
-                       file_id, file_name, "Text fetch failed", submitted_by_email=submitted_by_email)
+                       file_id, file_name, f"Text fetch failed: {describe_error(e)}",
+                       submitted_by_email=submitted_by_email)
+        notify_extraction_failed(file_name, [text_fetch_failure_reason(e)], submitted_by_email, submitted_by_name)
         return
 
     try:
@@ -358,10 +401,12 @@ def run_text_extraction(file_id, file_name, mime_type, content_type="public_flye
         parsed_filename = build_output_filename(file_name, PASSTHROUGH_MODEL, "extraction.json")
         drive_file_id = write_output(parsed_filename, parsed)
         logger.info("Saved text extraction: %s", parsed_filename)
-    except Exception:
+    except Exception as e:
         logger.exception("Failed to save text extraction for %s", file_name)
         record_failure(PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
-                       file_id, file_name, "Text extraction save failed", submitted_by_email=submitted_by_email)
+                       file_id, file_name, f"Text extraction save failed: {describe_error(e)}",
+                       submitted_by_email=submitted_by_email)
+        notify_extraction_failed(file_name, [REASON_SAVING_FAILED], submitted_by_email, submitted_by_name)
         return
 
     enriched = {
@@ -381,7 +426,7 @@ def run_text_extraction(file_id, file_name, mime_type, content_type="public_flye
     except Exception:
         logger.exception("Failed to log extraction result to processing sheet")
 
-    publish_extraction_complete(file_id, file_name, [enriched], content_type, submitted_by_email, submitted_by_name)
+    hand_off_to_translate(file_id, file_name, [enriched], content_type, submitted_by_email, submitted_by_name)
 
 
 def run_pdf_extraction(file_id, file_name, content_type="public_flyer", submitted_by_email="", submitted_by_name=""):
@@ -390,6 +435,9 @@ def run_pdf_extraction(file_id, file_name, content_type="public_flyer", submitte
     active_models = get_active_models(config, EXTRACT_ROLE)
     if not active_models:
         logger.error("No active models configured for role '%s'", EXTRACT_ROLE)
+        record_failure("", "", file_id, file_name, "No active extract models in Model Config",
+                       submitted_by_email=submitted_by_email)
+        notify_extraction_failed(file_name, [REASON_NO_ACTIVE_MODELS], submitted_by_email, submitted_by_name)
         return
     logger.info("Active extract models: %s", [m["model"] for m in active_models])
 
@@ -410,6 +458,7 @@ def run_pdf_extraction(file_id, file_name, content_type="public_flyer", submitte
     logger.info("Extraction prompt assembled (%d characters)", len(prompt))
 
     extraction_results = []
+    failures = []  # (provider, model, plain-language reason) for the Chat notice
     for model_config in active_models:
         provider = model_config["provider"]
         model = model_config["model"]
@@ -419,12 +468,24 @@ def run_pdf_extraction(file_id, file_name, content_type="public_flyer", submitte
             logger.info("Received response from %s/%s (%d characters, %d in / %d out tokens)",
                         provider, model, len(raw_response),
                         usage.get("input_tokens", 0), usage.get("output_tokens", 0))
-        except Exception:
+        except Exception as e:
             logger.exception("LLM call failed for %s/%s", provider, model)
-            record_failure(provider, model, file_id, file_name, "LLM call failed", submitted_by_email=submitted_by_email)
+            record_failure(provider, model, file_id, file_name, f"LLM call failed: {describe_error(e)}",
+                           submitted_by_email=submitted_by_email)
+            failures.append((provider, model, model_failure_reason(e)))
             continue
 
-        result = save_extraction_results(file_name, model, raw_response, source_file_id=file_id)
+        try:
+            result = save_extraction_results(file_name, model, raw_response, source_file_id=file_id)
+        except Exception as e:
+            # The model call is paid for; record it and go on to the next model
+            logger.exception("Saving the extraction failed for %s/%s", provider, model)
+            record_failure(provider, model, file_id, file_name,
+                           f"Saving the extraction failed: {describe_error(e)}",
+                           usage=usage, submitted_by_email=submitted_by_email)
+            failures.append((provider, model, REASON_SAVING_FAILED))
+            continue
+
         if result:
             enriched = {**result, "model": model, "provider": provider}
             extraction_results.append(enriched)
@@ -440,9 +501,15 @@ def run_pdf_extraction(file_id, file_name, content_type="public_flyer", submitte
         else:
             record_failure(provider, model, file_id, file_name,
                            "Extraction parse/validation failed", usage=usage, submitted_by_email=submitted_by_email)
+            failures.append((provider, model, REASON_INVALID_OUTPUT))
 
-    publish_extraction_complete(file_id, file_name, extraction_results, content_type, submitted_by_email,
-                                submitted_by_name)
+    if not extraction_results:
+        # Nothing goes on to Translate, so the submitter would hear nothing
+        notify_extraction_failed(file_name, combine_reasons(failures), submitted_by_email, submitted_by_name)
+        return
+
+    hand_off_to_translate(file_id, file_name, extraction_results, content_type, submitted_by_email,
+                          submitted_by_name)
 
 
 SUPPORTED_MIME_TYPES = {MIME_PDF} | TEXT_MIME_TYPES
@@ -454,6 +521,7 @@ def run_extraction(file_id, file_name, mime_type, content_type="public_flyer", s
         logger.error("Unsupported MIME type '%s' for %s", mime_type, file_name)
         record_failure(PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
                        file_id, file_name, f"Unsupported MIME type: {mime_type}", submitted_by_email=submitted_by_email)
+        notify_extraction_failed(file_name, [REASON_UNSUPPORTED_TYPE], submitted_by_email, submitted_by_name)
         return
 
     try:
@@ -466,7 +534,9 @@ def run_extraction(file_id, file_name, mime_type, content_type="public_flyer", s
         # prompt doc, Pub/Sub publish). Without this the background thread dies
         # with no sheet row.
         logger.exception("Extraction failed for %s", file_name)
-        record_failure("", "", file_id, file_name, f"Extraction failed: {e}", submitted_by_email=submitted_by_email)
+        record_failure("", "", file_id, file_name, f"Extraction failed: {describe_error(e)}",
+                       submitted_by_email=submitted_by_email)
+        notify_extraction_failed(file_name, [input_failure_reason(e)], submitted_by_email, submitted_by_name)
 
 
 @functions_framework.http

@@ -30,6 +30,7 @@ function baseEnv() {
       EXTRACTION_PROMPT_DOC_ID: IDS.extractPrompt, DRIVE_EXTRACTION_JSON_FOLDER_ID: "f1",
       MODEL_CONFIG_SHEET_ID: IDS.modelConfig, PROCESSING_LOG_SHEET_ID: IDS.processingLog,
       PUBSUB_TOPIC_EXTRACTION_COMPLETE: "projects/proj/topics/extraction-complete",
+      GOOGLE_CHAT_WEBHOOK_URL: { secret: true },
     },
     translate: {
       TRANSLATION_PROMPT_DOC_ID: IDS.translatePrompt, GLOSSARY_SHEET_ID: IDS.glossary,

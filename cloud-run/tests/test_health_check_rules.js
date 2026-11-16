@@ -84,7 +84,7 @@ describe("health-check rules match the services", () => {
 
   test("required env vars are ones the services actually read", () => {
     const sources = {
-      extract: ["cloud-run/extract/main.py", "cloud-run/extract/loaders.py"],
+      extract: ["cloud-run/extract/main.py", "cloud-run/extract/loaders.py", "cloud-run/extract/notifier.py"],
       translate: ["cloud-run/translate/index.js", "cloud-run/translate/loaders.js",
         "cloud-run/translate/prompt-assembly.js", "cloud-run/translate/notifier.js"],
       "plain-language-eval": ["cloud-run/plain-language-eval/index.js", "cloud-run/plain-language-eval/loaders.js"],

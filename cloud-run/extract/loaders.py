@@ -36,10 +36,18 @@ DRIVE_API_VERSION = "v3"
 logger = logging.getLogger(__name__)
 
 
+class ModelConfigError(ValueError):
+    """A Model Config sheet problem (missing columns, no rows, sheet ID unset)."""
+
+
+class MissingSettingError(ValueError):
+    """A required environment variable isn't set on the service."""
+
+
 def load_doc(env_var):
     doc_id = os.environ.get(env_var)
     if not doc_id:
-        raise ValueError(f"{env_var} not set in .env")
+        raise MissingSettingError(f"{env_var} not set in .env")
 
     credentials, _ = google.auth.default()
     service = build("docs", DOCS_API_VERSION, credentials=credentials)
@@ -68,10 +76,10 @@ def log_input_problem(input_name, detail, **fields):
 
 
 def _config_problem(detail, **fields):
-    """Log a Model Config problem and return a ValueError for the caller to raise.
+    """Log a Model Config problem and return a ModelConfigError for the caller to raise.
     Config problems stop the run (there's no model to call)."""
     log_input_problem(INPUT_MODEL_CONFIG, detail, **fields)
-    return ValueError(f"Model Config problem: {detail}")
+    return ModelConfigError(f"Model Config problem: {detail}")
 
 
 def _load_config_from_sheet(sheet_id):
