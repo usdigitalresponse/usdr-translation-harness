@@ -44,6 +44,16 @@ const WHAT_TO_DO = {
     "Share the Processing Log sheet with the service account, or rename the tab back to 'ProcessingLog' if it was renamed.",
   processing_log_headers:
     "Restore row 1 to the expected headers. The Orchestrator stops processing files until they match.",
+  orchestrator_gave_up:
+    "Check the failed rows' errors for this file. Once the cause is fixed (e.g. the service is back up), upload the file again: a new copy gets a new file ID and 3 fresh attempts.",
+  input_folders_not_set:
+    "Set INPUT_FOLDER_ID (and INPUT_FOLDER_ID_CONTENT_TYPE_TWO if used) on the health-check service with --update-env-vars, copied from the Orchestrator's Script Properties.",
+  input_folder_unreadable:
+    "Check the folder ID matches the Orchestrator's Script Properties and the folder is shared with the pipeline service account.",
+  queue_backlog:
+    "Many files are waiting. Check the Orchestrator's Executions for failed or skipped runs ('still in progress; skipping'), and that its 5-minute trigger exists. It sends at most 10 files per run.",
+  queue_stuck:
+    "A file has waited over an hour. Check the Orchestrator's Executions for errors and that its 5-minute trigger is still installed (Triggers page). A file moved in from elsewhere can look older than it is.",
   processing_log_blank_submitter:
     "The Orchestrator couldn't read who submitted these files. Check its Executions log for 'Could not get lastModifyingUser'.",
 
@@ -97,7 +107,9 @@ const WHAT_TO_DO = {
   logged_input_problem:
     "A service reported a problem with one of its inputs. Search Logs Explorer for jsonPayload.input_problem in the last day for details.",
   logged_chat_webhook_error:
-    "Translate couldn't post to the translators' Chat space. Check GOOGLE_CHAT_WEBHOOK_URL and the space's webhook settings.",
+    "The service couldn't post to the translators' Chat space (or has no webhook set). Check its GOOGLE_CHAT_WEBHOOK_URL and the space's webhook settings.",
+  logged_stage_failures:
+    "These files weren't processed and won't be retried. Check the error (also in the Processing Log row); after fixing the cause, upload the file again. Extract failures were also posted to the translators' space.",
 
   // The check itself
   check_crashed:

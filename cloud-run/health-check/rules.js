@@ -12,6 +12,7 @@ const SERVICES = {
     "MODEL_CONFIG_SHEET_ID",
     "PROCESSING_LOG_SHEET_ID",
     "PUBSUB_TOPIC_EXTRACTION_COMPLETE",
+    "GOOGLE_CHAT_WEBHOOK_URL",
   ],
   translate: [
     "TRANSLATION_PROMPT_DOC_ID",
@@ -86,6 +87,29 @@ const PROCESSING_LOG_HEADERS = [
 ];
 // Rows the Orchestrator writes, which always carry the submitter's email
 const ORCHESTRATOR_STATUSES = ["triggered", "pl-eval-triggered"];
+// Rows that mean a file is done for a service, so it isn't waiting (source:
+// EXTRACT_STATUSES / PL_EVAL_STATUSES in apps-script/orchestrator/orchestrator.js)
+const EXTRACT_DONE_STATUSES = ["triggered", "complete", "extracted", "extract-gave-up"];
+const PL_EVAL_DONE_STATUSES = ["pl-eval-triggered", "pl-eval-complete", "pl-eval-gave-up"];
+// The Orchestrator's give-up rows, and the failed rows that led to each
+const GAVE_UP_STATUSES = {
+  "extract-gave-up": { service: "Extract", failedStatus: "failed" },
+  "pl-eval-gave-up": { service: "Plain Language Eval", failedStatus: "pl-eval-failed" },
+};
+// File types the Orchestrator sends (source: SUPPORTED_MIME_TYPES there)
+const INPUT_MIME_TYPES = [
+  "application/pdf",
+  "application/vnd.google-apps.document",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+];
+
+// The Orchestrator's input folders. Their IDs are Orchestrator Script
+// Properties, which the health check can't read, so the health-check service
+// has its own copies under the same names. Change both together.
+const INPUT_FOLDER_ENVS = ["INPUT_FOLDER_ID", "INPUT_FOLDER_ID_CONTENT_TYPE_TWO"];
+
+// pipeline_stage values of the services' structured failure logs
+const FAILURE_LOG_STAGES = ["extract", "plain-language-eval"];
 
 // Refinement log (source: capture-feedback/glossary-writer.js, decisions.js)
 const REFINEMENT_LOG_SHEET_ENV = "DERIVED_GLOSSARY_SHEET_ID";
@@ -146,6 +170,12 @@ module.exports = {
   PROCESSING_LOG_TAB,
   PROCESSING_LOG_HEADERS,
   ORCHESTRATOR_STATUSES,
+  EXTRACT_DONE_STATUSES,
+  PL_EVAL_DONE_STATUSES,
+  GAVE_UP_STATUSES,
+  INPUT_MIME_TYPES,
+  INPUT_FOLDER_ENVS,
+  FAILURE_LOG_STAGES,
   REFINEMENT_LOG_SHEET_ENV,
   REFINEMENT_LOG_TABS,
   REFINEMENT_LOG_HEADERS,

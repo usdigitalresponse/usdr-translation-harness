@@ -9,10 +9,13 @@ import pytest
 # row). Tests that need one of these set it explicitly with patch.dict.
 LIVE_RESOURCE_SUFFIXES = ("_SHEET_ID", "_FOLDER_ID", "_DOC_ID")
 LIVE_RESOURCE_PREFIXES = ("PUBSUB_TOPIC",)
+# Chat webhooks: a test that reached the notifier would post to the real space
+LIVE_RESOURCE_NAMES = ("GOOGLE_CHAT_WEBHOOK_URL", "HEALTH_CHECK_CHAT_WEBHOOK_URL")
 
 
 @pytest.fixture(autouse=True)
 def no_live_resources(monkeypatch):
     for key in list(os.environ):
-        if key.endswith(LIVE_RESOURCE_SUFFIXES) or key.startswith(LIVE_RESOURCE_PREFIXES):
+        if (key.endswith(LIVE_RESOURCE_SUFFIXES) or key.startswith(LIVE_RESOURCE_PREFIXES)
+                or key in LIVE_RESOURCE_NAMES):
             monkeypatch.delenv(key)

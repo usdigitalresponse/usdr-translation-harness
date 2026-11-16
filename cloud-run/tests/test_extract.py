@@ -590,7 +590,7 @@ class TestExtractionFailureRows:
         run_pdf_extraction("abc", "a.pdf", submitted_by_email="person@example.gov")
 
         mock_fail.assert_called_once_with("abc", "a.pdf", "google", "gemini",
-                                          "LLM call failed", usage=None,
+                                          "LLM call failed: RuntimeError: timeout", usage=None,
                                           submitted_by_email="person@example.gov")
 
     @patch("extract.main.publish_extraction_complete")

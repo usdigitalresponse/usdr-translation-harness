@@ -15,6 +15,7 @@ function loadOrchestrator(globals) {
     Drive: mockDriveAdvancedService({}),
     SpreadsheetApp: { openById: jest.fn() },
     UrlFetchApp: { fetch: jest.fn() },
+    LockService: mockLock(true),
     ScriptApp: {
       getIdentityToken: jest.fn().mockReturnValue("fake-token"),
       newTrigger: jest.fn(),
@@ -35,13 +36,7 @@ function loadOrchestrator(globals) {
 }
 
 function mockScriptProperties(props) {
-  return {
-    getScriptProperties: jest.fn().mockReturnValue({
-      getProperty: jest.fn(function (key) {
-        return props[key] || null;
-      }),
-    }),
-  };
+  return mockScriptPropertiesRW(props);
 }
 
 function mockScriptPropertiesRW(initial) {
@@ -49,12 +44,19 @@ function mockScriptPropertiesRW(initial) {
   var propsObj = {
     getProperty: jest.fn(function (k) { return k in store ? store[k] : null; }),
     setProperty: jest.fn(function (k, v) { store[k] = v; }),
+    deleteProperty: jest.fn(function (k) { delete store[k]; }),
+    getKeys: jest.fn(function () { return Object.keys(store); }),
   };
   return {
     getScriptProperties: jest.fn().mockReturnValue(propsObj),
     _props: propsObj,
     _store: store,
   };
+}
+
+function mockLock(available) {
+  var lock = { tryLock: jest.fn().mockReturnValue(available), releaseLock: jest.fn() };
+  return { getScriptLock: jest.fn().mockReturnValue(lock), _lock: lock };
 }
 
 function mockSheet(rows) {
@@ -606,6 +608,212 @@ describe("watchForNewFiles", () => {
     expect(consoleMock.error).toHaveBeenCalledWith(
       expect.stringContaining("Configuration error: Missing required script properties"));
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // ── Attempt cap, per-run file budget, run lock ───────────────────────────
+
+  function accepted() {
+    return { getResponseCode: jest.fn().mockReturnValue(202), getContentText: jest.fn().mockReturnValue("") };
+  }
+  function rejected() {
+    return { getResponseCode: jest.fn().mockReturnValue(503), getContentText: jest.fn().mockReturnValue("unavailable") };
+  }
+  function statuses(sheetMock) {
+    return sheetMock._sheet.appendRow.mock.calls.map(function (c) { return c[0][3]; });
+  }
+
+  function failedRows(fileId, status, n) {
+    return Array.from({ length: n }, function () { return [fileId, "a.pdf", new Date(), status, 1, "HTTP 503"]; });
+  }
+
+  test("a file with fewer than 3 failed rows is sent again", () => {
+    var sheetMock = mockSheet([HEADER_ROW].concat(failedRows("f1", "failed", 2), [["f1", "a.pdf", new Date(), "pl-eval-triggered", 1, ""]]));
+    var fetchMock = jest.fn().mockReturnValue(accepted());
+    var ctx = loadOrchestrator({
+      PropertiesService: mockScriptPropertiesRW(VALID_PROPS),
+      DriveApp: mockFolder([makeFile("f1", "a.pdf")]),
+      SpreadsheetApp: sheetMock,
+      UrlFetchApp: { fetch: fetchMock },
+    });
+
+    ctx.watchForNewFiles();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(statuses(sheetMock)).toEqual(["triggered"]);
+  });
+
+  test("after 3 failed rows: no call, and a gave-up row with the reason", () => {
+    var sheetMock = mockSheet([HEADER_ROW].concat(failedRows("f1", "failed", 3), [["f1", "a.pdf", new Date(), "pl-eval-triggered", 1, ""]]));
+    var fetchMock = jest.fn().mockReturnValue(accepted());
+    var consoleMock = { error: jest.fn(), log: jest.fn() };
+    var ctx = loadOrchestrator({
+      PropertiesService: mockScriptPropertiesRW(VALID_PROPS),
+      DriveApp: mockFolder([makeFile("f1", "a.pdf")]),
+      SpreadsheetApp: sheetMock,
+      UrlFetchApp: { fetch: fetchMock },
+      console: consoleMock,
+    });
+
+    ctx.watchForNewFiles();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    var row = sheetMock._sheet.appendRow.mock.calls[0][0];
+    expect(row[3]).toBe("extract-gave-up");
+    expect(row[5]).toContain("Gave up after 3 failed attempts to start Extract");
+    expect(consoleMock.error).toHaveBeenCalledWith(expect.stringContaining("Gave up after 3 failed attempts"));
+  });
+
+  test("counts each service separately", () => {
+    var sheetMock = mockSheet([HEADER_ROW].concat(failedRows("f1", "pl-eval-failed", 3)));
+    var fetchMock = jest.fn().mockReturnValue(accepted());
+    var ctx = loadOrchestrator({
+      PropertiesService: mockScriptPropertiesRW(VALID_PROPS),
+      DriveApp: mockFolder([makeFile("f1", "a.pdf")]),
+      SpreadsheetApp: sheetMock,
+      UrlFetchApp: { fetch: fetchMock },
+      console: { error: jest.fn(), log: jest.fn() },
+    });
+
+    ctx.watchForNewFiles();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe("https://extract.example.com");
+    expect(statuses(sheetMock)).toEqual(["triggered", "pl-eval-gave-up"]);
+  });
+
+  test("three failing runs, then a gave-up row on the fourth, then nothing", () => {
+    var rows = [HEADER_ROW];
+    var sheetMock = mockSheet(rows);
+    sheetMock._sheet.appendRow.mockImplementation(function (row) { rows.push(row); });
+    var fetchMock = jest.fn().mockReturnValue(rejected());
+    var ctx = loadOrchestrator({
+      PropertiesService: mockScriptPropertiesRW(VALID_PROPS),
+      DriveApp: mockFolder([makeFile("f1", "a.pdf")]),
+      SpreadsheetApp: sheetMock,
+      UrlFetchApp: { fetch: fetchMock },
+      console: { error: jest.fn(), log: jest.fn() },
+    });
+
+    for (var run = 0; run < 5; run++) ctx.watchForNewFiles();
+
+    expect(fetchMock).toHaveBeenCalledTimes(6);  // 3 attempts each for Extract and PL eval
+    expect(rows.slice(1).map(function (r) { return r[3]; })).toEqual([
+      "failed", "pl-eval-failed", "failed", "pl-eval-failed", "failed", "pl-eval-failed",
+      "extract-gave-up", "pl-eval-gave-up",
+    ]);
+  });
+
+  test("a call that throws (e.g. UrlFetch timeout) is logged as a failed attempt", () => {
+    var sheetMock = mockSheet([HEADER_ROW]);
+    var ctx = loadOrchestrator({
+      PropertiesService: mockScriptPropertiesRW(VALID_PROPS),
+      DriveApp: mockFolder([makeFile("f1", "a.pdf")]),
+      SpreadsheetApp: sheetMock,
+      UrlFetchApp: { fetch: jest.fn()
+        .mockImplementationOnce(function () { throw new Error("Timeout"); })
+        .mockReturnValue(accepted()) },
+    });
+
+    ctx.watchForNewFiles();
+
+    expect(statuses(sheetMock)).toEqual(["failed", "pl-eval-triggered"]);
+  });
+
+  test("gave-up rows count as done: the file isn't sent again", () => {
+    var fetchMock = jest.fn();
+    var ctx = loadOrchestrator({
+      PropertiesService: mockScriptPropertiesRW(VALID_PROPS),
+      DriveApp: mockFolder([makeFile("f1", "a.pdf")]),
+      SpreadsheetApp: mockSheet([
+        HEADER_ROW,
+        ["f1", "a.pdf", new Date(), "extract-gave-up", "", ""],
+        ["f1", "a.pdf", new Date(), "pl-eval-gave-up", "", ""],
+      ]),
+      UrlFetchApp: { fetch: fetchMock },
+    });
+
+    ctx.watchForNewFiles();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("sends at most 10 files per run, across both folders; the rest wait", () => {
+    var folderA = Array.from({ length: 7 }, function (_, i) { return makeFile("a" + i, "a" + i + ".pdf"); });
+    var folderB = Array.from({ length: 6 }, function (_, i) { return makeFile("b" + i, "b" + i + ".pdf"); });
+    var drive = {
+      getFolderById: jest.fn(function (id) {
+        return mockFolder(id === "folder-123" ? folderA : folderB).getFolderById();
+      }),
+    };
+    var fetchMock = jest.fn().mockReturnValue(accepted());
+    var logMock = { log: jest.fn() };
+    var ctx = loadOrchestrator({
+      PropertiesService: mockScriptPropertiesRW(Object.assign({}, VALID_PROPS, { INPUT_FOLDER_ID_CONTENT_TYPE_TWO: "folder-two" })),
+      DriveApp: drive,
+      SpreadsheetApp: mockSheet([HEADER_ROW]),
+      UrlFetchApp: { fetch: fetchMock },
+      Logger: logMock,
+    });
+
+    ctx.watchForNewFiles();
+
+    var sentIds = new Set(fetchMock.mock.calls.map(function (c) { return JSON.parse(c[1].payload).fileId; }));
+    expect(sentIds.size).toBe(10);
+    expect(fetchMock).toHaveBeenCalledTimes(20);  // Extract + PL eval for each
+    expect(logMock.log).toHaveBeenCalledWith(expect.stringContaining("waiting for the next run"), 3, 10);
+  });
+
+  test("files that are already done don't use up the budget", () => {
+    var done = Array.from({ length: 12 }, function (_, i) { return makeFile("d" + i, "d" + i + ".pdf"); });
+    var rows = [HEADER_ROW];
+    done.forEach(function (f) {
+      rows.push([f.getId(), "x", new Date(), "triggered", 1, ""]);
+      rows.push([f.getId(), "x", new Date(), "pl-eval-triggered", 1, ""]);
+    });
+    var fetchMock = jest.fn().mockReturnValue(accepted());
+    var ctx = loadOrchestrator({
+      PropertiesService: mockScriptPropertiesRW(VALID_PROPS),
+      DriveApp: mockFolder(done.concat([makeFile("new", "new.pdf")])),
+      SpreadsheetApp: mockSheet(rows),
+      UrlFetchApp: { fetch: fetchMock },
+    });
+
+    ctx.watchForNewFiles();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("skips the run when the previous one still holds the lock", () => {
+    var fetchMock = jest.fn();
+    var lock = mockLock(false);
+    var consoleMock = { error: jest.fn(), log: jest.fn() };
+    var ctx = loadOrchestrator({
+      PropertiesService: mockScriptPropertiesRW(VALID_PROPS),
+      DriveApp: mockFolder([makeFile("f1", "a.pdf")]),
+      SpreadsheetApp: mockSheet([HEADER_ROW]),
+      UrlFetchApp: { fetch: fetchMock },
+      LockService: lock,
+      console: consoleMock,
+    });
+
+    ctx.watchForNewFiles();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(consoleMock.error).toHaveBeenCalledWith(expect.stringContaining("still in progress; skipping"));
+    expect(lock._lock.releaseLock).not.toHaveBeenCalled();
+  });
+
+  test("releases the lock even when the run fails", () => {
+    var lock = mockLock(true);
+    var errorSpy = jest.spyOn(console, "error").mockImplementation();
+    var ctx = loadOrchestrator({
+      PropertiesService: mockScriptPropertiesRW({}),
+      LockService: lock,
+    });
+
+    expect(() => ctx.watchForNewFiles()).toThrow("Missing required script properties");
+    expect(lock._lock.releaseLock).toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });
 

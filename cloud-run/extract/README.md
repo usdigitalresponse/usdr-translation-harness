@@ -28,6 +28,8 @@ Fire-and-forget: the function returns immediately and runs extraction on a backg
 | `main.py` | HTTP entrypoint, orchestration, Pub/Sub publishing |
 | `llm.py` | LLM provider calls (Claude, Gemini) via Vertex AI or the direct APIs |
 | `loaders.py` | Google Drive and config I/O, output writing |
+| `failure_reasons.py` | Plain-language failure reasons for the Chat notice |
+| `notifier.py` | Google Chat notice when nothing goes on to Translate |
 | `extraction-schema-claude.json` | JSON schema for validating Claude extraction output |
 | `extraction-schema-gemini.json` | JSON schema for validating Gemini extraction output |
 | `requirements.txt` | Python dependencies |
@@ -54,6 +56,31 @@ Config problems (missing env var on Cloud Run, missing columns, no data rows) st
 With `vertex-first`, a Vertex failure falls back to direct **only** for errors raised before generation: 401/403 (auth), 404 (model not enabled or not offered in the location), 429 (quota), credential errors, or missing `VERTEX_PROJECT_ID`. Timeouts, 5xx, and invalid output are raised as-is. Every successful call logs `llm_backend` (`vertex` / `direct`) and, after a fallback, `llm_fallback_reason` in the structured log entry.
 
 Model IDs in the Model Config sheet are the same for both backends.
+
+## Failures
+
+Extract runs after it has already replied 202, so the Orchestrator never sees
+these failures. Each one is recorded and none is retried:
+
+- **Processing Log:** a `failed` row with the real error, e.g. `LLM call failed:
+  APITimeoutError: Request timed out.` (cut to 500 characters). Also written for
+  no active extract models and for a failed Pub/Sub hand-off to Translate.
+- **Chat**, only when nothing goes on to Translate (so the submitter would
+  otherwise hear nothing): every model failed, a Google Doc / Word file couldn't
+  be read or saved, a setup problem (config, prompt doc, PDF download), no active
+  models, an unsupported file type, or every hand-off failed. If one model
+  succeeds, no notice. The message gives a plain-language reason (one line per
+  model if they failed differently), worked out from the error's type or status
+  in `failure_reasons.py`:
+
+  ```
+  ⚠️ Translation failed for *flyer.pdf* while reading the document. It won't be retried automatically.
+  *Reason:* The extraction model in Model Config wasn't found. Check the model name.
+  Contact your workflow owner. Full details are in the Processing Log.
+  ```
+
+  Posted to `GOOGLE_CHAT_WEBHOOK_URL` (the same translators' space and secret as
+  Translate). If it's unset, Extract logs a warning and skips the notice.
 
 ## Model call retries
 

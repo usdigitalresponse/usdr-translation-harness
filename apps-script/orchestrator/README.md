@@ -8,7 +8,8 @@ Two responsibilities:
 1. **Drive folder watcher** — on a 5-minute time trigger, `watchForNewFiles`
    scans the input folder(s) for PDFs / Google Docs / DOCX and fires the Extract
    and Plain-Language Eval Cloud Run functions (fire-and-forget, `202`), logging
-   each attempt to the Processing Log sheet.
+   each attempt to the Processing Log sheet. Each file gets at most 3 attempts
+   per service, and at most 10 files are sent per run (see "Limits" below).
 2. **Model-change detection** — an installable `onEdit` trigger on the model
    config sheet (`onConfigEdit`) fires the **Drift eval** whenever an edit
    changes the active model(s) it depends on.
@@ -28,6 +29,27 @@ checks row 1 of the `ProcessingLog` tab against `PROCESSING_LOG_HEADERS`
 If it doesn't match, the run throws (Executions shows **Failed** with the
 expected and found headers) and no files are sent, so a renamed or inserted
 column can't scramble rows or make the watcher re-send every input file.
+
+## Limits
+
+Extract and Plain-Language Eval both call a model (billed) for PDFs, so the
+watcher caps how often a file is sent:
+
+- **3 attempts per file, per service.** Each run counts a file's `failed` /
+  `pl-eval-failed` rows. A non-202 usually means the service didn't start (no
+  model call), but a call can start the service and still error in UrlFetch,
+  and that resend is billed. After 3 failed rows the watcher appends a
+  `extract-gave-up` / `pl-eval-gave-up` row (logged as an error) and never sends that
+  file to that service again. To retry, upload the file again (a new copy gets
+  a new file ID).
+- **10 files per run**, across both input folders (`MAX_FILES_PER_RUN`). Files
+  already done don't count. The rest wait for the next 5-minute run; the run
+  logs how many are waiting.
+- **One run at a time.** `watchForNewFiles` takes a script lock; if the
+  previous run is still going, the new one skips, so no file is sent twice.
+  A skip is logged as an error ("still in progress; skipping") so repeated
+  skips stand out; the run still shows as Completed. The script lock covers
+  the whole project, so no other function should take it.
 
 ## Script Properties
 
@@ -100,7 +122,7 @@ weekly scheduled drift run is the backstop for that case).
 
 ## Testing
 
-Pure logic (config parsing, dedup sets, the model signature) is covered by Jest:
+Pure logic (config parsing, dedup sets, attempt cap, per-run limit, the model signature) is covered by Jest:
 
 ```sh
 cd apps-script && npm test
