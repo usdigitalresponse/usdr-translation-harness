@@ -56,7 +56,7 @@ Runs as the **pipeline service account**, so "the check can read it" means "the 
 
 ```sh
 cd cloud-run/health-check
-gcloud run deploy health-check --source=. --region=<region> --project=<project-id> \
+gcloud run deploy health-check --source=. --region=<region> --project=<project-id> --max-instances=1 \
   --service-account=<pipeline SA email> --no-allow-unauthenticated \
   --update-env-vars=HEALTH_CHECK_REGION=<region>,HEALTH_CHECK_ENVIRONMENT=<name>,INPUT_FOLDER_ID=<input folder ID> \
   --update-secrets=HEALTH_CHECK_CHAT_WEBHOOK_URL=<secret name>:latest
