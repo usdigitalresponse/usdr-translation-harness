@@ -1,0 +1,34 @@
+[
+  {
+    "id": "djangojs:6a04f0b5e0",
+    "msgstr": "%(name)s es demasiado grande. El límite es de %(size)s MB.",
+    "page": "File upload (on the application form)",
+    "place_on_page": "Error when a file is too big",
+    "role": "error message",
+    "priority": "Low",
+    "flags": [],
+    "reasoning": "Both placeholders kept."
+  },
+  {
+    "id": "djangojs:ae667b7dc9",
+    "msgstr": "Subiendo…",
+    "page": "File upload (on the application form)",
+    "place_on_page": "Status while uploading",
+    "role": "status message",
+    "priority": "Low",
+    "flags": []
+  },
+  {
+    "id": "djangojs:474a3bcc28",
+    "msgstr_plural": [
+      "%s archivo seleccionado",
+      "%s archivos seleccionados"
+    ],
+    "page": "File upload (on the application form)",
+    "place_on_page": "Count under the upload button",
+    "role": "status message",
+    "priority": "Low",
+    "flags": [],
+    "reasoning": "Both plural forms filled."
+  }
+]

@@ -1,0 +1,55 @@
+﻿ID,Page,Where on the page,English,Spanish (AI draft),Why it's flagged,Priority,Reviewer: Approve? (yes/no),Reviewer: Change to,Reviewer: Comment
+django:ff58effed8,Every page (header and footer),Browser tab title and logo,Example State Family Services,Servicios para Familias del Estado de Ejemplo,Agency name: use the agency's official Spanish name if it has one,Medium,,,Our agency's official Spanish name is different. I'll find out what it is.
+django:6dc03d8d0f,Every page (header and footer),Screen-reader label for the top menu,Main menu,Menú principal,,Low,yes,,
+django:d61e6b1045,Every page (header and footer),"Top menu link, page heading, and links on several pages",Apply for benefits,Solicitar beneficios,Menu item: infinitive per settings; Term: benefits = beneficios,Medium,yes,,
+django:e92fc66233,Every page (header and footer),Top menu link,My applications,Mis solicitudes,,Low,yes,,
+django:58ff69ea39,Every page (header and footer),Top menu link,Help,Ayuda,Was already a draft before this run,Low,yes,,
+django:ab33969c97,Every page (header and footer),Footer link,Contact us,Contáctenos,,Low,no,Comuníquese con nosotros,This is what our printed materials say.
+django:5e7b7e3612,Every page (header and footer),Footer link,Privacy,Privacidad,,Low,yes,,
+django:81911fa3ed,Every page (header and footer),Footer text,"Questions? Call 1-800-555-0100, Monday to Friday, 8 a.m. to 5 p.m.","¿Tiene preguntas? Llame al 1-800-555-0100, de lunes a viernes, de 8 a.m. a 5 p.m.","Phone number and hours: check they match the Spanish line, if there is one",Medium,,,
+django:517d037c58,Account home,Greeting at the top,"Welcome, %(first_name)s","Le damos la bienvenida, %(first_name)s",Gender-neutral greeting chosen over 'Bienvenido/a',Medium,no,"Bienvenida, %(nombre)s",Simpler greeting.
+django:f219b79833,Account home,Message count under the greeting,You have %(counter)s new message. || You have %(counter)s new messages.,Tiene %(counter)s mensaje nuevo. || Tiene %(counter)s mensajes nuevos.,,Low,yes,,
+django:58b7558555,Account home,Card title for the yearly report,Report,Informe,"'Report' the noun (a document), not 'report a change'",Medium,yes,,
+django:468fb7aa78,Account home,Card text,Your yearly benefits report is ready.,Su informe anual de beneficios está listo.,,Low,yes,,
+django:344b2dae8f,Account home,Button to go to the next item,Next,Siguiente,,Low,yes,,
+django:17ebc9f49c,Apply for benefits (form),Label above the first form field,Household size,Número de personas en su hogar,"Longer than the English (form label, not a button, so it fits)",Medium,yes,,
+django:b342e503e0,Apply for benefits (form),Label for the income field,Monthly income before taxes,Ingresos mensuales antes de impuestos,,Medium,yes,,
+django:27558b5604,Apply for benefits (form),Help text under the income field,"Include wages, child support and Social Security. If your income is over $4,000 a month, you may not qualify.","Incluya salarios, manutención de menores y Seguro Social. Si sus ingresos son de más de $4,000 al mes, es posible que no reúna los requisitos.",Eligibility and money: always reviewed,Critical,yes,,
+django:0361cb7796,Apply for benefits (form),Label for the ID upload,Upload a copy of your driver's license or state ID,Suba una copia de su licencia de conducir o identificación estatal,"Term: 'licencia' here means a driver's license, not leave from work",Medium,yes,,
+django:a73f6b353d,Apply for benefits (form),Error under the household size field,Enter a number between 1 and 20.,Escriba un número entre 1 y 20.,,Low,yes,,
+django:417bb37023,Apply for benefits (form),Intro under the heading,This application takes about 20 minutes. You can save it and come back later.,Esta solicitud toma unos 20 minutos. Puede guardarla y volver más tarde.,,Low,yes,,
+django:67f1ef8b38,Apply for benefits (form),Section heading,About your household,Sobre su hogar,,Low,yes,,
+django:2303b56a70,Apply for benefits (form),Section heading,Proof of identity,Comprobante de identidad,,Medium,yes,,
+django:4c8c5fe6be,Apply for benefits (form),"Button at the bottom, left",Back,Volver,,Low,yes,,
+django:2739d74444,Apply for benefits (form),"Button at the bottom, middle (saves without submitting)",Save,Guardar,,Low,yes,,
+django:feb192bc71,Apply for benefits (form),Main button at the bottom (submits the application),Apply,Enviar solicitud,Button is about 3x the English length: check it fits; Different from 'Apply' on the office filter,Medium,no,Enviar,Shorter so it fits the button. 'Enviar' is clear because the page is the application.
+django:2b9455be0d,Messages after saving or submitting,Message after Save (keeps a trailing space),Your application was saved. ,Su solicitud se guardó. ,,Low,no,Guardamos su solicitud.,
+django:cb3715958f,Messages after saving or submitting,Message after submitting,We received your application.,Recibimos su solicitud.,,Low,yes,,
+django:f87eb89bf5,Account home,Summary on the account home,You have %(count)s application in progress. || You have %(count)s applications in progress.,Tiene %(count)s solicitud en curso. || Tiene %(count)s solicitudes en curso.,,Low,no,Tiene %(count)s solicitud pendiente. || Tiene %(count)s solicitudes pendientes.,"We say 'pendiente', not 'en curso'."
+django:13349dfe97,Apply for benefits (form),Label before an amount (keeps a trailing space),Total: ,Total: ,,Low,yes,,
+django:fa6280d60a,Confirmation email,Email body,"Hello,
+
+We received your application. We will contact you within 10 business days.
+","Hola:
+
+Recibimos su solicitud. Nos comunicaremos con usted dentro de 10 días hábiles.
+",Deadline: always reviewed,Critical,yes,,
+django:bae43cb022,Find an office,Page heading,Find an office near you,Busque una oficina cerca de usted,,Low,yes,,
+django:c229844333,Find an office,Filter label,Distance,Distancia,,Low,yes,,
+django:6b0a3d39a8,Find an office,Distance dropdown choice,Within %(miles)s miles,A menos de %(miles)s millas,,Low,,,
+django:b40665a6b7,Find an office,Filter checkbox,Open now,Abierto ahora,,Low,yes,,
+django:27aa5174d5,Find an office,Button that applies the filters,Apply,Aplicar,"Same English as the submit button, different meaning",Medium,yes,,
+django:95ae28482e,Find an office,Link that clears the filters,Clear,Borrar,,Low,yes,,
+django:8e5ba1b1f0,Application status,Page heading,Application status,Estado de la solicitud,,Low,yes,,
+django:9ce3e9d9a8,Application status,Denial notice,Your application was denied.,Su solicitud fue denegada.,Decision about benefits: always reviewed,Critical,yes,,
+django:e113ca8f80,Application status,Reason for denial,Your household's income is above the limit for this program.,Los ingresos de su hogar superan el límite de este programa.,Eligibility: always reviewed,Critical,yes,,
+django:caa1b93310,Application status,"Appeal rights, with a link","You can appeal this decision within 30 days. <a href=""%(url)s"">Learn how to appeal</a>.","Puede apelar esta decisión en un plazo de 30 días. <a href=""%(url)s"">Cómo apelar</a>.",Legal rights and a deadline: always reviewed,Critical,,,Is it 30 calendar days or 30 business days? Need to check with the program team before approving.
+django:b4c7b2d466,Application status,Link under the notice,Download your report,Descargar su informe,,Low,yes,,
+django:9d6a0c802f,Renew your benefits,Page heading,Renew your benefits,Renueve sus beneficios,,Low,yes,,
+django:693bbdabae,Renew your benefits,Deadline under the heading,You must renew by <strong>%(date)s</strong> or your benefits will stop.,Debe renovar a más tardar el <strong>%(date)s</strong> o sus beneficios se suspenderán.,"Deadline: always reviewed; 'by' a date = 'a más tardar el' (on or before), not 'antes del' (before)",Critical,yes,,
+django:ec06f065fb,Renew your benefits,Text above the buttons,"If anything changed in your household, tell us before you renew.","Si hubo algún cambio en su hogar, infórmenos antes de renovar.",,Medium,yes,,
+django:e9373a4864,Renew your benefits,Button-style link,Report a change,Informar un cambio,'Report' the verb; ledger term 'report a change',Medium,yes,,
+django:4114817305,Renew your benefits,Main button,Renew,Renovar,,Low,yes,,
+djangojs:6a04f0b5e0,File upload (on the application form),Error when a file is too big,%(name)s is too large. The limit is %(size)s MB.,%(name)s es demasiado grande. El límite es de %(size)s MB.,,Low,yes,,
+djangojs:ae667b7dc9,File upload (on the application form),Status while uploading,Uploading…,Subiendo…,,Low,yes,,
+djangojs:474a3bcc28,File upload (on the application form),Count under the upload button,%s file selected || %s files selected,%s archivo seleccionado || %s archivos seleccionados,,Low,yes,,

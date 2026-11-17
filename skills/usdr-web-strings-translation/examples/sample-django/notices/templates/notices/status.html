@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block content %}
+<h1>{% trans "Application status" %}</h1>
+<div class="notice notice-denied">
+  <p>{% trans "Your application was denied." %}</p>
+  <p>{% blocktrans %}Your household's income is above the limit for this program.{% endblocktrans %}</p>
+  <p>{% blocktrans with url=appeal_url %}You can appeal this decision within 30 days. <a href="{{ url }}">Learn how to appeal</a>.{% endblocktrans %}</p>
+</div>
+<a href="/apply/">{% trans "Apply for benefits" %}</a>
+<a href="/reports/latest/">{% trans "Download your report" %}</a>
+{% endblock %}

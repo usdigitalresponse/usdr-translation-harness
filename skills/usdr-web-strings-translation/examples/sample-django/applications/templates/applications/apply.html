@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block content %}
+<h1>{% trans "Apply for benefits" %}</h1>
+<p>{% blocktrans %}This application takes about 20 minutes. You can save it and come back later.{% endblocktrans %}</p>
+
+<form method="post" enctype="multipart/form-data">
+  {% csrf_token %}
+  <h2>{% trans "About your household" %}</h2>
+  {{ form.household_size.label_tag }} {{ form.household_size }}
+  {{ form.monthly_income.label_tag }} {{ form.monthly_income }}
+  <p class="help">{{ form.monthly_income.help_text }}</p>
+
+  <h2>{% trans "Proof of identity" %}</h2>
+  {{ form.id_document.label_tag }} {{ form.id_document }}
+
+  <div class="actions">
+    <a class="button secondary" href="{% url 'dashboard' %}">{% trans "Back" %}</a>
+    {# Translators: Saves the application without submitting it #}
+    <button type="submit" name="save">{% trans "Save" %}</button>
+    {# Translators: Button that submits the benefits application #}
+    <button type="submit" name="submit" class="primary">{% trans "Apply" %}</button>
+  </div>
+</form>
+{% endblock %}

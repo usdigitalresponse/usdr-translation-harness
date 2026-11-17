@@ -1,0 +1,234 @@
+# Spanish translations for Example State Family Services (synthetic sample project).
+# This file is made up for testing the usdr-web-strings-translation skill.
+msgid ""
+msgstr ""
+"Project-Id-Version: example-state-family-services\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-11-01 09:00+0000\n"
+"PO-Revision-Date: 2026-11-01 09:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: Spanish\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: templates/base.html:5 templates/base.html:9
+msgid "Example State Family Services"
+msgstr ""
+
+#: templates/base.html:10
+msgid "Main menu"
+msgstr ""
+
+#: templates/base.html:11
+msgid "Home"
+msgstr "Inicio"
+
+#: templates/base.html:12 applications/templates/applications/apply.html:4
+#: renewals/templates/renewals/renew.html:10
+#: notices/templates/notices/status.html:10
+msgid "Apply for benefits"
+msgstr ""
+
+#: templates/base.html:13
+msgid "My applications"
+msgstr ""
+
+#: templates/base.html:14
+#, fuzzy
+msgid "Help"
+msgstr "Ayuda"
+
+#: templates/base.html:15
+msgid "Sign out"
+msgstr "Cerrar sesión"
+
+#: templates/base.html:22
+msgid "Contact us"
+msgstr ""
+
+#: templates/base.html:23
+msgid "Privacy"
+msgstr ""
+
+#: templates/base.html:24
+msgid "Questions? Call 1-800-555-0100, Monday to Friday, 8 a.m. to 5 p.m."
+msgstr ""
+
+#: applications/templates/applications/apply.html:5
+msgid ""
+"This application takes about 20 minutes. You can save it and come back later."
+msgstr ""
+
+#: applications/templates/applications/apply.html:9
+msgid "About your household"
+msgstr ""
+
+#: applications/templates/applications/apply.html:14
+msgid "Proof of identity"
+msgstr ""
+
+#: applications/templates/applications/apply.html:18
+msgid "Back"
+msgstr ""
+
+#. Translators: Saves the application without submitting it
+#: applications/templates/applications/apply.html:20
+msgid "Save"
+msgstr ""
+
+#. Translators: Button that submits the benefits application
+#: applications/templates/applications/apply.html:22
+msgid "Apply"
+msgstr ""
+
+#: applications/forms.py:7
+msgid "Household size"
+msgstr ""
+
+#: applications/forms.py:11
+msgid "Monthly income before taxes"
+msgstr ""
+
+#: applications/forms.py:12
+msgid ""
+"Include wages, child support and Social Security. If your income is over "
+"$4,000 a month, you may not qualify."
+msgstr ""
+
+#: applications/forms.py:15
+msgid "Upload a copy of your driver's license or state ID"
+msgstr ""
+
+#: applications/forms.py:21
+msgid "Enter a number between 1 and 20."
+msgstr ""
+
+#: applications/views.py:12
+msgid "Your application was saved. "
+msgstr ""
+
+#: applications/views.py:14
+msgid "We received your application."
+msgstr ""
+
+#: applications/views.py:22
+#, python-format
+msgid "You have %(count)s application in progress."
+msgid_plural "You have %(count)s applications in progress."
+msgstr[0] ""
+msgstr[1] ""
+
+#. Translators: Label before the total amount, e.g. "Total: $120.00". Keep the
+#. trailing space.
+#: applications/views.py:31
+msgid "Total: "
+msgstr ""
+
+#: applications/views.py:35
+msgid ""
+"Hello,\n"
+"\n"
+"We received your application. We will contact you within 10 business days.\n"
+msgstr ""
+
+#: renewals/templates/renewals/renew.html:4
+msgid "Renew your benefits"
+msgstr ""
+
+#: renewals/templates/renewals/renew.html:5
+#, python-format
+msgid "You must renew by <strong>%(date)s</strong> or your benefits will stop."
+msgstr ""
+
+#: renewals/templates/renewals/renew.html:6
+msgid "If anything changed in your household, tell us before you renew."
+msgstr ""
+
+#: renewals/templates/renewals/renew.html:8
+msgctxt "verb"
+msgid "Report a change"
+msgstr ""
+
+#: renewals/templates/renewals/renew.html:9
+msgid "Renew"
+msgstr ""
+
+#: directory/templates/directory/filters.html:4
+msgid "Find an office near you"
+msgstr ""
+
+#: directory/templates/directory/filters.html:6
+msgid "Distance"
+msgstr ""
+
+#: directory/templates/directory/filters.html:8
+#, python-format
+msgid "Within %(miles)s miles"
+msgstr ""
+
+#: directory/templates/directory/filters.html:10
+msgid "Open now"
+msgstr ""
+
+#: directory/templates/directory/filters.html:11
+msgctxt "filter"
+msgid "Apply"
+msgstr ""
+
+#: directory/templates/directory/filters.html:12
+msgid "Clear"
+msgstr ""
+
+#: notices/templates/notices/status.html:4
+msgid "Application status"
+msgstr ""
+
+#: notices/templates/notices/status.html:6
+msgid "Your application was denied."
+msgstr ""
+
+#: notices/templates/notices/status.html:7
+msgid "Your household's income is above the limit for this program."
+msgstr ""
+
+#: notices/templates/notices/status.html:8
+#, python-format
+msgid ""
+"You can appeal this decision within 30 days. <a href=\"%(url)s\">Learn how to"
+" appeal</a>."
+msgstr ""
+
+#: notices/templates/notices/status.html:11
+msgid "Download your report"
+msgstr ""
+
+#: accounts/templates/accounts/home.html:4
+#, python-format
+msgid "Welcome, %(first_name)s"
+msgstr ""
+
+#: accounts/templates/accounts/home.html:6
+#, python-format
+msgid "You have %(counter)s new message."
+msgid_plural "You have %(counter)s new messages."
+msgstr[0] ""
+msgstr[1] ""
+
+#: accounts/templates/accounts/home.html:8
+msgctxt "noun"
+msgid "Report"
+msgstr ""
+
+#: accounts/templates/accounts/home.html:9
+msgid "Your yearly benefits report is ready."
+msgstr ""
+
+#: accounts/templates/accounts/home.html:11
+msgid "Next"
+msgstr ""
+
+#~ msgid "Apply now"
+#~ msgstr "Solicite ahora"

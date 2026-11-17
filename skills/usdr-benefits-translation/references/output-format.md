@@ -41,7 +41,7 @@ Only for gap terms that are likely to recur:
 
 | English Term | Approved Spanish (proposed) | Definition/Context | Example English | Example Spanish | Notes |
 |---|---|---|---|---|---|
-| provisional license | licencia provisional | A temporary child care license issued while… | "You'll get a provisional license first." | "Primero recibirá una licencia provisional." | From the provider licensing web page; not yet reviewed |
+| crisis grant | subvención de emergencia | A one-time payment to prevent a utility shutoff | "You may qualify for a crisis grant." | "Es posible que reúna los requisitos para una subvención de emergencia." | From the energy assistance web page; not yet reviewed |
 
 ## 5. Needs human review
 

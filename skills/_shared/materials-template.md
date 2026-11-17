@@ -12,6 +12,8 @@ If you see `{{…}}` placeholders in this file, it hasn't been set up yet. Repla
 
 {{MATERIALS_TABLE}}
 
+**More than one glossary?** Copy the glossary row once per glossary (for example one per program or department), and give each its own link, tab and **scope** (what program and kind of content it covers). The skill picks the glossary whose scope fits each term, and says when none does.
+
 ## Where these materials come from
 
 The team uses these materials in an **automated translation pipeline**: a system that takes documents dropped into a Google Drive folder, sends them to an AI model with these prompts and the glossary, and writes the translations and scores to Drive for people to review. No one is in the conversation while it runs, so the materials include instructions meant for that system. In this skill you're working directly with a person, and you use the materials' judgment (criteria, priorities, terminology, style) without that machinery.

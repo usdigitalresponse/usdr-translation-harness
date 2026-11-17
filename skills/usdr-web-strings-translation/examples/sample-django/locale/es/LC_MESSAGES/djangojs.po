@@ -1,0 +1,31 @@
+# Spanish translations for Example State Family Services (synthetic sample project).
+# This file is made up for testing the usdr-web-strings-translation skill.
+msgid ""
+msgstr ""
+"Project-Id-Version: example-state-family-services\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-11-01 09:00+0000\n"
+"PO-Revision-Date: 2026-11-01 09:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: Spanish\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: static/js/upload.js:5
+#, javascript-format
+msgid "%(name)s is too large. The limit is %(size)s MB."
+msgstr ""
+
+#: static/js/upload.js:9
+msgid "Uploading…"
+msgstr ""
+
+#: static/js/upload.js:13
+#, javascript-format
+msgid "%s file selected"
+msgid_plural "%s files selected"
+msgstr[0] ""
+msgstr[1] ""

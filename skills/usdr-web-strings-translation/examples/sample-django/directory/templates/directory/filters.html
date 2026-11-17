@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block content %}
+<h1>{% trans "Find an office near you" %}</h1>
+<form method="get">
+  <label for="distance">{% trans "Distance" %}</label>
+  <select id="distance" name="distance">
+    <option value="5">{% blocktrans with miles=5 %}Within {{ miles }} miles{% endblocktrans %}</option>
+  </select>
+  <label><input type="checkbox" name="open_now"> {% trans "Open now" %}</label>
+  <button type="submit">{% trans "Apply" context "filter" %}</button>
+  <a href="?">{% trans "Clear" %}</a>
+</form>
+{% endblock %}

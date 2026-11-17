@@ -7,7 +7,7 @@ Claude skills that bring the translation pipeline's materials (plain-language ru
 | `usdr-plain-language-review` | Ready | Reviews English content against the plain-language rubric, with scores and prioritized fixes |
 | `usdr-benefits-translation` | Ready | Translates English → Spanish with the live prompt and glossary, a fit check, translator notes and a human-review list |
 | `usdr-translation-quality-review` | Ready | Scores a translation against the evaluation rubric |
-| `usdr-web-strings-translation` | Planned | Translates web UI strings (Django `.po` first), for Claude Code |
+| `usdr-web-strings-translation` | Skeleton, for testing | Translates a web app's interface text (Django `.po` files) page by page, for Claude Code: drafts marked for review, a term ledger, and a review spreadsheet for a non-technical reviewer that it applies back |
 
 ## How the skills get their materials
 
@@ -43,6 +43,17 @@ If you skip this, the skill asks for the links (or pasted materials) when it run
 - `usdr-*/`: one folder per skill (`SKILL.md`, its own `references/` and `scripts/`, and `skill-build.json` listing the materials it uses).
 - `_shared/materials.json` + `materials-template.md`: the catalog of materials and the template each skill's `references/materials.md` is built from (only the skill's own materials are included).
 - `_shared/glossary/`: glossary loading instructions and scripts, added only to skills that use the glossary.
+- `_shared/elements/`, `_shared/fit/`: the element comparison script and the fit check, added to skills that list them under `"shared"`.
+- `tests/`: unit tests for the scripts.
+
+## Tests
+
+The scripts have unit tests. From the repo root, with the repo's `.venv`:
+
+    .venv/bin/pip install -r skills/requirements-dev.txt
+    .venv/bin/python -m pytest skills/tests
+
+The `.po` tests run against copies of the web strings skill's sample project (`usdr-web-strings-translation/examples/`). The `msgfmt` check is skipped if GNU gettext isn't installed.
 
 ## Feedback
 

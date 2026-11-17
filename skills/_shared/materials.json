@@ -19,7 +19,7 @@
   },
   "glossary": {
     "name": "Glossary",
-    "what": "Approved Spanish terms, forbidden terms, definitions and notes. A Google Sheet: use the **{{GLOSSARY_TAB}}** tab, and load it as described in `glossary-access.md`",
+    "what": "Approved Spanish terms, forbidden terms, definitions and notes. **Scope:** {{GLOSSARY_SCOPE}}. A Google Sheet: use the **{{GLOSSARY_TAB}}** tab, and load it as described in `glossary-access.md`",
     "link": "{{GLOSSARY_SHEET_URL}}",
     "local_file": "glossary.xlsx (or a CSV export of that tab)"
   },
