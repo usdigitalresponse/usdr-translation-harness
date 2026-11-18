@@ -15,16 +15,16 @@ import google.auth
 from google.cloud import pubsub_v1
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
-import docx
 import pdfplumber
 
+from document_text import GDOC_GET_PARAMS, docx_paragraphs, gdoc_paragraphs
 from failure_reasons import (
     REASON_HANDOFF_FAILED, REASON_INVALID_OUTPUT, REASON_NO_ACTIVE_MODELS, REASON_SAVING_FAILED,
     REASON_UNSUPPORTED_TYPE,
     model_failure_reason, input_failure_reason, text_fetch_failure_reason, combine_reasons,
 )
 from llm import call_llm
-from loaders import load_config, load_doc, write_output, DRIVE_API_VERSION, SHEETS_API_VERSION
+from loaders import load_config, load_doc, write_output, DOCS_API_VERSION, DRIVE_API_VERSION, SHEETS_API_VERSION
 from notifier import notify_extraction_failed
 
 EXTRACT_ROLE = "extract"
@@ -106,32 +106,29 @@ def extract_text_with_pdfplumber(pdf_bytes):
     return "\n\n".join(pages_text)
 
 
-def fetch_text_from_drive(file_id, mime_type):
+def fetch_paragraphs_from_drive(file_id, mime_type):
+    """Paragraphs of a Google Doc or Word file, each to become a block. What's
+    read and what isn't: see document_text.py."""
     credentials, _ = google.auth.default()
-    service = build("drive", DRIVE_API_VERSION, credentials=credentials)
 
     if mime_type == MIME_GOOGLE_DOCS:
-        request = service.files().export_media(fileId=file_id, mimeType="text/plain")
-    else:
-        request = service.files().get_media(fileId=file_id)
+        # The Docs API, not Drive's plain-text export: the export includes
+        # comments, headers, footers, footnotes and [1]/[a] markers
+        service = build("docs", DOCS_API_VERSION, credentials=credentials)
+        return gdoc_paragraphs(service.documents().get(documentId=file_id, **GDOC_GET_PARAMS).execute())
 
+    service = build("drive", DRIVE_API_VERSION, credentials=credentials)
+    request = service.files().get_media(fileId=file_id)
     buffer = io.BytesIO()
     downloader = MediaIoBaseDownload(buffer, request)
     done = False
     while not done:
         _, done = downloader.next_chunk()
-
-    raw_bytes = buffer.getvalue()
-
-    if mime_type == MIME_DOCX:
-        doc = docx.Document(io.BytesIO(raw_bytes))
-        return "\n\n".join(p.text for p in doc.paragraphs if p.text.strip())
-
-    return raw_bytes.decode("utf-8-sig")
+    return docx_paragraphs(buffer.getvalue())
 
 
-def text_to_extraction_json(text, source_file_id):
-    paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
+def text_to_extraction_json(paragraphs, source_file_id):
+    """Extraction JSON for the text passthrough: one block per paragraph."""
     blocks = []
     for i, paragraph in enumerate(paragraphs):
         blocks.append({
@@ -386,8 +383,8 @@ def run_text_extraction(file_id, file_name, mime_type, content_type="public_flye
     logger.info("Text extraction for %s (MIME: %s)", file_name, mime_type)
 
     try:
-        text = fetch_text_from_drive(file_id, mime_type)
-        logger.info("Fetched text: %d characters", len(text))
+        paragraphs = fetch_paragraphs_from_drive(file_id, mime_type)
+        logger.info("Fetched %d paragraphs", len(paragraphs))
     except Exception as e:
         logger.exception("Failed to fetch text for %s", file_name)
         record_failure(PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL,
@@ -397,7 +394,7 @@ def run_text_extraction(file_id, file_name, mime_type, content_type="public_flye
         return
 
     try:
-        parsed = text_to_extraction_json(text, file_id)
+        parsed = text_to_extraction_json(paragraphs, file_id)
         parsed_filename = build_output_filename(file_name, PASSTHROUGH_MODEL, "extraction.json")
         drive_file_id = write_output(parsed_filename, parsed)
         logger.info("Saved text extraction: %s", parsed_filename)

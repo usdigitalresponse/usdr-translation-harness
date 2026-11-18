@@ -319,8 +319,11 @@ function findFirstTable(content) {
 }
 
 /**
- * Extract cell paragraph indices from a table element.
- * Returns cellIndices[row][col] = { start, end }.
+ * Extract cell text ranges from a table element.
+ * Returns cellIndices[row][col] = { start, end }: start is where text goes in
+ * the cell; end is the end of the cell's last paragraph, so a cell whose text
+ * has line breaks (several paragraphs) is formatted in full, not just its
+ * first line.
  */
 function getCellIndices(tableElement) {
   const table = tableElement.table;
@@ -329,12 +332,12 @@ function getCellIndices(tableElement) {
   for (const row of table.tableRows) {
     const rowIndices = [];
     for (const cell of row.tableCells) {
-      const paragraph = cell.content[0]?.paragraph;
-      if (!paragraph) {
+      const first = cell.content[0]?.paragraph;
+      if (!first) {
         throw new Error("Table cell missing expected paragraph element");
       }
-      const el = paragraph.elements[0];
-      rowIndices.push({ start: el.startIndex, end: el.endIndex });
+      const last = cell.content[cell.content.length - 1];
+      rowIndices.push({ start: first.elements[0].startIndex, end: last.endIndex });
     }
     indices.push(rowIndices);
   }
@@ -379,5 +382,6 @@ async function setDocumentProperty(drive, fileId, translationFileId) {
 
 module.exports = {
   createTranslationDoc,
+  getCellIndices,
   DOC_PROPERTY_KEY,
 };
