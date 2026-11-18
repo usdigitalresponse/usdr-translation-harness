@@ -307,6 +307,56 @@ describe("evaluateTranslationFromSidebar", () => {
     expect(documentProps.EVAL_RESULT).toBeUndefined();
   });
 
+  test("a first run doesn't ask to skip; a cached flag is false", () => {
+    const s = loadAddon({
+      _scriptProps: { EVAL_QUALITY_FUNCTION_URL: "https://eval.example/" },
+      UrlFetchApp: { fetch: jest.fn().mockReturnValue(mockResponse(200, { ...OK_BODY, cached: false })) },
+    });
+    const result = s.evaluateTranslationFromSidebar();
+    expect(JSON.parse(s.UrlFetchApp.fetch.mock.calls[0][1].payload).skipIfUnchanged).toBe(false);
+    expect(result.cached).toBe(false);
+  });
+
+  test("refresh asks to skip if unchanged; a cached reply carries the saved date", () => {
+    const s = loadAddon({
+      _scriptProps: { EVAL_QUALITY_FUNCTION_URL: "https://eval.example/" },
+      UrlFetchApp: { fetch: jest.fn().mockReturnValue(mockResponse(200, {
+        ...OK_BODY, cached: true, evaluatedAt: "2026-11-18T10:00:00.654321+00:00",
+      })) },
+    });
+    const result = s.evaluateTranslationFromSidebar(true);
+    const payload = JSON.parse(s.UrlFetchApp.fetch.mock.calls[0][1].payload);
+    expect(payload.skipIfUnchanged).toBe(true);
+    expect(payload.contentHash).toBeTruthy();
+    expect(result.cached).toBe(true);
+    expect(result.timestamp).toBe("2026-11-18T10:00:00.654Z");
+    expect(result.scores.weightedOverall).toBe(4.2);
+  });
+
+  test("a reply at the evaluation limit is flagged for the sidebar", () => {
+    const s = loadAddon({
+      _scriptProps: { EVAL_QUALITY_FUNCTION_URL: "https://eval.example/" },
+      UrlFetchApp: { fetch: jest.fn().mockReturnValue(mockResponse(200, {
+        ...OK_BODY, cached: true, limitReached: true, evaluatedAt: "2026-11-18T10:00:00+00:00",
+      })) },
+    });
+    const result = s.evaluateTranslationFromSidebar(false);
+    expect(result.limitReached).toBe(true);
+    expect(result.cached).toBe(true);
+  });
+
+  test("the limit with nothing saved to show surfaces the message", () => {
+    const s = loadAddon({
+      _scriptProps: { EVAL_QUALITY_FUNCTION_URL: "https://eval.example/" },
+      UrlFetchApp: { fetch: jest.fn().mockReturnValue(mockResponse(429, {
+        error: "Evaluation limit reached. Update the translation or rubric to run again.", limitReached: true,
+      })) },
+    });
+    const result = s.evaluateTranslationFromSidebar(false);
+    expect(result.problem).toBe("eval_failed");
+    expect(result.message).toContain("Evaluation limit reached");
+  });
+
   test("reports a config problem when the URL is unset", () => {
     const s = loadAddon({ _scriptProps: {} });
     const result = s.evaluateTranslationFromSidebar();
@@ -382,11 +432,29 @@ describe("evaluateTranslationFromSidebar", () => {
 function combinedFile(evaluations, contentHash) {
   return JSON.stringify({
     documentId: "doc-123",
-    evaluatedAt: "2026-07-29T00:00:00Z",
+    // The shape the eval function wrote before 2026-11-18: UTC, no offset, microseconds
+    evaluatedAt: "2026-07-29T00:00:00.123456",
     contentHash: contentHash || "",
     evaluations,
   });
 }
+
+describe("normalizeEvalTimestamp_", () => {
+  const s = loadAddon();
+  test.each([
+    ["saved before the fix: UTC without an offset", "2026-11-18T19:00:00.123456", "2026-11-18T19:00:00.123Z"],
+    ["saved after the fix: explicit UTC offset", "2026-11-18T19:00:00.123456+00:00", "2026-11-18T19:00:00.123Z"],
+    ["another offset is honored", "2026-11-18T14:00:00-05:00", "2026-11-18T19:00:00.000Z"],
+    ["already a Z timestamp", "2026-11-18T19:00:00Z", "2026-11-18T19:00:00.000Z"],
+  ])("%s", (_label, input, expected) => {
+    expect(s.normalizeEvalTimestamp_(input)).toBe(expected);
+  });
+
+  test("leaves empty or unparseable values alone", () => {
+    expect(s.normalizeEvalTimestamp_("")).toBe("");
+    expect(s.normalizeEvalTimestamp_("not a date")).toBe("not a date");
+  });
+});
 
 describe("getEvalData (reads latest result from Drive)", () => {
   test("returns null when the doc has no result file yet", () => {
@@ -421,7 +489,8 @@ describe("getEvalData (reads latest result from Drive)", () => {
     const data = s.getEvalData();
     expect(data.models).toHaveLength(2);
     expect(data.scores.weightedOverall).toBe(3.7); // compiled from the Drive file
-    expect(data.timestamp).toBe("2026-07-29T00:00:00Z");
+    // Saved without an offset (UTC): shown as UTC, not as the viewer's local time
+    expect(data.timestamp).toBe("2026-07-29T00:00:00.123Z");
   });
 
   test("returns null when the query finds a file that can't be read", () => {

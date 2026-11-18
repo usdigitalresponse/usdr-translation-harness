@@ -267,6 +267,44 @@ def _write_to_drive(folder_id, filename, data, properties=None):
     return created["id"]
 
 
+# Drive property the combined result is tagged with (see main.write_combined_result);
+# the editor add-on's findLatestResultFileId_ queries the same one
+EVAL_RESULT_DOCUMENT_PROPERTY = "documentId"
+DRIVE_SEARCH_CORPORA = "allDrives"
+
+
+def _drive_query_value(value):
+    """Escape a value for a Drive search query string."""
+    return value.replace("\\", "\\\\").replace("'", "\\'")
+
+
+def find_latest_eval_result(document_id):
+    """The newest saved combined result for a document, as (payload, file id),
+    or None if there isn't one or results are written locally. Same Drive query
+    as the editor add-on's findLatestResultFileId_."""
+    if not os.environ.get("DRIVE_EVAL_RESULTS_FOLDER_ID"):
+        return None
+    credentials, _ = google.auth.default()
+    service = build("drive", DRIVE_API_VERSION, credentials=credentials)
+    query = (f"properties has {{ key='{EVAL_RESULT_DOCUMENT_PROPERTY}' and "
+             f"value='{_drive_query_value(document_id)}' }} and trashed = false")
+    files = service.files().list(
+        q=query,
+        orderBy="createdTime desc",
+        pageSize=1,
+        fields="files(id)",
+        supportsAllDrives=True,
+        includeItemsFromAllDrives=True,
+        corpora=DRIVE_SEARCH_CORPORA,
+    ).execute().get("files", [])
+    if not files:
+        return None
+    content = service.files().get_media(fileId=files[0]["id"], supportsAllDrives=True).execute()
+    if isinstance(content, bytes):
+        content = content.decode("utf-8")
+    return json.loads(content), files[0]["id"]
+
+
 def _write_to_local(filename, data):
     out_dir = FIXTURES_DIR / "output"
     out_dir.mkdir(parents=True, exist_ok=True)

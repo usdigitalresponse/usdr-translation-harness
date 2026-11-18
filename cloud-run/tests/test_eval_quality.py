@@ -16,6 +16,8 @@ from eval.quality.main import (
     format_translation_for_review, get_active_models, log_structured,
     normalize_inline_blocks, parse_eval_response, run_quality_eval, validate_eval,
     write_combined_result, CRITERIA, EVAL_ROLE, PIPELINE_STAGE, STATUS_FAILED, STATUS_OK,
+    eval_key, latest_result, runs_with_key, all_models_succeeded, rerun_limit,
+    DEFAULT_RERUN_LIMIT, LIMIT_REACHED_MESSAGE,
 )
 from eval.quality.quality_llm import (
     call_llm, load_eval_schema, make_claude_client, make_gemini_client,
@@ -24,7 +26,7 @@ from eval.quality.quality_llm import (
 from eval.quality.quality_loaders import (
     append_result_row, parse_drive_file_id, _extract_structural_text,
     EVAL_RESULTS_HEADERS, EVAL_RESULTS_SHEET_NAME,
-    _load_config_from_sheet, load_config,
+    _load_config_from_sheet, load_config, find_latest_eval_result,
 )
 
 
@@ -85,7 +87,7 @@ class TestEvalQualityEndpoint:
         assert result["translationFileId"] == "abc123"
         assert result["resultLocationId"] == "loc-xyz"
         assert len(result["evaluations"]) == 1
-        mock_run.assert_called_once_with("abc123", None, None)
+        mock_run.assert_called_once_with("abc123", None, None, active_models=None, rubric=None)
 
     @patch("eval.quality.main.append_result_rows")
     @patch("eval.quality.main.write_combined_result", return_value=None)
@@ -97,7 +99,7 @@ class TestEvalQualityEndpoint:
 
         assert status == HTTPStatus.OK
         assert json.loads(body)["translationFileId"] == "FILE_ID_123"
-        mock_run.assert_called_once_with("FILE_ID_123", None, None)
+        mock_run.assert_called_once_with("FILE_ID_123", None, None, active_models=None, rubric=None)
 
     @patch("eval.quality.main.append_result_rows")
     @patch("eval.quality.main.write_combined_result", return_value=None)
@@ -860,3 +862,228 @@ class TestModelConfigChecks:
         with patch.dict("os.environ", {"K_SERVICE": "eval-quality"}):
             with pytest.raises(ValueError, match="MODEL_CONFIG_SHEET_ID is not set"):
                 load_config()
+
+
+# ── Skipping an evaluation when nothing changed ───────────────────────────
+
+MODELS = [{"role": EVAL_ROLE, "provider": "google", "model": "gemini", "active": True},
+          {"role": EVAL_ROLE, "provider": "anthropic", "model": "claude", "active": True}]
+RUBRIC = "Score accuracy 1-5."
+GOOD_EVALS = [{"provider": "anthropic", "model": "claude", "weightedOverallScore": 4.2, "scores": {}}]
+BLOCKS_BODY = {"documentId": "doc-1", "contentHash": "hash-1", "skipIfUnchanged": True,
+               "blocks": [{"id": "b01", "original_text": "Hello", "translated_text": "Hola"}]}
+
+
+def saved_result(**overrides):
+    payload = {"documentId": "doc-1", "evaluatedAt": "2026-11-18T10:00:00",
+               **eval_key("hash-1", MODELS, RUBRIC), "evaluations": GOOD_EVALS}
+    payload.update(overrides)
+    return payload, "saved-file-1"
+
+
+class TestEvalKey:
+    def test_same_inputs_same_key_and_model_order_doesnt_matter(self):
+        assert eval_key("h", MODELS, RUBRIC) == eval_key("h", list(reversed(MODELS)), RUBRIC)
+
+    def test_text_models_and_rubric_each_change_the_key(self):
+        base = eval_key("h", MODELS, RUBRIC)
+        assert eval_key("other", MODELS, RUBRIC) != base
+        assert eval_key("h", MODELS[:1], RUBRIC) != base
+        assert eval_key("h", MODELS, RUBRIC + " Also tone.") != base
+
+    def test_key_fields(self):
+        key = eval_key("h", MODELS, RUBRIC)
+        assert key["contentHash"] == "h"
+        assert key["modelSet"] == ["anthropic/claude", "google/gemini"]
+        assert len(key["rubricHash"]) == 64
+
+
+class TestRunCounting:
+    KEY = eval_key("hash-1", MODELS, RUBRIC)
+
+    def test_counts_runs_of_the_same_input(self):
+        assert runs_with_key(saved_result(runsWithThisKey=7), self.KEY) == 7
+
+    def test_result_saved_before_counts_existed_counts_as_one(self):
+        assert runs_with_key(saved_result(), self.KEY) == 1
+
+    @pytest.mark.parametrize("change", [
+        {"contentHash": "edited"}, {"modelSet": ["anthropic/claude"]}, {"rubricHash": "0" * 64},
+    ])
+    def test_changed_input_starts_over(self, change):
+        assert runs_with_key(saved_result(runsWithThisKey=50, **change), self.KEY) == 0
+
+    def test_result_saved_before_keys_existed_doesnt_count(self):
+        payload, location = saved_result()
+        del payload["modelSet"], payload["rubricHash"]
+        assert runs_with_key((payload, location), self.KEY) == 0
+
+    def test_nothing_saved(self):
+        assert runs_with_key(None, self.KEY) == 0
+
+    def test_all_models_succeeded(self):
+        assert all_models_succeeded(saved_result()[0])
+        assert not all_models_succeeded(saved_result(evaluations=GOOD_EVALS + [{"error": "timeout"}])[0])
+        assert not all_models_succeeded(saved_result(evaluations=[])[0])
+
+    @patch("eval.quality.main.find_latest_eval_result", side_effect=RuntimeError("Drive down"))
+    def test_lookup_failure_means_run_it(self, _find):
+        assert latest_result("doc-1") is None
+
+
+class TestRerunLimitSetting:
+    def test_default(self, monkeypatch):
+        monkeypatch.delenv("EVAL_RERUN_LIMIT", raising=False)
+        assert rerun_limit() == DEFAULT_RERUN_LIMIT == 100
+
+    def test_setting(self, monkeypatch):
+        monkeypatch.setenv("EVAL_RERUN_LIMIT", "25")
+        assert rerun_limit() == 25
+
+    @pytest.mark.parametrize("bad", ["0", "-3", "lots"])
+    def test_bad_setting_uses_default(self, monkeypatch, bad):
+        monkeypatch.setenv("EVAL_RERUN_LIMIT", bad)
+        assert rerun_limit() == DEFAULT_RERUN_LIMIT
+
+
+@patch("eval.quality.main.load_eval_inputs", return_value=(MODELS, RUBRIC))
+@patch("eval.quality.main.append_result_rows")
+@patch("eval.quality.main.write_combined_result", return_value="new-file")
+@patch("eval.quality.main.run_quality_eval", return_value=GOOD_EVALS)
+class TestEndpointReuse:
+    def test_unchanged_returns_saved_result_without_calling_models(self, mock_run, mock_write, mock_rows, _inputs):
+        with patch("eval.quality.main.find_latest_eval_result", return_value=saved_result()):
+            body, status = eval_quality(make_request(BLOCKS_BODY))
+        result = json.loads(body)
+        assert status == HTTPStatus.OK
+        assert result["cached"] is True
+        assert result["limitReached"] is False
+        assert result["evaluatedAt"] == "2026-11-18T10:00:00"
+        assert result["resultLocationId"] == "saved-file-1"
+        assert result["evaluations"] == GOOD_EVALS
+        mock_run.assert_not_called()
+        mock_write.assert_not_called()
+        mock_rows.assert_not_called()
+
+    def test_without_the_flag_the_models_always_run(self, mock_run, mock_write, mock_rows, _inputs):
+        body_without_flag = {k: v for k, v in BLOCKS_BODY.items() if k != "skipIfUnchanged"}
+        with patch("eval.quality.main.find_latest_eval_result", return_value=saved_result()):
+            body, _ = eval_quality(make_request(body_without_flag))
+        assert json.loads(body)["cached"] is False
+        mock_run.assert_called_once_with("doc-1", mock_run.call_args[0][1], "doc-1", active_models=MODELS, rubric=RUBRIC)
+
+    def test_changed_text_runs_and_saves_the_new_key_with_count_one(self, mock_run, mock_write, mock_rows, _inputs):
+        with patch("eval.quality.main.find_latest_eval_result", return_value=saved_result(contentHash="old", runsWithThisKey=9)):
+            body, _ = eval_quality(make_request(BLOCKS_BODY))
+        assert json.loads(body)["cached"] is False
+        mock_run.assert_called_once()
+        assert mock_write.call_args[0][4] == eval_key("hash-1", MODELS, RUBRIC)
+        assert mock_write.call_args.kwargs["runs"] == 1
+
+    def test_run_again_on_unchanged_input_counts_up(self, mock_run, mock_write, mock_rows, _inputs):
+        body_without_flag = {k: v for k, v in BLOCKS_BODY.items() if k != "skipIfUnchanged"}
+        with patch("eval.quality.main.find_latest_eval_result", return_value=saved_result(runsWithThisKey=4)):
+            eval_quality(make_request(body_without_flag))
+        mock_run.assert_called_once()
+        assert mock_write.call_args.kwargs["runs"] == 5
+
+    @pytest.mark.parametrize("skip_flag", [True, False])
+    def test_at_the_limit_no_models_and_the_saved_result_comes_back(self, mock_run, mock_write, mock_rows, _inputs,
+                                                                     skip_flag, monkeypatch):
+        monkeypatch.setenv("EVAL_RERUN_LIMIT", "3")
+        request_body = {**BLOCKS_BODY, "skipIfUnchanged": skip_flag}
+        with patch("eval.quality.main.find_latest_eval_result", return_value=saved_result(runsWithThisKey=3)):
+            body, status = eval_quality(make_request(request_body))
+        result = json.loads(body)
+        assert status == HTTPStatus.OK
+        assert result["limitReached"] is True and result["cached"] is True
+        assert result["evaluations"] == GOOD_EVALS
+        mock_run.assert_not_called()
+        mock_write.assert_not_called()
+
+    def test_under_the_limit_run_again_still_runs(self, mock_run, mock_write, mock_rows, _inputs, monkeypatch):
+        monkeypatch.setenv("EVAL_RERUN_LIMIT", "3")
+        body_without_flag = {k: v for k, v in BLOCKS_BODY.items() if k != "skipIfUnchanged"}
+        with patch("eval.quality.main.find_latest_eval_result", return_value=saved_result(runsWithThisKey=2)):
+            body, _ = eval_quality(make_request(body_without_flag))
+        assert json.loads(body)["limitReached"] is False
+        mock_run.assert_called_once()
+
+    def test_at_the_limit_with_nothing_to_show_is_a_429(self, mock_run, mock_write, mock_rows, _inputs, monkeypatch):
+        monkeypatch.setenv("EVAL_RERUN_LIMIT", "3")
+        failed = saved_result(runsWithThisKey=3, evaluations=[{"provider": "x", "model": "y", "error": "timeout"}])
+        with patch("eval.quality.main.find_latest_eval_result", return_value=failed):
+            body, status = eval_quality(make_request(BLOCKS_BODY))
+        assert status == HTTPStatus.TOO_MANY_REQUESTS
+        assert json.loads(body)["error"] == LIMIT_REACHED_MESSAGE
+        mock_run.assert_not_called()
+
+    def test_edited_text_at_the_limit_runs(self, mock_run, mock_write, mock_rows, _inputs, monkeypatch):
+        monkeypatch.setenv("EVAL_RERUN_LIMIT", "3")
+        with patch("eval.quality.main.find_latest_eval_result", return_value=saved_result(runsWithThisKey=3, contentHash="old")):
+            eval_quality(make_request(BLOCKS_BODY))
+        mock_run.assert_called_once()
+
+    def test_no_content_hash_no_lookup(self, mock_run, mock_write, mock_rows, inputs):
+        body = {k: v for k, v in BLOCKS_BODY.items() if k != "contentHash"}
+        with patch("eval.quality.main.find_latest_eval_result") as find:
+            eval_quality(make_request(body))
+        find.assert_not_called()
+        inputs.assert_not_called()
+        mock_run.assert_called_once()
+
+    def test_setup_failure_is_a_500(self, mock_run, mock_write, mock_rows, inputs):
+        inputs.side_effect = RuntimeError("No active models configured for role 'eval'")
+        body, status = eval_quality(make_request(BLOCKS_BODY))
+        assert status == HTTPStatus.INTERNAL_SERVER_ERROR
+        assert "No active models" in json.loads(body)["error"]
+        mock_run.assert_not_called()
+
+
+class TestWriteCombinedResultKey:
+    @patch("eval.quality.main.write_eval_result", return_value="drive-file-1")
+    def test_stores_model_set_rubric_hash_and_run_count(self, mock_write):
+        key = eval_key("hash-1", MODELS, RUBRIC)
+        write_combined_result("doc-1", "doc-1", "hash-1", GOOD_EVALS, key, runs=4)
+        payload = mock_write.call_args[0][1]
+        assert payload["runsWithThisKey"] == 4
+        assert payload["contentHash"] == "hash-1"
+        assert payload["modelSet"] == key["modelSet"]
+        assert payload["rubricHash"] == key["rubricHash"]
+
+
+class TestEvaluatedAtIsUtc:
+    @patch("eval.quality.main.write_eval_result", return_value="drive-file-1")
+    def test_saved_time_carries_its_utc_offset(self, mock_write):
+        write_combined_result("doc-1", "doc-1", "hash-1", GOOD_EVALS)
+        evaluated_at = mock_write.call_args[0][1]["evaluatedAt"]
+        assert evaluated_at.endswith("+00:00")
+        assert mock_write.call_args[0][2]["evaluatedAt"] == evaluated_at
+
+
+class TestFindLatestEvalResult:
+    def test_none_when_results_are_written_locally(self, monkeypatch):
+        monkeypatch.delenv("DRIVE_EVAL_RESULTS_FOLDER_ID", raising=False)
+        assert find_latest_eval_result("doc-1") is None
+
+    @patch("eval.quality.quality_loaders.google.auth.default", return_value=(MagicMock(), "proj"))
+    @patch("eval.quality.quality_loaders.build")
+    def test_queries_like_the_add_on_and_reads_the_newest(self, mock_build, _auth, monkeypatch):
+        monkeypatch.setenv("DRIVE_EVAL_RESULTS_FOLDER_ID", "folder-1")
+        files = mock_build.return_value.files.return_value
+        files.list.return_value.execute.return_value = {"files": [{"id": "newest"}]}
+        files.get_media.return_value.execute.return_value = json.dumps({"contentHash": "h"}).encode()
+
+        assert find_latest_eval_result("doc-1") == ({"contentHash": "h"}, "newest")
+        params = files.list.call_args.kwargs
+        assert params["q"] == "properties has { key='documentId' and value='doc-1' } and trashed = false"
+        assert params["orderBy"] == "createdTime desc" and params["pageSize"] == 1
+        assert params["supportsAllDrives"] and params["includeItemsFromAllDrives"]
+        assert params["corpora"] == "allDrives"
+
+    @patch("eval.quality.quality_loaders.google.auth.default", return_value=(MagicMock(), "proj"))
+    @patch("eval.quality.quality_loaders.build")
+    def test_none_when_nothing_saved(self, mock_build, _auth, monkeypatch):
+        monkeypatch.setenv("DRIVE_EVAL_RESULTS_FOLDER_ID", "folder-1")
+        mock_build.return_value.files.return_value.list.return_value.execute.return_value = {"files": []}
+        assert find_latest_eval_result("doc-1") is None

@@ -5,7 +5,7 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timezone
 from http import HTTPStatus
 
 import functions_framework
@@ -366,7 +366,7 @@ def write_drift_result(payload):
 
     Returns the storage location id (Drive file id), or None when written
     locally (no Drive configured)."""
-    stored = {"evaluatedAt": datetime.now().isoformat(), **payload}
+    stored = {"evaluatedAt": datetime.now(timezone.utc).isoformat(), **payload}
     return write_eval_result(build_combined_filename(), stored)
 
 

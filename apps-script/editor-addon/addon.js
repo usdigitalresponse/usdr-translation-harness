@@ -767,10 +767,18 @@ function extractDocBlocks_() {
   return blocks;
 }
 
-function buildEvalPayload_(blocks) {
+/**
+ * Request body for the Eval Quality function.
+ * @param {Array} blocks - the doc's English/Spanish rows (extractDocBlocks_)
+ * @param {boolean} [skipIfUnchanged] - ask the function to return the doc's
+ *   saved result instead of re-running the models when the text, models and
+ *   rubric haven't changed (the response then has cached: true)
+ */
+function buildEvalPayload_(blocks, skipIfUnchanged) {
   var json = getTranslationJson_();
   var metadata = (json && json.metadata) || {};
   return {
+    skipIfUnchanged: skipIfUnchanged === true,
     documentId: DocumentApp.getActiveDocument().getId(),
     // Fingerprint of what we're evaluating; the function stores it so a later
     // open can detect the doc changed, without keeping the whole translation.
@@ -912,6 +920,26 @@ function findLatestResultFileId_(documentId) {
   }
 }
 
+// A timestamp that ends in a UTC marker ("Z") or offset ("+00:00")
+var TIMESTAMP_OFFSET_PATTERN = /(Z|[+-]\d{2}:\d{2})$/;
+// Python's isoformat has microseconds; dates keep milliseconds
+var EXTRA_FRACTION_DIGITS_PATTERN = /(\.\d{3})\d+/;
+
+/**
+ * An eval result's saved time as an ISO string the sidebar can show in the
+ * viewer's time zone. The Eval Quality function writes UTC; results saved
+ * before 2026-11-18 have no offset, so a time without one is read as UTC
+ * (otherwise it would show as local time, hours off). Returns the input
+ * unchanged if it can't be parsed.
+ */
+function normalizeEvalTimestamp_(value) {
+  if (!value) return value;
+  var text = String(value).replace(EXTRA_FRACTION_DIGITS_PATTERN, "$1");
+  if (!TIMESTAMP_OFFSET_PATTERN.test(text)) text += "Z";
+  var date = new Date(text);
+  return isNaN(date.getTime()) ? value : date.toISOString();
+}
+
 /**
  * Load and compile a full evaluation from its Drive JSON file. Returns the
  * sidebar-shaped DATA (with contentHash/timestamp from the file), or null if
@@ -940,7 +968,7 @@ function loadEvalFromLocation_(fileId) {
   // The stored file carries a contentHash (for staleness).
   var data = compileEvalData_(succeeded);
   data.contentHash = parsed.contentHash || "";
-  if (parsed.evaluatedAt) data.timestamp = parsed.evaluatedAt;
+  if (parsed.evaluatedAt) data.timestamp = normalizeEvalTimestamp_(parsed.evaluatedAt);
   return data;
 }
 
@@ -966,7 +994,17 @@ function getEvalData() {
   return data;
 }
 
-function evaluateTranslationFromSidebar() {
+/**
+ * Run (or, with skipIfUnchanged, possibly reuse) an evaluation of the doc's
+ * current table and return sidebar-shaped DATA. With skipIfUnchanged (the ↻
+ * button), an unchanged doc gets its saved result back without calling the
+ * models: DATA.cached is true and DATA.timestamp is when it was evaluated.
+ * DATA.limitReached: the same input has been evaluated EVAL_RERUN_LIMIT times
+ * (Eval Quality's setting), so it won't run again until the translation or
+ * rubric changes; the saved result comes back instead.
+ * @param {boolean} [skipIfUnchanged]
+ */
+function evaluateTranslationFromSidebar(skipIfUnchanged) {
   var evalUrl = PropertiesService.getScriptProperties().getProperty(EVAL_FUNCTION_URL_KEY);
   if (!evalUrl) {
     return {
@@ -988,7 +1026,7 @@ function evaluateTranslationFromSidebar() {
     method: "post",
     contentType: "application/json",
     headers: { Authorization: "Bearer " + ScriptApp.getIdentityToken() },
-    payload: JSON.stringify(buildEvalPayload_(blocks)),
+    payload: JSON.stringify(buildEvalPayload_(blocks, skipIfUnchanged)),
     muteHttpExceptions: true,
   };
 
@@ -1026,6 +1064,9 @@ function evaluateTranslationFromSidebar() {
   var data = compileEvalData_(succeeded);
   data.contentHash = hashBlocks_(blocks);
   data.stale = false;
+  data.cached = result.cached === true;
+  data.limitReached = result.limitReached === true;
+  if (data.cached && result.evaluatedAt) data.timestamp = normalizeEvalTimestamp_(result.evaluatedAt);
   return data;
 }
 

@@ -107,16 +107,22 @@ Evaluation is its own process: it scores a translation with an LLM-as-judge and 
 
 ```
 Evaluationsidebar.html
-  └─ evaluateTranslationFromSidebar()
-       ├─ extractDocBlocks_()   reads the English/Spanish table (col 0 / col 1)
-       ├─ POST { documentId, blocks, metadata } → Eval Quality Cloud Run function
-       └─ caches the result in document properties (EVAL_RESULT)
-  └─ getEvalData()              reads the cached result back on open
+  ├─ on open: getEvalData()        the doc's latest saved result, from Drive
+  │                                (queried by the documentId property); marked stale
+  │                                if the table text changed since (content hash)
+  └─ evaluateTranslationFromSidebar(skipIfUnchanged)
+       ├─ extractDocBlocks_()      reads the English/Spanish table (col 0 / col 1)
+       └─ POST { documentId, contentHash, blocks, metadata, skipIfUnchanged }
+            → Eval Quality Cloud Run function, which saves the result to Drive
 ```
 
-The eval function accepts either `blocks` (this path) or `translationJsonUrl` (scores the stored JSON). Results are cached because each run costs an LLM call; reopening the sidebar does not re-evaluate.
+The eval function accepts either `blocks` (this path) or `translationJsonUrl` (scores the stored JSON). Each run calls every active eval model, so:
+- **Opening the sidebar** shows the saved result; it only evaluates automatically the first time (nothing saved yet). If the table text changed since, a note says so.
+- **↻ (refresh)** sends `skipIfUnchanged: true`. If the text, the active eval models and the rubric are all unchanged (and every model succeeded last time), the function returns the saved result without calling the models, and the sidebar shows "Last updated <date>. No new changes. Running again may yield different results." with a **Run again anyway** link.
+- **Run again anyway** sends the request without the flag, so the models run.
+- **Rerun limit:** after the same input has been evaluated 100 times (Eval Quality's `EVAL_RERUN_LIMIT`), the sidebar shows "Last updated <date>. Evaluation limit reached. Update the translation or rubric to run again." with no button, until the translation changes.
 
-Document properties cap values at 9KB. If an evaluation exceeds that, `source_text` and `translated_text` are dropped from the cache so the scores still survive.
+Nothing is stored in document properties.
 
 ## Configuration notes
 

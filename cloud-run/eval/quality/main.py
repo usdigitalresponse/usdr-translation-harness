@@ -1,9 +1,10 @@
+import hashlib
 import json
 import logging
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timezone
 from http import HTTPStatus
 
 import os
@@ -13,7 +14,9 @@ import jsonschema
 
 from quality_llm import call_llm, load_eval_schema, PROVIDER_ANTHROPIC
 from quality_loaders import (
+    EVAL_RESULT_DOCUMENT_PROPERTY,
     append_result_row,
+    find_latest_eval_result,
     load_config,
     load_doc,
     load_translation_json,
@@ -40,6 +43,13 @@ CRITERIA = (
     "active_voice_and_tone",
     "consistency_and_style",
 )
+
+# Runs allowed on unchanged input (same text, models and rubric) per document:
+# a high cap that protects against overuse; reviewers should rarely hit it.
+# Editing the translation (or a rubric / model change) starts a new count.
+RERUN_LIMIT_ENV_VAR = "EVAL_RERUN_LIMIT"
+DEFAULT_RERUN_LIMIT = 100
+LIMIT_REACHED_MESSAGE = "Evaluation limit reached. Update the translation or rubric to run again."
 
 MARKDOWN_JSON_PATTERN = re.compile(r"```(?:json)?\s*\n(.*?)\n\s*```", re.DOTALL)
 
@@ -208,29 +218,96 @@ def build_combined_filename(translation_file_id):
     return f"{safe}_{timestamp}_combined_eval.json"
 
 
-def write_combined_result(translation_file_id, document_id, content_hash, evaluations):
+def eval_key(content_hash, active_models, rubric):
+    """What an evaluation depends on: the text (the add-on's content hash), the
+    active eval models and the rubric. A saved result with the same key would
+    get the same scores, so it's reused instead of calling the models again."""
+    return {
+        "contentHash": content_hash,
+        "modelSet": sorted(f'{m["provider"]}/{m["model"]}' for m in active_models),
+        "rubricHash": hashlib.sha256(rubric.encode("utf-8")).hexdigest(),
+    }
+
+
+def load_eval_inputs():
+    """The active eval models and the rubric text."""
+    config = load_config()
+    active_models = get_active_models(config, EVAL_ROLE)
+    if not active_models:
+        raise RuntimeError(f"No active models configured for role '{EVAL_ROLE}'")
+    return active_models, load_doc(RUBRIC_DOC_ENV_VAR, RUBRIC_LOCAL_PATH_ENV_VAR)
+
+
+def rerun_limit():
+    """EVAL_RERUN_LIMIT, or DEFAULT_RERUN_LIMIT if unset or not a positive number."""
+    raw = os.environ.get(RERUN_LIMIT_ENV_VAR)
+    if raw:
+        try:
+            if int(raw) > 0:
+                return int(raw)
+        except ValueError:
+            pass
+        logger.warning("%s=%r isn't a positive number; using %d", RERUN_LIMIT_ENV_VAR, raw, DEFAULT_RERUN_LIMIT)
+    return DEFAULT_RERUN_LIMIT
+
+
+def latest_result(document_id):
+    """The document's latest saved result, as (payload, file id), or None. Only
+    the latest counts, since that's what the add-on shows. A lookup failure is
+    logged and treated as no result, so the evaluation runs."""
+    try:
+        return find_latest_eval_result(document_id)
+    except Exception:
+        logger.exception("Couldn't look up the latest evaluation for %s; running it", document_id)
+        return None
+
+
+def runs_with_key(latest, key):
+    """How many times this exact input (key) has been evaluated, per the latest
+    result: its runsWithThisKey if the key matches (1 for a result saved before
+    counts existed), else 0."""
+    if not latest:
+        return 0
+    payload = latest[0]
+    if any(payload.get(field) != value for field, value in key.items()):
+        return 0
+    return payload.get("runsWithThisKey", 1)
+
+
+def all_models_succeeded(payload):
+    evaluations = payload.get("evaluations") or []
+    return bool(evaluations) and not any("error" in e for e in evaluations)
+
+
+def write_combined_result(translation_file_id, document_id, content_hash, evaluations, key=None,
+                          runs=1):
     """Write one file holding every model's full result, for the add-on to load.
 
     Stores content_hash (a fingerprint of the evaluated text, supplied by the
     caller) rather than the translation itself, so the add-on can detect a
     changed doc without the result file duplicating the whole translation.
+    With key (see eval_key), also stores the model set and rubric hash, so a
+    repeat request with the same key can reuse this result, and runs: how many
+    times this key has been evaluated, counting this run (see RERUN_LIMIT).
 
     Returns the storage location id (Drive file id), or None when results are
     written locally (no Drive). The evaluations are returned inline in the
     response either way; the persisted file is what lets a later sidebar reopen
     reload this run from Drive without re-evaluating.
     """
-    evaluated_at = datetime.now().isoformat()
+    # With its UTC offset ("+00:00"): the add-on shows it in the viewer's time zone
+    evaluated_at = datetime.now(timezone.utc).isoformat()
     payload = {
         "translationFileId": translation_file_id,
         "documentId": document_id,
         "evaluatedAt": evaluated_at,
         "contentHash": content_hash,
+        **({"modelSet": key["modelSet"], "rubricHash": key["rubricHash"], "runsWithThisKey": runs} if key else {}),
         "evaluations": evaluations,
     }
     # Tag with the source doc so the add-on can query Drive for a doc's latest
     # result. Only set when there is a documentId (the add-on/inline path).
-    properties = {"documentId": document_id, "evaluatedAt": evaluated_at} if document_id else None
+    properties = {EVAL_RESULT_DOCUMENT_PROPERTY: document_id, "evaluatedAt": evaluated_at} if document_id else None
     return write_eval_result(build_combined_filename(translation_file_id), payload, properties)
 
 
@@ -258,11 +335,12 @@ def normalize_inline_blocks(blocks, metadata=None):
     return {"blocks": normalized, "metadata": metadata or {}}
 
 
-def run_quality_eval(translation_file_id, translation_json=None, document_id=None):
-    config = load_config()
-    active_models = get_active_models(config, EVAL_ROLE)
-    if not active_models:
-        raise RuntimeError(f"No active models configured for role '{EVAL_ROLE}'")
+def run_quality_eval(translation_file_id, translation_json=None, document_id=None,
+                     active_models=None, rubric=None):
+    """Evaluate with every active model. active_models and rubric: already
+    loaded by the caller (load_eval_inputs), or loaded here."""
+    if active_models is None or rubric is None:
+        active_models, rubric = load_eval_inputs()
     logger.info("Active eval models: %s", [m["model"] for m in active_models])
 
     if translation_json is None:
@@ -270,7 +348,6 @@ def run_quality_eval(translation_file_id, translation_json=None, document_id=Non
     else:
         logger.info("Evaluating %d inline blocks", len(translation_json["blocks"]))
 
-    rubric = load_doc(RUBRIC_DOC_ENV_VAR, RUBRIC_LOCAL_PATH_ENV_VAR)
     prompt = build_eval_prompt(rubric, translation_json)
     logger.info("Eval prompt assembled (%d characters)", len(prompt))
 
@@ -317,7 +394,17 @@ def eval_quality(request):
         translation JSON, or
       - {"blocks": [{"id", "original_text", "translated_text"}, ...]} — scores
         the supplied text directly, used by the editor add-on to evaluate the
-        reviewer's current doc content. Optional "documentId" and "metadata".
+        reviewer's current doc content. Optional "documentId", "contentHash"
+        and "metadata".
+
+    With documentId and contentHash, each result records how many times the
+    same input (text, active eval models, rubric) has been evaluated. With
+    "skipIfUnchanged": true, unchanged input is answered from the latest saved
+    result without calling the models ("cached": true, plus the saved
+    "evaluatedAt"); without it, the models run. Either way, once the same
+    input has run EVAL_RERUN_LIMIT times (default 100), the models aren't
+    called again: the saved result comes back with "limitReached": true (or a
+    429 if no model succeeded last time) until the input changes.
     """
     body = request.get_json(silent=True) or {}
     translation_json_url = body.get("translationJsonUrl")
@@ -342,8 +429,48 @@ def eval_quality(request):
         except ValueError as e:
             return json.dumps({"error": str(e)}), HTTPStatus.BAD_REQUEST
 
+    document_id = body.get("documentId")
+    content_hash = body.get("contentHash")
+    active_models = rubric = key = None
+    prior_runs = 0
+    if blocks and document_id and content_hash:
+        try:
+            active_models, rubric = load_eval_inputs()
+        except Exception as e:
+            logger.exception("Quality eval setup failed")
+            return json.dumps({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
+        key = eval_key(content_hash, active_models, rubric)
+        latest = latest_result(document_id)
+        prior_runs = runs_with_key(latest, key)
+        if prior_runs:
+            payload, location_id = latest
+            limit_reached = prior_runs >= rerun_limit()
+            saved_scores = [e for e in payload.get("evaluations") or [] if "error" not in e]
+            if limit_reached and not saved_scores:
+                logger.warning("Evaluation limit reached for %s (%d runs); not calling the models",
+                               document_id, prior_runs)
+                return json.dumps({"error": LIMIT_REACHED_MESSAGE, "limitReached": True}), \
+                    HTTPStatus.TOO_MANY_REQUESTS
+            if limit_reached or (body.get("skipIfUnchanged") is True and all_models_succeeded(payload)):
+                if limit_reached:
+                    logger.warning("Evaluation limit reached for %s (%d runs); returning the saved result",
+                                   document_id, prior_runs)
+                else:
+                    logger.info("Nothing changed since the evaluation of %s at %s; returning it without "
+                                "calling the models", document_id, payload.get("evaluatedAt"))
+                return json.dumps({
+                    "status": "ok",
+                    "cached": True,
+                    "limitReached": limit_reached,
+                    "evaluatedAt": payload.get("evaluatedAt"),
+                    "translationFileId": translation_file_id,
+                    "resultLocationId": location_id,
+                    "evaluations": payload["evaluations"],
+                }), HTTPStatus.OK
+
     try:
-        evaluations = run_quality_eval(translation_file_id, translation_json, body.get("documentId"))
+        evaluations = run_quality_eval(translation_file_id, translation_json, document_id,
+                                       active_models=active_models, rubric=rubric)
     except Exception as e:
         logger.exception("Quality eval run failed")
         return json.dumps({"error": str(e)}), HTTPStatus.INTERNAL_SERVER_ERROR
@@ -363,7 +490,8 @@ def eval_quality(request):
     result_location_id = None
     try:
         result_location_id = write_combined_result(
-            translation_file_id, body.get("documentId"), body.get("contentHash"), evaluations
+            translation_file_id, document_id, content_hash, evaluations, key,
+            runs=(prior_runs + 1) if key else 1,
         )
     except Exception:
         logger.exception("Failed to write combined result file")
@@ -373,6 +501,8 @@ def eval_quality(request):
     status = "partial" if len(succeeded) < len(evaluations) else "ok"
     return json.dumps({
         "status": status,
+        "cached": False,
+        "limitReached": False,
         "translationFileId": translation_file_id,
         "resultLocationId": result_location_id,
         "evaluations": evaluations,
