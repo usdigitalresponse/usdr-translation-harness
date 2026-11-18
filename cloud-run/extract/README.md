@@ -7,10 +7,30 @@ Extracts structured text blocks from source documents (PDF, Google Docs, DOCX) f
 1. Receives a document reference from the Orchestrator
 2. Downloads the file from Google Drive
 3. For PDFs: pre-extracts text with pdfplumber, then sends pages + pre-extracted text to an LLM for structured block extraction. Scanned/image-based PDFs without an embedded text layer fall back to vision-only extraction.
-4. For Google Docs / DOCX: extracts text directly (no LLM call needed)
+4. For Google Docs / DOCX: reads the text directly (no LLM call needed), one block per paragraph. See "What's read from Google Docs and Word files" below
 5. Validates the output against a JSON schema
 6. Writes the extraction JSON to Google Drive
 7. Publishes a Pub/Sub message so the Translate function picks it up
+
+## What's read from Google Docs and Word files
+
+Both formats read the same parts (`document_text.py`), so a document gives the same blocks either way. Google Docs are read through the Docs API (`documents.get` with every tab and without pending suggestions), not Drive's plain-text export, which includes comments and footnote markers.
+
+**Read**
+- Body paragraphs, in order, one block each. A line break inside a paragraph (Shift+Enter) stays inside its block, so lines like an address are translated together
+- Tables: row by row, each cell's paragraphs in order (a block each); a merged cell once; tables inside cells
+- Google Docs: every tab, in order (child tabs after their parent)
+- Google Docs smart chips, as displayed: people (name, or email if no name is shown), file and link chips (title), dates, dropdowns (the selected option)
+- Word: content controls (dropdowns, date pickers, text controls) as displayed, field results (e.g. an inserted date), hyperlink text
+- The document **as it currently stands**: pending suggestions (Google Docs) and tracked changes (Word) are ignored, so suggested insertions are left out and suggested deletions are kept. Accept or reject them before submitting
+
+**Not read**
+- Comments
+- Headers, footers, footnotes (and footnote markers)
+- Text boxes, drawings, equations, images
+- Table of contents (it repeats the headings), Google Docs tab titles
+
+A Google Doc element the reader doesn't recognize is logged as a warning ("Google Doc paragraph element not read"), so a new kind of chip shows up in the logs instead of disappearing silently.
 
 ## HTTP interface
 
@@ -28,6 +48,7 @@ Fire-and-forget: the function returns immediately and runs extraction on a backg
 | `main.py` | HTTP entrypoint, orchestration, Pub/Sub publishing |
 | `llm.py` | LLM provider calls (Claude, Gemini) via Vertex AI or the direct APIs |
 | `loaders.py` | Google Drive and config I/O, output writing |
+| `document_text.py` | Text of Google Docs (Docs API) and Word files: what's read and what isn't |
 | `failure_reasons.py` | Plain-language failure reasons for the Chat notice |
 | `notifier.py` | Google Chat notice when nothing goes on to Translate |
 | `extraction-schema-claude.json` | JSON schema for validating Claude extraction output |

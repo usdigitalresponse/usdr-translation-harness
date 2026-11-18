@@ -224,7 +224,7 @@ class TestHandOff:
 class TestOtherNotices:
     @patch("extract.main.notify_extraction_failed")
     @patch("extract.main.log_extraction_failure")
-    @patch("extract.main.fetch_text_from_drive", side_effect=drive_error(404))
+    @patch("extract.main.fetch_paragraphs_from_drive", side_effect=drive_error(404))
     def test_text_fetch_failure(self, _fetch, fail_row, notify):
         run_text_extraction("src", "a.docx", MIME_DOCX)
         assert fail_row.call_args[0][4].startswith("Text fetch failed: HttpError: ")

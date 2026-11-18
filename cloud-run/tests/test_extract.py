@@ -399,9 +399,8 @@ class TestPublishExtractionComplete:
 
 
 class TestTextToExtractionJson:
-    def test_splits_paragraphs_into_blocks(self):
-        text = "First paragraph.\n\nSecond paragraph.\n\nThird."
-        result = text_to_extraction_json(text, "file-123")
+    def test_one_block_per_paragraph(self):
+        result = text_to_extraction_json(["First paragraph.", "Second paragraph.", "Third."], "file-123")
         assert result["sourceType"] == "text"
         assert result["sourceFileId"] == "file-123"
         assert len(result["blocks"]) == 3
@@ -410,7 +409,7 @@ class TestTextToExtractionJson:
         assert result["blocks"][2]["text"] == "Third."
 
     def test_blocks_have_correct_structure(self):
-        result = text_to_extraction_json("Hello world.", "file-123")
+        result = text_to_extraction_json(["Hello world."], "file-123")
         block = result["blocks"][0]
         assert block["id"] == "block-1"
         assert block["role"] == "body"
@@ -418,13 +417,12 @@ class TestTextToExtractionJson:
         assert "spatial" not in block
         assert "typography" not in block
 
-    def test_skips_blank_lines(self):
-        text = "Line one.\n\n\n\n\nLine two."
-        result = text_to_extraction_json(text, "file-123")
-        assert len(result["blocks"]) == 2
+    def test_line_breaks_stay_inside_the_block(self):
+        result = text_to_extraction_json(["123 Main St\nSuite 4", "Next."], "file-123")
+        assert [b["text"] for b in result["blocks"]] == ["123 Main St\nSuite 4", "Next."]
 
     def test_omits_pdf_specific_fields(self):
-        result = text_to_extraction_json("Some text.", "file-123")
+        result = text_to_extraction_json(["Some text."], "file-123")
         assert "page_metadata" not in result
         assert "non_translatable_elements" not in result
         assert "translation_warnings" not in result
@@ -655,3 +653,4 @@ class TestSubmitterInLogs:
         run_extraction("src", "a.pdf", MIME_PDF, submitted_by_email="person@example.gov")
         entries = self._entries(capsys)
         assert entries[-1]["submittedByEmail"] == "person@example.gov"
+
