@@ -47,6 +47,12 @@
     .meta { margin-top:6px; font-size:11px; color:var(--ink-faint); }
     .stale-note { margin:0 0 12px; padding:8px 10px; font-size:12px; line-height:1.4; border-radius:6px;
       color:var(--yellow-ink); background:var(--yellow-bg); border:1px solid var(--yellow-bdr); }
+    /* Shown when ↻ found nothing changed and returned the saved result */
+    .cached-note { margin:0 0 12px; padding:8px 10px; font-size:12px; line-height:1.4; border-radius:6px;
+      color:var(--ink); background:var(--raise); border:1px solid var(--line); }
+    .link-btn { padding:0; border:none; background:none; font:inherit; color:var(--link);
+      text-decoration:underline; cursor:pointer; }
+    .link-btn:hover { color:var(--accent-hover); }
 
     /* Rubric link row */
     .rubric-row { margin-top:8px; display:flex; align-items:center; gap:10px; position:relative; }
@@ -404,8 +410,9 @@
 
   function attachTopBarListeners() {
     var refreshIconBtn = document.getElementById('refreshIconBtn');
+    // ↻ asks to skip the models if nothing changed; "Run again anyway" doesn't
     if (refreshIconBtn) refreshIconBtn.addEventListener('click', function() {
-      runEvaluation(EVAL_RERUN_MSG);
+      runEvaluation(EVAL_RERUN_MSG, true);
     });
   }
 
@@ -510,6 +517,14 @@
       html += '<div class="stale-note">This document has changed since it was last evaluated. '
         + 'Click the <span class="material-symbols-outlined" aria-hidden="true">refresh</span> refresh button above to re-evaluate.</div>';
     }
+    if (DATA.cached) {
+      var updated = ts ? 'Last updated ' + esc(ts) + '. ' : '';
+      html += '<div class="cached-note" role="status">' + updated + (DATA.limitReached
+        ? 'Evaluation limit reached. Update the translation or rubric to run again.'
+        : 'No new changes. Running again may yield different results. '
+          + '<button type="button" class="link-btn" id="runAnywayBtn">Run again anyway</button>')
+        + '</div>';
+    }
     html += '<section>';
     if (fallback) {
       html += '<div class="empty-sec">The model\'s response for this evaluation couldn\'t be read. Click the <span class="material-symbols-outlined" aria-hidden="true">refresh</span> refresh button above to run it again.</div>';
@@ -534,6 +549,10 @@
     html += '</section>';
 
     document.getElementById('content').innerHTML = html;
+    var runAnywayBtn = document.getElementById('runAnywayBtn');
+    if (runAnywayBtn) runAnywayBtn.addEventListener('click', function() {
+      runEvaluation(EVAL_RERUN_MSG, false);
+    });
   }
 
   function renderEmpty() {
@@ -562,7 +581,9 @@
 
   // `statusMsg` separates the first evaluation of a doc from an explicit re-run
   // via ↻ — on the boot path there is no cached result to re-evaluate.
-  function runEvaluation(statusMsg) {
+  // `skipIfUnchanged`: return the saved result if the text, models and rubric
+  // haven't changed (↻), instead of calling the models again.
+  function runEvaluation(statusMsg, skipIfUnchanged) {
     document.getElementById('content').innerHTML = '<div class="stage">' + esc(statusMsg)
       + '<div class="hint">This can take up to a minute.</div></div>';
     google.script.run
@@ -579,7 +600,7 @@
         document.getElementById('content').innerHTML = '<div class="stage"><strong>Evaluation failed</strong>'
           + esc(err && err.message ? err.message : err) + '</div>';
       })
-      .evaluateTranslationFromSidebar();
+      .evaluateTranslationFromSidebar(skipIfUnchanged === true);
   }
 
   function boot() {

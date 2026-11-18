@@ -5,6 +5,7 @@ LLM-as-judge quality evaluation of translations. Scores translations against a f
 ## How it works
 
 1. Receives either a translation JSON URL or inline blocks
+   - With inline blocks, a `documentId` and a `contentHash`: if nothing has changed since the document's latest saved result, returns that result without calling the models (see "Skipping a repeat evaluation" below)
 2. Builds an evaluation prompt using the rubric (dimensions and weights are defined in the prompt Google Doc)
 3. Calls the LLM for evaluation
 4. Validates the output against a JSON schema
@@ -18,11 +19,26 @@ Two input modes:
 POST { translationJsonUrl }
 → 200 with evaluations (scores the stored translation JSON)
 
-POST { blocks, documentId?, metadata? }
+POST { blocks, documentId?, contentHash?, metadata?, skipIfUnchanged? }
 → 200 with evaluations (scores the provided blocks directly)
 ```
 
 The Editor Add-on uses the second mode to evaluate the reviewer's current doc content (post-edits), not the stored JSON.
+
+Responses include `"cached": true|false`. When `true`, the evaluations are the document's saved result (with its original `evaluatedAt`), not a new run.
+
+## Skipping a repeat evaluation
+
+Each evaluation calls every active eval model, so a repeat click on an unchanged document would bill them all again. The result depends on three things, saved with each result file:
+- `contentHash`: the add-on's fingerprint of the English/Spanish table text
+- `modelSet`: the active eval models (provider/model, sorted)
+- `rubricHash`: a SHA-256 of the rubric text
+
+Opt-in: when a blocks request has `"skipIfUnchanged": true` with a `documentId` and `contentHash`, the function looks up the document's **latest** saved result (the same Drive query the add-on uses). If all three match and every model succeeded, it returns that result: no model calls, no new results-sheet rows. Otherwise (text, models or rubric changed, a model failed last time, or a result saved before these fields existed) it runs as usual. Without the flag it always runs. A failed lookup is logged and the evaluation runs.
+
+The add-on sends the flag on ↻ only. A cached response shows "Last updated <date>. No new changes. Running again may yield different results." with a "Run again anyway" link, which re-sends without the flag.
+
+**Rerun limit:** each saved result also records `runsWithThisKey`, how many times that exact input (text, models, rubric) has been evaluated. Once it reaches `EVAL_RERUN_LIMIT` (optional env var, default 100), the models aren't called again for that input, with or without the flag: the saved result comes back with `"limitReached": true` (or a 429 with the same message if no model succeeded last time), and the sidebar shows "Evaluation limit reached. Update the translation or rubric to run again." Any change to the text, models or rubric starts a new count. A high cap to protect against overuse; reviewers shouldn't normally reach it. Runs where every model failed aren't saved, so they don't count.
 
 ## Files
 
