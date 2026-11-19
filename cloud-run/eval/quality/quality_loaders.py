@@ -34,6 +34,23 @@ REQUIRED_CONFIG_COLUMNS = ("role", "provider", "model", "active")
 # pipeline_stage_status metric counts every entry that has one as a stage run.
 INPUT_PROBLEM_PREFIX = "Quality eval input problem"
 INPUT_MODEL_CONFIG = "model_config"
+INPUT_SETTINGS = "settings"
+
+# The Settings tab of the Model Config sheet (admin-adjustable limits). A
+# missing tab or a missing / invalid value falls back to the default, logged as
+# an input problem: a settings problem never stops an evaluation. Same tab and
+# rules as extract/loaders.py and translate/loaders.js.
+SETTINGS_SHEET_RANGE = "Settings"
+SETTING_NAME_COLUMN = "setting"
+SETTING_VALUE_COLUMN = "value"
+SETTING_DEFAULTS = {
+    "green_max_pages": 2,
+    "yellow_max_pages": 5,
+    "green_max_blocks": 120,
+    "yellow_max_blocks": 200,
+    "words_per_page": 500,
+    "eval_rerun_limit": 100,
+}
 
 EVAL_RESULTS_SHEET_NAME = "EvalQuality"
 EVAL_RESULTS_SHEET_RANGE = f"{EVAL_RESULTS_SHEET_NAME}!A:L"
@@ -202,6 +219,49 @@ def _load_config_from_sheet(sheet_id):
 
 def _load_config_from_fixture():
     return json.loads((FIXTURES_DIR / "config.json").read_text(encoding="utf-8"))
+
+
+def _settings_from_rows(rows):
+    """Settings from the tab's rows (row 1 = headers), defaults where missing or invalid."""
+    settings = dict(SETTING_DEFAULTS)
+    headers = [h.strip().lower() for h in rows[0]] if rows else []
+    if SETTING_NAME_COLUMN not in headers or SETTING_VALUE_COLUMN not in headers:
+        log_input_problem(INPUT_SETTINGS, f"the {SETTINGS_SHEET_RANGE} tab needs '{SETTING_NAME_COLUMN}' and "
+                          f"'{SETTING_VALUE_COLUMN}' columns in row 1; using the defaults", found_headers=headers)
+        return settings
+    name_col, value_col = headers.index(SETTING_NAME_COLUMN), headers.index(SETTING_VALUE_COLUMN)
+    for row in rows[1:]:
+        name = row[name_col].strip().lower() if name_col < len(row) else ""
+        if name not in SETTING_DEFAULTS:
+            continue
+        raw = row[value_col].strip() if value_col < len(row) else ""
+        try:
+            value = int(raw)
+        except ValueError:
+            value = 0
+        if value > 0:
+            settings[name] = value
+        else:
+            log_input_problem(INPUT_SETTINGS, f"{name} = {raw!r} isn't a positive whole number; using the "
+                              f"default, {SETTING_DEFAULTS[name]}", setting=name)
+    return settings
+
+
+def load_settings():
+    """The Settings tab as {setting: int}, defaults for anything missing or
+    invalid. Never raises. Without a Model Config sheet, the defaults."""
+    sheet_id = os.environ.get("MODEL_CONFIG_SHEET_ID")
+    if not sheet_id:
+        return dict(SETTING_DEFAULTS)
+    try:
+        credentials, _ = google.auth.default()
+        service = build("sheets", SHEETS_API_VERSION, credentials=credentials)
+        rows = service.spreadsheets().values().get(
+            spreadsheetId=sheet_id, range=SETTINGS_SHEET_RANGE).execute().get("values", [])
+    except Exception as e:
+        log_input_problem(INPUT_SETTINGS, f"couldn't read the {SETTINGS_SHEET_RANGE} tab ({e}); using the defaults")
+        return dict(SETTING_DEFAULTS)
+    return _settings_from_rows(rows)
 
 
 def load_config():

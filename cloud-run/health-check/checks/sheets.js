@@ -1,5 +1,5 @@
 const rules = require("../rules");
-const { ok, problem } = require("../results");
+const { ok, problem, STATUS_PROBLEM } = require("../results");
 const { valuesOf } = require("../settings");
 const { describeAccessError } = require("./access-errors");
 const { tabRange, readValues, headerMismatch, missingColumns, normalize, columnLetter } = require("./sheet-utils");
@@ -106,6 +106,65 @@ async function checkModelConfig({ settings, clients }) {
   return results;
 }
 
+// ── Check: Settings tab (admin-adjustable limits) ─────────────────────────
+
+/**
+ * The Settings tab in each Model Config sheet: present, with setting / value
+ * columns, every known setting a positive whole number, and each green limit
+ * below its yellow one. The services fall back to defaults for anything
+ * missing or invalid, so these are reported as problems but nothing stops.
+ */
+async function checkSettings({ settings, clients }) {
+  const CHECK = "Settings";
+  const results = [];
+  for (const { value: sheetId } of distinctSettings(settings, rules.MODEL_CONFIG_SHEET_ENV)) {
+    const resource = `${rules.SETTINGS_TAB} tab`;
+    let rows;
+    try {
+      rows = await readValues(clients.sheets, sheetId, tabRange(rules.SETTINGS_TAB, "A:C"));
+    } catch (err) {
+      results.push(problem(CHECK, resource, "settings_unreadable", describeAccessError(err, "sheet", sheetId)));
+      continue;
+    }
+    const [header = [], ...data] = rows;
+    const missing = missingColumns(header, rules.SETTING_COLUMNS);
+    if (missing.length) {
+      results.push(problem(CHECK, resource, "settings_missing_columns", `Missing column(s): ${missing.join(", ")}.`));
+      continue;
+    }
+    const col = Object.fromEntries(header.map((h, i) => [normalize(h), i]));
+    const values = {};
+    const invalid = [];
+    for (const row of data) {
+      const name = normalize(row[col.setting]);
+      if (!(name in rules.SETTING_DEFAULTS)) continue;
+      const raw = String(row[col.value] ?? "").trim();
+      if (/^\d+$/.test(raw) && Number(raw) > 0) values[name] = Number(raw);
+      else invalid.push(`${name} = "${raw}"`);
+    }
+    if (invalid.length) {
+      results.push(problem(CHECK, resource, "settings_invalid",
+        `Not a positive whole number (the default is used): ${invalid.join(", ")}.`));
+    }
+    const absent = Object.keys(rules.SETTING_DEFAULTS).filter((n) => !(n in values) && !invalid.some((i) => i.startsWith(`${n} `)));
+    if (absent.length) {
+      results.push(problem(CHECK, resource, "settings_missing",
+        `Not set (the default is used): ${absent.map((n) => `${n} (${rules.SETTING_DEFAULTS[n]})`).join(", ")}.`));
+    }
+    const effective = { ...rules.SETTING_DEFAULTS, ...values };
+    for (const [green, yellow] of rules.SETTING_ORDER) {
+      if (effective[green] >= effective[yellow]) {
+        results.push(problem(CHECK, resource, "settings_order",
+          `${green} (${effective[green]}) should be below ${yellow} (${effective[yellow]}).`));
+      }
+    }
+    if (!results.some((r) => r.status === STATUS_PROBLEM && r.resource === resource)) {
+      results.push(ok(CHECK, resource, Object.entries(effective).map(([k, v]) => `${k}=${v}`).join(", ")));
+    }
+  }
+  return results;
+}
+
 // ── Check 5: Processing Log ───────────────────────────────────────────────
 
 async function checkProcessingLog({ settings, clients, now = Date.now() }) {
@@ -205,6 +264,7 @@ module.exports = {
   checkGlossary,
   checkEvalResults,
   checkModelConfig,
+  checkSettings,
   checkProcessingLog,
   checkRefinementLog,
   glossariesToCheck,

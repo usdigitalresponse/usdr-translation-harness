@@ -88,6 +88,10 @@ function baseSheets() {
       ["plain-language-eval", "google", "gemini-x", "YES"],
       ["eval", "anthropic", "claude-x", "YES"],
     ],
+    [`${IDS.modelConfig}|'Settings'!A:C`]: [
+      ["setting", "value", "notes"],
+      ...Object.entries(rules.SETTING_DEFAULTS).map(([k, v]) => [k, String(v), ""]),
+    ],
     [`${IDS.processingLog}|'ProcessingLog'!A:L`]: [
       rules.PROCESSING_LOG_HEADERS,
       ["id1", "flyer.pdf", toSerial(NOW - 3600 * 1000), "triggered", 100, "", "", "", "", "a@md.gov"],
@@ -271,7 +275,8 @@ describe("Services check", () => {
   test("services pointing at different Model Config sheets", async () => {
     const env = baseEnv();
     env.extract.MODEL_CONFIG_SHEET_ID = "sheet-other";
-    const sheets = { ...baseSheets(), "sheet-other|Config": baseSheets()[`${IDS.modelConfig}|Config`] };
+    const sheets = { ...baseSheets(), "sheet-other|Config": baseSheets()[`${IDS.modelConfig}|Config`],
+      "sheet-other|'Settings'!A:C": baseSheets()[`${IDS.modelConfig}|'Settings'!A:C`] };
     const outcome = await run({ env, sheets });
     expect(codes(outcome)).toEqual(["setting_mismatch"]);
   });
@@ -349,6 +354,34 @@ describe("Model Config check", () => {
     const sheets = baseSheets();
     sheets[`${IDS.modelConfig}|Config`][0] = ["role", "provider", "model"];
     expect(codes(await run({ sheets }))).toEqual(["model_config_missing_columns"]);
+  });
+});
+
+describe("Settings check", () => {
+  const SETTINGS_KEY = `${IDS.modelConfig}|'Settings'!A:C`;
+  const withSettings = (rows) => ({ ...baseSheets(), [SETTINGS_KEY]: rows });
+
+  test("missing tab: reported, services use the defaults", async () => {
+    const sheets = baseSheets();
+    delete sheets[SETTINGS_KEY];
+    expect(codes(await run({ sheets }))).toEqual(["settings_unreadable"]);
+  });
+
+  test("invalid and missing values, and a green above its yellow", async () => {
+    const outcome = await run({ sheets: withSettings([
+      ["setting", "value"],
+      ["green_max_pages", "6"], ["yellow_max_pages", "5"],
+      ["green_max_blocks", "lots"],
+    ]) });
+    expect(codes(outcome)).toEqual(["settings_invalid", "settings_missing", "settings_order"]);
+    expect(outcome.problems[0].detail).toContain('green_max_blocks = "lots"');
+    expect(outcome.problems[1].detail).toContain("yellow_max_blocks (200)");
+    expect(outcome.problems[1].detail).not.toContain("green_max_blocks");
+    expect(outcome.problems[2].detail).toBe("green_max_pages (6) should be below yellow_max_pages (5).");
+  });
+
+  test("wrong headers", async () => {
+    expect(codes(await run({ sheets: withSettings([["name", "number"]]) }))).toEqual(["settings_missing_columns"]);
   });
 });
 

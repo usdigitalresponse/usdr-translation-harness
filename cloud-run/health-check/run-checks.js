@@ -6,7 +6,7 @@ const { problem, STATUS_PROBLEM } = require("./results");
 const { checkServices } = require("./checks/services");
 const { checkDocs } = require("./checks/docs");
 const {
-  checkGlossary, checkModelConfig, checkProcessingLog, checkRefinementLog, checkEvalResults,
+  checkGlossary, checkModelConfig, checkSettings, checkProcessingLog, checkRefinementLog, checkEvalResults,
 } = require("./checks/sheets");
 const { checkDriveFolders, checkStatutes, checkPubSub } = require("./checks/infrastructure");
 const { checkLoggedProblems } = require("./checks/logs");
@@ -35,6 +35,7 @@ const CHECKS = [
   { name: "Prompt and rubric docs", run: checkDocs },
   { name: "Glossary", run: checkGlossary },
   { name: "Model Config", run: checkModelConfig },
+  { name: "Settings", run: checkSettings },
   { name: "Processing Log", run: checkProcessingLog },
   { name: "Orchestrator queue", run: checkQueue },
   { name: "Refinement log", run: checkRefinementLog },

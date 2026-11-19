@@ -41,6 +41,7 @@ jest.mock("../translate/loaders.js", () => {
     loadSheetTable: jest.fn(),
     loadExtractionJson: jest.fn(),
     loadConfig: jest.fn(),
+    loadSettings: jest.fn().mockResolvedValue({ green_max_pages: 2, yellow_max_pages: 5, green_max_blocks: 120, yellow_max_blocks: 200, words_per_page: 500, eval_rerun_limit: 100 }),
     loadStatutes: jest.fn().mockResolvedValue([]),
     loadStatuteUrls: jest.fn().mockReturnValue({}),
     writeOutput: jest.fn(),
@@ -285,6 +286,7 @@ describe("translate", () => {
       contentType: "public_flyer",
       provider: "anthropic",
       model: "claude-sonnet-4-6",
+      size: { blocks: 1 },  // an extraction made before Extract's size check: just the count
     });
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -408,6 +410,48 @@ describe("translate", () => {
     const result = res.json.mock.calls[0][0];
     expect(result.retry).toBe(false);
     expect(result.translations[0].error).toContain("failed after translating");
+  });
+
+  describe("pilot size limit backstop", () => {
+    const { loadSettings } = require("../translate/loaders.js");
+    const blocks = (n) => Array.from({ length: n }, (_, i) => ({ id: `b${i}`, text: "x", translate: true }));
+    function setup(extraction) {
+      loadExtractionJson.mockResolvedValue(extraction);
+      loadDoc.mockResolvedValue("Base prompt");
+      loadSheetTable.mockResolvedValue(EMPTY_GLOSSARY);
+      loadConfig.mockResolvedValue({
+        models: [{ role: "translate", provider: "anthropic", model: "claude-sonnet-4-6", active: true }],
+      });
+    }
+
+    test("over the block limit: stopped before any model call, with a plain-language reason", async () => {
+      setup({ blocks: blocks(201) });
+      const res = mockRes();
+      await translate({ body: { extractionFileId: "file123", sourceFileName: "big.pdf", sourceFileId: "src" } }, res);
+      expect(callLlm).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(StatusCodes.OK);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        retry: false, error: "Over the pilot size limits: 201 blocks (limit: 200)",
+      }));
+      expect(notifyTranslationFailed).toHaveBeenCalledWith(expect.objectContaining({ reasons: [REASONS.tooLarge] }));
+    });
+
+    test("the limit comes from the Settings tab", async () => {
+      loadSettings.mockResolvedValueOnce({ green_max_blocks: 2, yellow_max_blocks: 3 });
+      setup({ blocks: blocks(4) });
+      await translate({ body: { extractionFileId: "file123", sourceFileName: "a.pdf" } }, mockRes());
+      expect(callLlm).not.toHaveBeenCalled();
+    });
+
+    test("Extract's size result is carried into the translation JSON", async () => {
+      const size = { category: "yellow", pages: 4, pagesEstimated: false, blocks: 1 };
+      setup({ blocks: blocks(1), size });
+      callLlm.mockResolvedValue({ text: JSON.stringify({ blocks: [{ id: "b0", translated_text: "Hola" }], metadata: {} }),
+        usage: { input_tokens: 1, output_tokens: 1, duration_ms: 1 } });
+      writeOutput.mockResolvedValue("out-id");
+      await translate({ body: { extractionFileId: "file123", sourceFileName: "a.pdf" } }, mockRes());
+      expect(writeOutput.mock.calls[0][1].size).toEqual(size);
+    });
   });
 
   test("Chat notice shows plain-language reasons, not the technical error", async () => {

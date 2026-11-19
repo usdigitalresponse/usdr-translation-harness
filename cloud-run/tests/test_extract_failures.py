@@ -24,7 +24,7 @@ from failure_reasons import (
     REASON_PROVIDER_BUSY, REASON_TIMEOUT, REASON_UNEXPECTED,
     REASON_UNSUPPORTED_TYPE,
 )
-from loaders import ModelConfigError, MissingSettingError
+from loaders import ModelConfigError, MissingSettingError, SETTING_DEFAULTS
 import notifier
 from extract.main import (
     run_pdf_extraction, run_text_extraction, run_extraction, hand_off_to_translate,
@@ -137,6 +137,8 @@ def pdf_run():
     """Patch run_pdf_extraction's inputs; yields the mocks to configure and inspect."""
     with patch("extract.main.load_config", return_value=TWO_MODELS) as config, \
          patch("extract.main.load_pdf_bytes", return_value=b"%PDF"), \
+         patch("extract.main.pdf_page_count", return_value=1), \
+         patch("extract.main.load_settings", return_value=dict(SETTING_DEFAULTS)), \
          patch("extract.main.extract_text_with_pdfplumber", return_value=""), \
          patch("extract.main.load_doc", return_value="prompt"), \
          patch("extract.main.call_llm") as call_llm, \

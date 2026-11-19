@@ -1040,6 +1040,45 @@ class TestEndpointReuse:
         mock_run.assert_not_called()
 
 
+class TestSettingsInEvalQuality:
+    def test_rerun_limit_from_the_settings_tab(self, monkeypatch):
+        monkeypatch.delenv("EVAL_RERUN_LIMIT", raising=False)
+        assert rerun_limit({"eval_rerun_limit": 40}) == 40
+
+    def test_env_var_overrides_the_tab(self, monkeypatch):
+        monkeypatch.setenv("EVAL_RERUN_LIMIT", "2")
+        assert rerun_limit({"eval_rerun_limit": 40}) == 2
+
+    def test_blocks_over_the_limit_arent_evaluated(self):
+        many = {"documentId": "doc-1", "contentHash": "h",
+                "blocks": [{"id": f"b{i}", "original_text": "x", "translated_text": "y"} for i in range(4)]}
+        with patch("eval.quality.main.load_settings", return_value={"yellow_max_blocks": 3, "eval_rerun_limit": 100}), \
+             patch("eval.quality.main.run_quality_eval") as run, \
+             patch("eval.quality.main.load_eval_inputs") as inputs:
+            body, status = eval_quality(make_request(many))
+        result = json.loads(body)
+        assert status == HTTPStatus.REQUEST_ENTITY_TOO_LARGE
+        assert result["tooLarge"] is True
+        assert result["error"] == ("This translation has too many separate pieces of text to evaluate "
+                                   "(4; the pilot supports up to 3).")
+        run.assert_not_called()
+        inputs.assert_not_called()
+
+
+class TestBlockCapCountsTranslatedRows:
+    def test_rows_without_spanish_dont_count(self):
+        body = {"documentId": "doc-1", "blocks": (
+            [{"id": f"b{i}", "original_text": "x", "translated_text": "y"} for i in range(3)]
+            + [{"id": f"c{i}", "original_text": "context", "translated_text": ""} for i in range(5)])}
+        with patch("eval.quality.main.load_settings", return_value={"yellow_max_blocks": 3, "eval_rerun_limit": 100}), \
+             patch("eval.quality.main.run_quality_eval", return_value=GOOD_EVALS) as run, \
+             patch("eval.quality.main.write_combined_result", return_value=None), \
+             patch("eval.quality.main.append_result_rows"):
+            _, status = eval_quality(make_request(body))
+        assert status == HTTPStatus.OK  # 3 translated rows: at the limit, not over it
+        run.assert_called_once()
+
+
 class TestWriteCombinedResultKey:
     @patch("eval.quality.main.write_eval_result", return_value="drive-file-1")
     def test_stores_model_set_rubric_hash_and_run_count(self, mock_write):

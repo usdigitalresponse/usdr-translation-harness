@@ -24,8 +24,14 @@ from failure_reasons import (
     model_failure_reason, input_failure_reason, text_fetch_failure_reason, combine_reasons,
 )
 from llm import call_llm
-from loaders import load_config, load_doc, write_output, DOCS_API_VERSION, DRIVE_API_VERSION, SHEETS_API_VERSION
-from notifier import notify_extraction_failed
+from loaders import (
+    load_config, load_doc, load_settings, write_output, DOCS_API_VERSION, DRIVE_API_VERSION, SHEETS_API_VERSION,
+)
+from notifier import notify_extraction_failed, notify_larger_than_designed, notify_not_processed
+from size_limits import (
+    GREEN, RED, YELLOW, block_category, estimated_pages, page_category, pdf_page_count, red_reason,
+    size_info, translatable_block_count, worse, yellow_reason,
+)
 
 EXTRACT_ROLE = "extract"
 PUBSUB_TOPIC_ENV_VAR = "PUBSUB_TOPIC_EXTRACTION_COMPLETE"
@@ -33,6 +39,9 @@ PROCESSING_LOG_SHEET_NAME = "ProcessingLog"
 PROCESSING_LOG_COLUMNS = "A:J"
 STATUS_EXTRACTED = "extracted"
 STATUS_FAILED = "failed"
+# Over the pilot size limits (red): not processed. Not a failure: nothing broke
+STATUS_REJECTED = "rejected"
+MIME_PDF_EXPORT = "application/pdf"
 
 MIME_PDF = "application/pdf"
 MIME_GOOGLE_DOCS = "application/vnd.google-apps.document"
@@ -174,7 +183,9 @@ def build_output_filename(file_name, model, suffix):
     return f"{stem}_{safe_model}_{timestamp}_{suffix}"
 
 
-def save_extraction_results(file_name, model, raw_response, source_file_id):
+def save_extraction_results(file_name, model, raw_response, source_file_id, size_for=None):
+    """Save the raw response and the parsed extraction. size_for(parsed), if
+    given, returns the extraction's "size" (size_limits.size_info), saved with it."""
     raw_filename = build_output_filename(file_name, model, "raw.txt")
     write_output(raw_filename, raw_response)
     logger.info("Saved raw response: %s", raw_filename)
@@ -193,6 +204,8 @@ def save_extraction_results(file_name, model, raw_response, source_file_id):
 
     parsed["sourceFileId"] = source_file_id
     parsed["sourceType"] = "pdf"
+    if size_for:
+        parsed["size"] = size_for(parsed)
 
     parsed_filename = build_output_filename(file_name, model, "extraction.json")
     drive_file_id = write_output(parsed_filename, parsed)
@@ -204,7 +217,7 @@ def log_structured(status, provider, model, source_file_id, source_file_name,
                     drive_file_id="", error="", usage=None, content_metrics=None,
                     submitted_by_email=""):
     entry = {
-        "severity": "ERROR" if status == STATUS_FAILED else "INFO",
+        "severity": {STATUS_FAILED: "ERROR", STATUS_REJECTED: "WARNING"}.get(status, "INFO"),
         "message": f"extraction {status} for {provider}/{model}",
         "pipeline_stage": "extract",
         "status": status,
@@ -297,6 +310,56 @@ def log_extraction_failure(file_id, file_name, provider, model, error, usage=Non
         logger.info("Logged extraction failure for %s/%s to processing log", provider, model)
 
 
+def record_rejection(provider, model, file_id, file_name, size, settings, submitted_by_email=""):
+    """A file over the pilot's size limits: a `rejected` Processing Log row with
+    the numbers and a structured log entry. The caller sends the Chat notice."""
+    pages = "unknown" if size["pages"] is None else f"{size['pages']}{' (estimated)' if size['pagesEstimated'] else ''}"
+    blocks = "not counted yet" if size["blocks"] is None else size["blocks"]
+    detail = (f"Over the pilot size limits: {pages} pages, {blocks} blocks "
+              f"(limits: {settings['yellow_max_pages']} pages, {settings['yellow_max_blocks']} blocks)")
+    log_structured(STATUS_REJECTED, provider, model, file_id, file_name, error=detail,
+                   content_metrics={"size_category": size["category"], "page_count": size["pages"],
+                                    "pages_estimated": size["pagesEstimated"], "block_count": size["blocks"]},
+                   submitted_by_email=submitted_by_email)
+    try:
+        if _append_processing_log_row(_processing_log_row(file_id, file_name, STATUS_REJECTED, provider, model,
+                                                          error=detail, submitted_by_email=submitted_by_email)):
+            logger.info("Logged size rejection for %s to processing log", file_name)
+    except Exception:
+        logger.exception("Failed to log size rejection to processing sheet")
+
+
+def size_category_of(result):
+    """An extraction result's size category (green if it has none)."""
+    return (result["parsed"].get("size") or {}).get("category", GREEN)
+
+
+def export_gdoc_pdf(file_id):
+    """A Google Doc rendered as PDF (all tabs, each starting on a new page), read-only."""
+    credentials, _ = google.auth.default()
+    service = build("drive", DRIVE_API_VERSION, credentials=credentials)
+    request = service.files().export_media(fileId=file_id, mimeType=MIME_PDF_EXPORT)
+    buffer = io.BytesIO()
+    downloader = MediaIoBaseDownload(buffer, request)
+    done = False
+    while not done:
+        _, done = downloader.next_chunk()
+    return buffer.getvalue()
+
+
+def count_text_pages(file_id, mime_type, paragraphs, settings):
+    """(pages, estimated) for a Google Doc (exact, from its PDF export) or Word
+    file (estimated from the word count). (None, False) if a Google Doc's
+    export fails: the page check is then skipped, and blocks still apply."""
+    if mime_type == MIME_GOOGLE_DOCS:
+        try:
+            return pdf_page_count(export_gdoc_pdf(file_id)), False
+        except Exception:
+            logger.exception("Couldn't count pages of %s (PDF export failed); skipping the page check", file_id)
+            return None, False
+    return estimated_pages(paragraphs, settings["words_per_page"]), True
+
+
 def describe_error(err):
     """The error's class and message for the Processing Log, e.g.
     "APITimeoutError: Request timed out." (cut to MAX_ERROR_DETAIL_CHARS)."""
@@ -365,7 +428,7 @@ def hand_off_to_translate(file_id, file_name, extraction_results, content_type, 
     successful extraction (if every model failed, run_pdf_extraction has already
     told the submitter). A failed publish gets a failed row; if every publish
     failed, the extractions are saved but Translate never hears about them, so
-    the submitter is told."""
+    the submitter is told. Returns whether at least one extraction was handed off."""
     failures = publish_extraction_complete(file_id, file_name, extraction_results, content_type,
                                            submitted_by_email, submitted_by_name)
     for result, err in failures:
@@ -375,6 +438,7 @@ def hand_off_to_translate(file_id, file_name, extraction_results, content_type, 
     none_published = bool(failures) and len(failures) == len(extraction_results)
     if none_published:
         notify_extraction_failed(file_name, [REASON_HANDOFF_FAILED], submitted_by_email, submitted_by_name)
+    return not none_published
 
 
 def run_text_extraction(file_id, file_name, mime_type, content_type="public_flyer", submitted_by_email="",
@@ -393,8 +457,21 @@ def run_text_extraction(file_id, file_name, mime_type, content_type="public_flye
         notify_extraction_failed(file_name, [text_fetch_failure_reason(e)], submitted_by_email, submitted_by_name)
         return
 
+    settings = load_settings()
+    pages, pages_estimated = count_text_pages(file_id, mime_type, paragraphs, settings)
+    page_cat = page_category(pages, settings) if pages is not None else GREEN
+    size = size_info(worse(page_cat, block_category(len(paragraphs), settings)),
+                     pages, pages_estimated, len(paragraphs))
+    if size["category"] == RED:
+        record_rejection(PASSTHROUGH_PROVIDER, PASSTHROUGH_MODEL, file_id, file_name, size, settings,
+                         submitted_by_email)
+        notify_not_processed(file_name, red_reason(page_cat == RED, pages, pages_estimated, settings),
+                             submitted_by_email, submitted_by_name)
+        return
+
     try:
         parsed = text_to_extraction_json(paragraphs, file_id)
+        parsed["size"] = size
         parsed_filename = build_output_filename(file_name, PASSTHROUGH_MODEL, "extraction.json")
         drive_file_id = write_output(parsed_filename, parsed)
         logger.info("Saved text extraction: %s", parsed_filename)
@@ -423,7 +500,11 @@ def run_text_extraction(file_id, file_name, mime_type, content_type="public_flye
     except Exception:
         logger.exception("Failed to log extraction result to processing sheet")
 
-    hand_off_to_translate(file_id, file_name, [enriched], content_type, submitted_by_email, submitted_by_name)
+    handed_off = hand_off_to_translate(file_id, file_name, [enriched], content_type, submitted_by_email,
+                                       submitted_by_name)
+    if handed_off and size["category"] == YELLOW:
+        notify_larger_than_designed(file_name, yellow_reason(page_cat == YELLOW, pages, pages_estimated),
+                                    submitted_by_email, submitted_by_name)
 
 
 def run_pdf_extraction(file_id, file_name, content_type="public_flyer", submitted_by_email="", submitted_by_name=""):
@@ -441,6 +522,21 @@ def run_pdf_extraction(file_id, file_name, content_type="public_flyer", submitte
     pdf_bytes = load_pdf_bytes(file_id)
     logger.info("PDF loaded: %d bytes", len(pdf_bytes))
 
+    # Pages before any model call; blocks once each model's extraction is parsed
+    settings = load_settings()
+    pages = pdf_page_count(pdf_bytes)
+    page_cat = page_category(pages, settings)
+    if page_cat == RED:
+        record_rejection("", "", file_id, file_name, size_info(RED, pages, False, None), settings,
+                         submitted_by_email)
+        notify_not_processed(file_name, red_reason(True, pages, False, settings), submitted_by_email,
+                             submitted_by_name)
+        return
+
+    def size_for(parsed):
+        blocks = translatable_block_count(parsed)
+        return size_info(worse(page_cat, block_category(blocks, settings)), pages, False, blocks)
+
     pdf_base64 = base64.b64encode(pdf_bytes).decode()
     extracted_text = extract_text_with_pdfplumber(io.BytesIO(pdf_bytes))
     if extracted_text:
@@ -456,6 +552,7 @@ def run_pdf_extraction(file_id, file_name, content_type="public_flyer", submitte
 
     extraction_results = []
     failures = []  # (provider, model, plain-language reason) for the Chat notice
+    size_rejected = False
     for model_config in active_models:
         provider = model_config["provider"]
         model = model_config["model"]
@@ -473,7 +570,8 @@ def run_pdf_extraction(file_id, file_name, content_type="public_flyer", submitte
             continue
 
         try:
-            result = save_extraction_results(file_name, model, raw_response, source_file_id=file_id)
+            result = save_extraction_results(file_name, model, raw_response, source_file_id=file_id,
+                                             size_for=size_for)
         except Exception as e:
             # The model call is paid for; record it and go on to the next model
             logger.exception("Saving the extraction failed for %s/%s", provider, model)
@@ -483,7 +581,12 @@ def run_pdf_extraction(file_id, file_name, content_type="public_flyer", submitte
             failures.append((provider, model, REASON_SAVING_FAILED))
             continue
 
-        if result:
+        if result and size_category_of(result) == RED:
+            # Saved (for a look later), but too large to translate
+            record_rejection(provider, model, file_id, file_name, result["parsed"]["size"], settings,
+                             submitted_by_email)
+            size_rejected = True
+        elif result:
             enriched = {**result, "model": model, "provider": provider}
             extraction_results.append(enriched)
             metrics = compute_content_metrics(result["parsed"], extraction_method)
@@ -502,11 +605,19 @@ def run_pdf_extraction(file_id, file_name, content_type="public_flyer", submitte
 
     if not extraction_results:
         # Nothing goes on to Translate, so the submitter would hear nothing
-        notify_extraction_failed(file_name, combine_reasons(failures), submitted_by_email, submitted_by_name)
+        if size_rejected:
+            notify_not_processed(file_name, red_reason(False, pages, False, settings), submitted_by_email,
+                                 submitted_by_name)
+        else:
+            notify_extraction_failed(file_name, combine_reasons(failures), submitted_by_email, submitted_by_name)
         return
 
-    hand_off_to_translate(file_id, file_name, extraction_results, content_type, submitted_by_email,
-                          submitted_by_name)
+    handed_off = hand_off_to_translate(file_id, file_name, extraction_results, content_type, submitted_by_email,
+                                       submitted_by_name)
+    yellow = any(size_category_of(r) == YELLOW for r in extraction_results)
+    if handed_off and yellow:
+        notify_larger_than_designed(file_name, yellow_reason(page_cat == YELLOW, pages, False),
+                                    submitted_by_email, submitted_by_name)
 
 
 SUPPORTED_MIME_TYPES = {MIME_PDF} | TEXT_MIME_TYPES

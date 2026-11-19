@@ -69,6 +69,22 @@ const GLOSSARY_REQUIRED_COLUMNS = [
 const MODEL_CONFIG_SHEET_ENV = "MODEL_CONFIG_SHEET_ID";
 const MODEL_CONFIG_SHEET_RANGE = "Config";
 const MODEL_CONFIG_REQUIRED_COLUMNS = ["role", "provider", "model", "active"];
+
+// Settings tab of the Model Config sheet (source: SETTING_DEFAULTS in
+// extract/loaders.py, translate/loaders.js, eval/quality/quality_loaders.py).
+// The services fall back to these defaults when a value is missing or invalid.
+const SETTINGS_TAB = "Settings";
+const SETTING_COLUMNS = ["setting", "value"];
+const SETTING_DEFAULTS = {
+  green_max_pages: 2,
+  yellow_max_pages: 5,
+  green_max_blocks: 120,
+  yellow_max_blocks: 200,
+  words_per_page: 500,
+  eval_rerun_limit: 100,
+};
+// Each green limit must be below its yellow limit
+const SETTING_ORDER = [["green_max_pages", "yellow_max_pages"], ["green_max_blocks", "yellow_max_blocks"]];
 const MODEL_CONFIG_ACTIVE_YES = "YES";
 // The Model Config role each service picks its models by
 const SERVICE_ROLES = {
@@ -164,6 +180,10 @@ module.exports = {
   MODEL_CONFIG_SHEET_ENV,
   MODEL_CONFIG_SHEET_RANGE,
   MODEL_CONFIG_REQUIRED_COLUMNS,
+  SETTINGS_TAB,
+  SETTING_COLUMNS,
+  SETTING_DEFAULTS,
+  SETTING_ORDER,
   MODEL_CONFIG_ACTIVE_YES,
   SERVICE_ROLES,
   PROCESSING_LOG_SHEET_ENV,
