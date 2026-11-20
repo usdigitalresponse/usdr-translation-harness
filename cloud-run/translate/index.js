@@ -3,7 +3,7 @@ const { StatusCodes } = require("http-status-codes");
 
 const { buildTranslationPrompt } = require("./prompt-assembly");
 const { callLlm, modelRetryReason } = require("./llm");
-const { loadConfig, loadStatuteUrls, writeOutput, logTranslationResult, stripExtension } = require("./loaders");
+const { loadConfig, loadSettings, loadStatuteUrls, writeOutput, logTranslationResult, stripExtension } = require("./loaders");
 const { createTranslationDoc } = require("./doc-writer");
 const { withRetry } = require("./retry");
 const { CHUNK_SIZE, planChunks, mergeChunkTranslations } = require("./chunking");
@@ -268,9 +268,9 @@ async function translate(req, res) {
     submittedByEmail = "", submittedByName = "" } = input;
   const source = { sourceFileId, sourceFileName, submittedByEmail, submittedByName };
 
-  let prompt, promptMetrics, expectedBlockIds, extractionBlocks, promptForBlocks;
+  let prompt, promptMetrics, expectedBlockIds, extractionBlocks, promptForBlocks, extractionSize;
   try {
-    ({ prompt, promptMetrics, expectedBlockIds, extractionBlocks, promptForBlocks } =
+    ({ prompt, promptMetrics, expectedBlockIds, extractionBlocks, promptForBlocks, extractionSize } =
       await buildTranslationPrompt(extractionFileId, contentType, { includeStatutes }));
   } catch (err) {
     const error = "Prompt assembly failed: " + err.message;
@@ -305,6 +305,20 @@ async function translate(req, res) {
       reasons: [REASONS.noActiveModels], ...source });
     return;
   }
+
+  // Backstop for the pilot size limit (Extract checks first): a file Extract
+  // let through before the limit existed, or before a settings change
+  const settings = await loadSettings();
+  if (expectedBlockIds.length > settings.yellow_max_blocks) {
+    await stopWithoutRetry(res, {
+      error: `Over the pilot size limits: ${expectedBlockIds.length} blocks (limit: ${settings.yellow_max_blocks})`,
+      reasons: [REASONS.tooLarge], ...source,
+    });
+    return;
+  }
+  // Recorded with the translation (for metrics by size): Extract's result, or
+  // just the block count for an extraction made before the size check
+  const size = extractionSize || { blocks: expectedBlockIds.length };
 
   const baseName = stripExtension(sourceFileName);
   const statuteUrls = includeStatutes ? loadStatuteUrls() : {};
@@ -357,6 +371,7 @@ async function translate(req, res) {
         model,
         ...(submittedByEmail && { submittedByEmail }),
         ...(Object.keys(statuteUrls).length && { statute_urls: statuteUrls }),
+        size,
       };
       const fileId = await save(outputFileName, outputData);
       return { provider, model, outputFileId: fileId, outputFileName, translationJson: outputData, usage };

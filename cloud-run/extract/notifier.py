@@ -48,6 +48,26 @@ def notify_extraction_failed(source_file_name, reasons, submitted_by_email="", s
     _post_to_chat(webhook_url, text)
 
 
+def _post(text_after_user_line, submitted_by_email, submitted_by_name):
+    webhook_url = os.environ.get(WEBHOOK_ENV_VAR)
+    if not webhook_url:
+        logger.warning("%s not configured: %s is unset. No Chat notifications will be sent.",
+                       LOG_PREFIX, WEBHOOK_ENV_VAR)
+        return
+    _post_to_chat(webhook_url, _user_line(submitted_by_name, submitted_by_email) + text_after_user_line)
+
+
+def notify_not_processed(source_file_name, reason, submitted_by_email="", submitted_by_name=""):
+    """A file over the pilot's size limits (red): not translated. Never raises."""
+    _post(f"⚠️ *{source_file_name}* wasn't processed: {reason}", submitted_by_email, submitted_by_name)
+
+
+def notify_larger_than_designed(source_file_name, detail, submitted_by_email="", submitted_by_name=""):
+    """A file over the pilot's normal size (yellow): translated anyway, with a heads-up. Never raises."""
+    _post(f"ℹ️ *{source_file_name}* is larger than the pilot is designed for ({detail}). "
+          "It will still be translated; review it with extra care.", submitted_by_email, submitted_by_name)
+
+
 def _post_to_chat(webhook_url, text):
     """Best effort: failures are logged and swallowed so they never mask the
     extraction failure being reported."""

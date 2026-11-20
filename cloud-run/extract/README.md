@@ -32,6 +32,40 @@ Both formats read the same parts (`document_text.py`), so a document gives the s
 
 A Google Doc element the reader doesn't recognize is logged as a warning ("Google Doc paragraph element not read"), so a new kind of chip shows up in the logs instead of disappearing silently.
 
+## Pilot size limits ("traffic light")
+
+| | Pages | Translatable blocks | What happens |
+|---|---|---|---|
+| Green | up to `green_max_pages` (2) | up to `green_max_blocks` (120) | Normal |
+| Yellow | up to `yellow_max_pages` (5) | up to `yellow_max_blocks` (200) | Translated; a Chat heads-up ("…is larger than the pilot is designed for…") |
+| Red | more | more | Not processed: a `rejected` Processing Log row with the numbers, and a Chat notice saying which limit, in plain language |
+
+A file takes the worse of its two colors. Limits come from the **Settings tab** of the Model Config sheet (defaults in brackets; see "Settings tab" below).
+
+- **Pages** are checked before any model call:
+  - PDF: the page count (pdfplumber)
+  - Google Docs: the page count of its PDF export (read-only; every tab is included, each starting on a new page)
+  - Word: **estimated** from the word count (`words_per_page`, 500): a .docx has no reliable page count. Shown as "about N pages"
+  - If a Google Doc's PDF export fails, the page check is skipped (logged) and the block check still applies
+- **Blocks** (translatable ones) are checked once the extraction exists: for PDFs that's after the model call (so it protects Translate), for Google Docs / Word it's free.
+- With several extract models, a red extraction is saved but not handed to Translate; the others go on.
+- The result is saved in the extraction JSON as `size`: `{ category, pages, pagesEstimated, blocks }` (`pages` is null if it couldn't be counted). Translate copies it into the translation JSON.
+
+## Settings tab
+
+Admin-adjustable values in the Model Config sheet's **Settings** tab: columns `setting` and `value` (others, like `notes`, are ignored), one row per setting. Read on every run, so a change takes effect without a deploy. A missing tab or a missing / invalid value (not a whole number above 0) falls back to the default and is logged as an input problem (`input_problem: "settings"`); the daily health check reports it.
+
+| setting | default | used by |
+|---|---|---|
+| `green_max_pages` | 2 | Extract |
+| `yellow_max_pages` | 5 | Extract |
+| `green_max_blocks` | 120 | Extract |
+| `yellow_max_blocks` | 200 | Extract, Translate (backstop), Eval Quality (cap) |
+| `words_per_page` | 500 | Extract (Word page estimate) |
+| `eval_rerun_limit` | 100 | Eval Quality |
+
+The same defaults are in `extract/loaders.py`, `translate/loaders.js`, `eval/quality/quality_loaders.py` and `health-check/rules.js`; a test fails if they drift.
+
 ## HTTP interface
 
 ```

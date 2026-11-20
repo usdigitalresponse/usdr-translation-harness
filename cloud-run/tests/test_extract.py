@@ -22,6 +22,7 @@ import google.auth.exceptions
 import httpx
 from google.genai import errors as genai_errors
 
+from loaders import SETTING_DEFAULTS
 from extract.llm import (
     call_llm, make_claude_client, make_gemini_client,
     PROVIDER_ANTHROPIC, PROVIDER_GOOGLE, BACKEND_VERTEX, BACKEND_DIRECT,
@@ -574,6 +575,13 @@ class TestProcessingLogRows:
 
 class TestExtractionFailureRows:
     MODEL_CONFIG = {"models": [{"role": EXTRACT_ROLE, "provider": "google", "model": "gemini", "active": True}]}
+
+    @pytest.fixture(autouse=True)
+    def one_page_default_settings(self):
+        # The size check opens the PDF and reads the Settings tab; these tests use fake bytes
+        with patch("extract.main.pdf_page_count", return_value=1), \
+             patch("extract.main.load_settings", return_value=dict(SETTING_DEFAULTS)):
+            yield
 
     @patch("extract.main.publish_extraction_complete")
     @patch("extract.main.log_extraction_failure")

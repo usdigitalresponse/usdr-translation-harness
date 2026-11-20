@@ -39,6 +39,18 @@ const WHAT_TO_DO = {
   model_config_no_active_model:
     "Set active = YES on at least one row for this role in the Config tab. The service can't run without one.",
 
+  // Settings tab (Model Config sheet)
+  settings_unreadable:
+    "Add a 'Settings' tab to the Model Config sheet with 'setting' and 'value' columns (one row per limit). Until then, the services use the default limits.",
+  settings_missing_columns:
+    "Row 1 of the Settings tab must have 'setting' and 'value' headers. Until then, the services use the default limits.",
+  settings_invalid:
+    "Fix these values in the Settings tab: whole numbers above 0. Until then, the services use the default for each.",
+  settings_missing:
+    "Add rows for these settings in the Settings tab if you want a different value; otherwise the defaults shown are used.",
+  settings_order:
+    "Each green limit has to be below its yellow limit (e.g. green_max_pages below yellow_max_pages). Fix the Settings tab.",
+
   // Processing Log
   processing_log_unreadable:
     "Share the Processing Log sheet with the service account, or rename the tab back to 'ProcessingLog' if it was renamed.",

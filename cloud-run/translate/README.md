@@ -50,6 +50,10 @@ The SDKs' own retries are off (Claude's default is 2 retries, including on timeo
 
 The same rule is in each model-calling service's `llm` module.
 
+## Pilot size limit (backstop)
+
+Extract applies the size limits (see the Extract README). Translate re-checks the block count against `yellow_max_blocks` from the Settings tab, for an extraction made before the limit existed or a settings change in between: over it, it stops without calling a model (reason "too many separate pieces of text…"). The extraction's `size` (or just the block count, for an older extraction) is saved in the translation JSON as `size`, for metrics by size.
+
 ## HTTP interface
 
 Accepts either a Pub/Sub push envelope or a direct POST:

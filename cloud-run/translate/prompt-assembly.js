@@ -314,6 +314,8 @@ async function buildTranslationPrompt(extractionFileId, contentType, { includeSt
     expectedBlockIds,
     extractionBlocks: extractionJson.blocks || [],
     promptForBlocks,
+    // Size check result from Extract (pages, blocks, green/yellow), if it ran
+    extractionSize: extractionJson.size || null,
   };
 }
 

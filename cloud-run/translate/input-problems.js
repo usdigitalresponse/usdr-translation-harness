@@ -7,6 +7,7 @@ const INPUT_PROBLEM_PREFIX = "Translation input problem";
 const INPUT_GLOSSARY = "glossary";
 const INPUT_STATUTES = "statutes";
 const INPUT_MODEL_CONFIG = "model_config";
+const INPUT_SETTINGS = "settings";
 
 /**
  * Log a problem with an input the pipeline depends on (glossary, statutes,
@@ -33,4 +34,5 @@ module.exports = {
   INPUT_GLOSSARY,
   INPUT_STATUTES,
   INPUT_MODEL_CONFIG,
+  INPUT_SETTINGS,
 };

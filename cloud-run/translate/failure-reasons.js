@@ -19,6 +19,7 @@ const REASONS = {
   modelConfig: "There's a problem with the Model Config sheet.",
   noActiveModels: "Model Config has no active translate model.",
   missingSetting: "The pipeline is missing a setting (an environment variable on the Translate service).",
+  tooLarge: "It has too many separate pieces of text for the pilot (for example, a large table, where each cell counts separately). Split it into shorter files, or simplify large tables, and submit again.",
   unexpected: "Something unexpected went wrong.",
 };
 

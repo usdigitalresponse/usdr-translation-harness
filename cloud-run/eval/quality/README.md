@@ -38,7 +38,11 @@ Opt-in: when a blocks request has `"skipIfUnchanged": true` with a `documentId` 
 
 The add-on sends the flag on ↻ only. A cached response shows "Last updated <date>. No new changes. Running again may yield different results." with a "Run again anyway" link, which re-sends without the flag.
 
-**Rerun limit:** each saved result also records `runsWithThisKey`, how many times that exact input (text, models, rubric) has been evaluated. Once it reaches `EVAL_RERUN_LIMIT` (optional env var, default 100), the models aren't called again for that input, with or without the flag: the saved result comes back with `"limitReached": true` (or a 429 with the same message if no model succeeded last time), and the sidebar shows "Evaluation limit reached. Update the translation or rubric to run again." Any change to the text, models or rubric starts a new count. A high cap to protect against overuse; reviewers shouldn't normally reach it. Runs where every model failed aren't saved, so they don't count.
+**Rerun limit:** each saved result also records `runsWithThisKey`, how many times that exact input (text, models, rubric) has been evaluated. Once it reaches `eval_rerun_limit` (Settings tab of the Model Config sheet, default 100; the `EVAL_RERUN_LIMIT` env var overrides it, e.g. for testing), the models aren't called again for that input, with or without the flag: the saved result comes back with `"limitReached": true` (or a 429 with the same message if no model succeeded last time), and the sidebar shows "Evaluation limit reached. Update the translation or rubric to run again." Any change to the text, models or rubric starts a new count. A high cap to protect against overuse; reviewers shouldn't normally reach it. Runs where every model failed aren't saved, so they don't count.
+
+## Block cap
+
+Inline-blocks requests with more blocks than `yellow_max_blocks` (Settings tab, default 200: the pilot's size limit) aren't evaluated: a 413 with "This translation has too many separate pieces of text to evaluate (N; the pilot supports up to M).", shown in the sidebar.
 
 ## Files
 

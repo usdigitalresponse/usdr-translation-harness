@@ -3,7 +3,7 @@ const path = require("path");
 
 const { google } = require("googleapis");
 const { Storage } = require("@google-cloud/storage");
-const { logInputProblem, INPUT_MODEL_CONFIG } = require("./input-problems");
+const { logInputProblem, INPUT_MODEL_CONFIG, INPUT_SETTINGS } = require("./input-problems");
 const { ModelConfigError, MissingSettingError } = require("./errors");
 require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
@@ -130,6 +130,72 @@ function configProblem(detail, fields = {}) {
  * @throws if the sheet ID is missing on Cloud Run, the Config tab has no data
  *   rows, or row 1 is missing a required column
  */
+// The Settings tab of the Model Config sheet: admin-adjustable limits, one per
+// row ("setting", "value"; extra columns such as "notes" are ignored). A
+// missing tab or a missing / invalid value falls back to the default (logged as
+// an input problem, so the daily health check reports it): a settings problem
+// never stops the pipeline. Keep in sync with extract/loaders.py.
+const SETTINGS_SHEET_RANGE = "Settings";
+const SETTING_NAME_COLUMN = "setting";
+const SETTING_VALUE_COLUMN = "value";
+const SETTING_DEFAULTS = Object.freeze({
+  green_max_pages: 2,
+  yellow_max_pages: 5,
+  green_max_blocks: 120,
+  yellow_max_blocks: 200,
+  words_per_page: 500,
+  eval_rerun_limit: 100,
+});
+
+/**
+ * Settings from the tab's rows (row 1 = headers), defaults where missing or invalid.
+ * @param {Array<Array<string>>} rows
+ * @returns {Object<string, number>}
+ */
+function settingsFromRows(rows) {
+  const settings = { ...SETTING_DEFAULTS };
+  const headers = (rows[0] || []).map((h) => String(h).trim().toLowerCase());
+  const nameCol = headers.indexOf(SETTING_NAME_COLUMN);
+  const valueCol = headers.indexOf(SETTING_VALUE_COLUMN);
+  if (nameCol === -1 || valueCol === -1) {
+    logInputProblem(INPUT_SETTINGS, `the ${SETTINGS_SHEET_RANGE} tab needs '${SETTING_NAME_COLUMN}' and ` +
+      `'${SETTING_VALUE_COLUMN}' columns in row 1; using the defaults`, { found_headers: headers });
+    return settings;
+  }
+  for (const row of rows.slice(1)) {
+    const name = String(row[nameCol] ?? "").trim().toLowerCase();
+    if (!(name in SETTING_DEFAULTS)) continue;
+    const raw = String(row[valueCol] ?? "").trim();
+    const value = /^\d+$/.test(raw) ? Number(raw) : 0;
+    if (value > 0) {
+      settings[name] = value;
+    } else {
+      logInputProblem(INPUT_SETTINGS, `${name} = "${raw}" isn't a positive whole number; using the default, ` +
+        `${SETTING_DEFAULTS[name]}`, { setting: name });
+    }
+  }
+  return settings;
+}
+
+/**
+ * The Settings tab as { setting: number }, with defaults for anything missing
+ * or invalid. Never throws. Without a Model Config sheet (local development),
+ * the defaults.
+ */
+async function loadSettings() {
+  const sheetId = process.env.MODEL_CONFIG_SHEET_ID;
+  if (!sheetId) return { ...SETTING_DEFAULTS };
+  try {
+    const auth = new google.auth.GoogleAuth({ scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"] });
+    const sheets = google.sheets({ version: SHEETS_API_VERSION, auth });
+    const { data } = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: SETTINGS_SHEET_RANGE });
+    return settingsFromRows(data.values || []);
+  } catch (err) {
+    logInputProblem(INPUT_SETTINGS, `couldn't read the ${SETTINGS_SHEET_RANGE} tab (${err.message}); using the defaults`);
+    return { ...SETTING_DEFAULTS };
+  }
+}
+
 async function loadConfig() {
   const sheetId = process.env.MODEL_CONFIG_SHEET_ID;
   if (!sheetId) {
@@ -378,6 +444,9 @@ module.exports = {
   loadDoc,
   loadSheetTable,
   loadConfig,
+  loadSettings,
+  settingsFromRows,
+  SETTING_DEFAULTS,
   loadExtractionJson,
   loadStatutes,
   loadStatuteUrls,

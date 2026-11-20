@@ -5,6 +5,7 @@ const { planChunks, mergeChunkTranslations, CHUNK_SIZE, MAX_PARALLEL_CHUNKS } = 
 
 jest.mock("../translate/loaders.js", () => ({
   loadConfig: jest.fn(),
+  loadSettings: jest.fn().mockResolvedValue({ green_max_pages: 2, yellow_max_pages: 5, green_max_blocks: 120, yellow_max_blocks: 200, words_per_page: 500, eval_rerun_limit: 100 }),
   loadStatuteUrls: jest.fn(() => ({})),
   writeOutput: jest.fn(),
   logTranslationResult: jest.fn(),

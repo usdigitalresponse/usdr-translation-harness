@@ -12,6 +12,7 @@ It reads each pipeline service's **live settings** from Cloud Run, so it checks 
 | Prompt and rubric docs | Any `*_PROMPT_DOC_ID*` / `*_RUBRIC_DOC_ID` doc can't be opened, or has no text. Prompts are read the way Translate reads them (paragraphs only); the rubric includes tables |
 | Glossary | The tab (`GLOSSARY_SHEET_TAB`, default `FAMLI Spanish Glossary`) can't be read, is missing a column Translate uses, or has no entries |
 | Model Config | The `Config` tab can't be read, is missing role/provider/model/active, or a service's role has no row with active = YES |
+| Settings | The Model Config sheet's `Settings` tab is missing, lacks `setting` / `value` columns, has a value that isn't a whole number above 0, leaves a setting unset (the default is used), or has a green limit at or above its yellow one |
 | Processing Log | The `ProcessingLog` header row differs from the Orchestrator's, or files submitted in the last 24 hours have a blank Submitted By |
 | Orchestrator queue | A file the Orchestrator gave up on in the last 24 hours (`extract-gave-up` / `pl-eval-gave-up`, with the last error), or a **backlog** in the input folders: more than 30 files not yet sent to Extract or Plain Language Eval, or the oldest waiting over an hour (measured from when it was created in Drive). Also a problem if the input folder settings below are unset or a folder can't be read |
 | Refinement log | Reviewed / ModelFlagged / OtherChanges is missing or its header row differs from Capture Feedback's |

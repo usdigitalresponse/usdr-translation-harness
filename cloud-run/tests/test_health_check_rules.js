@@ -129,4 +129,15 @@ describe("health-check rules match the services", () => {
     expect(read("cloud-run/extract/main.py")).toContain('"pipeline_stage": "extract"');
     expect(read("cloud-run/plain-language-eval/index.js")).toContain('pipeline_stage: "plain-language-eval"');
   });
+
+  test("Settings defaults match every service's", () => {
+    const translate = require("../translate/loaders.js").SETTING_DEFAULTS;
+    expect(rules.SETTING_DEFAULTS).toEqual({ ...translate });
+    for (const py of ["cloud-run/extract/loaders.py", "cloud-run/eval/quality/quality_loaders.py"]) {
+      const code = read(py);
+      for (const [name, value] of Object.entries(rules.SETTING_DEFAULTS)) {
+        expect({ py, name, found: code.includes(`"${name}": ${value},`) }).toEqual({ py, name, found: true });
+      }
+    }
+  });
 });

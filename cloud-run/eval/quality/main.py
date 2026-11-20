@@ -17,6 +17,7 @@ from quality_loaders import (
     EVAL_RESULT_DOCUMENT_PROPERTY,
     append_result_row,
     find_latest_eval_result,
+    load_settings,
     load_config,
     load_doc,
     load_translation_json,
@@ -47,9 +48,13 @@ CRITERIA = (
 # Runs allowed on unchanged input (same text, models and rubric) per document:
 # a high cap that protects against overuse; reviewers should rarely hit it.
 # Editing the translation (or a rubric / model change) starts a new count.
+# Set by eval_rerun_limit in the Settings tab; the env var overrides it (testing).
 RERUN_LIMIT_ENV_VAR = "EVAL_RERUN_LIMIT"
 DEFAULT_RERUN_LIMIT = 100
 LIMIT_REACHED_MESSAGE = "Evaluation limit reached. Update the translation or rubric to run again."
+# Over the pilot's block limit (yellow_max_blocks in the Settings tab): not evaluated
+TOO_LARGE_MESSAGE = ("This translation has too many separate pieces of text to evaluate ({blocks}; the pilot "
+                     "supports up to {limit}).")
 
 MARKDOWN_JSON_PATTERN = re.compile(r"```(?:json)?\s*\n(.*?)\n\s*```", re.DOTALL)
 
@@ -238,8 +243,10 @@ def load_eval_inputs():
     return active_models, load_doc(RUBRIC_DOC_ENV_VAR, RUBRIC_LOCAL_PATH_ENV_VAR)
 
 
-def rerun_limit():
-    """EVAL_RERUN_LIMIT, or DEFAULT_RERUN_LIMIT if unset or not a positive number."""
+def rerun_limit(settings=None):
+    """The rerun limit: EVAL_RERUN_LIMIT if set to a positive number (an
+    override, e.g. for testing), else the Settings tab's eval_rerun_limit, else
+    DEFAULT_RERUN_LIMIT."""
     raw = os.environ.get(RERUN_LIMIT_ENV_VAR)
     if raw:
         try:
@@ -247,8 +254,8 @@ def rerun_limit():
                 return int(raw)
         except ValueError:
             pass
-        logger.warning("%s=%r isn't a positive number; using %d", RERUN_LIMIT_ENV_VAR, raw, DEFAULT_RERUN_LIMIT)
-    return DEFAULT_RERUN_LIMIT
+        logger.warning("%s=%r isn't a positive number; ignoring it", RERUN_LIMIT_ENV_VAR, raw)
+    return (settings or {}).get("eval_rerun_limit", DEFAULT_RERUN_LIMIT)
 
 
 def latest_result(document_id):
@@ -423,6 +430,17 @@ def eval_quality(request):
             translation_json = normalize_inline_blocks(blocks, body.get("metadata"))
         except (ValueError, AttributeError, TypeError) as e:
             return json.dumps({"error": f"Invalid blocks: {e}"}), HTTPStatus.BAD_REQUEST
+        settings = load_settings()
+        # Rows with Spanish text: the same count as Translate's (translatable blocks),
+        # so a document Translate accepted can always be evaluated
+        block_count = sum(1 for b in translation_json["blocks"] if b["translated_text"])
+        if block_count > settings["yellow_max_blocks"]:
+            logger.warning("Not evaluating %s: %d blocks, over the limit of %d",
+                           body.get("documentId"), block_count, settings["yellow_max_blocks"])
+            return json.dumps({
+                "error": TOO_LARGE_MESSAGE.format(blocks=block_count, limit=settings["yellow_max_blocks"]),
+                "tooLarge": True,
+            }), HTTPStatus.REQUEST_ENTITY_TOO_LARGE
     else:
         try:
             translation_file_id = parse_drive_file_id(translation_json_url)
@@ -444,7 +462,7 @@ def eval_quality(request):
         prior_runs = runs_with_key(latest, key)
         if prior_runs:
             payload, location_id = latest
-            limit_reached = prior_runs >= rerun_limit()
+            limit_reached = prior_runs >= rerun_limit(settings)
             saved_scores = [e for e in payload.get("evaluations") or [] if "error" not in e]
             if limit_reached and not saved_scores:
                 logger.warning("Evaluation limit reached for %s (%d runs); not calling the models",
